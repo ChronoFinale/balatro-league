@@ -5,6 +5,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
+import { placePlayerInDivision } from "@/lib/division-membership";
 
 const MOCK_PREFIX = "mock-";
 
@@ -25,9 +26,7 @@ export async function addFakePlayer(formData: FormData) {
       include: { season: true, _count: { select: { members: true } } },
     });
     if (div && div._count.members < (div.targetSize ?? div.season.targetGroupSize)) {
-      await prisma.divisionMember.create({
-        data: { divisionId: div.id, playerId: player.id },
-      });
+      await placePlayerInDivision(div.id, player.id);
     }
   }
   revalidatePath("/admin/players");
@@ -36,6 +35,9 @@ export async function addFakePlayer(formData: FormData) {
 // Move a player into/out of a division. divisionId encodes which season,
 // so this works for any season (not just the active one). Empty divisionId
 // = remove from whatever division(s) they're in for that season.
+//
+// placePlayerInDivision handles the "in any other division this season"
+// case automatically (transfers them).
 export async function movePlayer(formData: FormData) {
   await requireAdmin();
   const playerId = String(formData.get("playerId") ?? "");
@@ -48,17 +50,11 @@ export async function movePlayer(formData: FormData) {
       include: { season: true },
     });
     if (!div) return;
-    // Remove from any other division in the same season first
-    await prisma.divisionMember.deleteMany({
-      where: { playerId, division: { seasonId: div.seasonId }, NOT: { divisionId: div.id } },
+    const count = await prisma.divisionMember.count({
+      where: { divisionId: div.id, NOT: { playerId } },
     });
-    const count = await prisma.divisionMember.count({ where: { divisionId: div.id } });
     if (count < (div.targetSize ?? div.season.targetGroupSize)) {
-      await prisma.divisionMember.upsert({
-        where: { divisionId_playerId: { divisionId: div.id, playerId } },
-        create: { divisionId: div.id, playerId, status: "ACTIVE" },
-        update: { status: "ACTIVE", droppedAt: null, dropoutReason: null },
-      });
+      await placePlayerInDivision(div.id, playerId);
     }
   } else {
     // Empty divisionId = remove from active season (preserves old behavior for the "— remove —" option)

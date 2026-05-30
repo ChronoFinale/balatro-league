@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
 import { resolveDiscordIdToDisplayName } from "@/lib/add-player";
+import { placePlayerInDivision } from "@/lib/division-membership";
 
 interface TierConfig {
   name: string;
@@ -242,11 +243,7 @@ export async function buildSeason(formData: FormData) {
         for (const discordId of planTier.divisions[gi]!) {
           const player = playerByDiscordId.get(discordId);
           if (!player) continue;
-          await prisma.divisionMember.upsert({
-            where: { divisionId_playerId: { divisionId: division.id, playerId: player.id } },
-            create: { divisionId: division.id, playerId: player.id, status: "ACTIVE" },
-            update: { status: "ACTIVE", droppedAt: null, dropoutReason: null },
-          });
+          await placePlayerInDivision(division.id, player.id);
         }
       }
     }
@@ -310,9 +307,7 @@ export async function buildSeason(formData: FormData) {
         for (const discordId of memberDiscordIds) {
           const player = playerByDiscordId.get(discordId);
           if (!player) continue;
-          await prisma.divisionMember.create({
-            data: { divisionId: division.id, playerId: player.id },
-          });
+          await placePlayerInDivision(division.id, player.id);
         }
       }
     }

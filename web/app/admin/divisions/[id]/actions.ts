@@ -7,6 +7,7 @@ import { requireAdmin } from "@/lib/admin";
 import { resolveDiscordIdToDisplayName } from "@/lib/add-player";
 import { announceResult } from "@/lib/announce";
 import { addGuildMemberRole } from "@/lib/discord";
+import { placePlayerInDivision } from "@/lib/division-membership";
 
 // Set a per-division target size override. Null clears the override and
 // falls back to Season.targetGroupSize at display time.
@@ -51,11 +52,7 @@ export async function addDivisionMemberByDiscordId(formData: FormData) {
     update: { displayName: displayNameOverride || resolved.displayName },
   });
 
-  await prisma.divisionMember.upsert({
-    where: { divisionId_playerId: { divisionId, playerId: player.id } },
-    create: { divisionId, playerId: player.id, status: "ACTIVE" },
-    update: { status: "ACTIVE", droppedAt: null, dropoutReason: null },
-  });
+  await placePlayerInDivision(divisionId, player.id);
 
   const division = await prisma.division.findUnique({ where: { id: divisionId } });
   if (division?.discordRoleId) {
@@ -170,11 +167,7 @@ export async function bulkAddMembers(formData: FormData) {
       create: { discordId: resolved.discordId, displayName: resolved.displayName },
       update: { displayName: resolved.displayName },
     });
-    await prisma.divisionMember.upsert({
-      where: { divisionId_playerId: { divisionId, playerId: player.id } },
-      create: { divisionId, playerId: player.id, status: "ACTIVE" },
-      update: { status: "ACTIVE", droppedAt: null, dropoutReason: null },
-    });
+    await placePlayerInDivision(divisionId, player.id);
     if (division!.discordRoleId) {
       await addGuildMemberRole(guildId, player.discordId, division!.discordRoleId);
     }

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
 import { addGuildMemberRole, fetchGuildMember } from "@/lib/discord";
+import { placePlayerInDivision } from "@/lib/division-membership";
 
 // Minimal CSV parser supporting quoted fields (handles commas/newlines/quotes inside).
 function parseCsv(text: string): { headers: string[]; rows: Record<string, string>[] } {
@@ -108,11 +109,7 @@ export async function bulkImportSeason(formData: FormData) {
         create: { discordId, displayName },
         update: { displayName },
       });
-      await prisma.divisionMember.upsert({
-        where: { divisionId_playerId: { divisionId: div.id, playerId: player.id } },
-        create: { divisionId: div.id, playerId: player.id, status: "ACTIVE" },
-        update: { status: "ACTIVE", droppedAt: null, dropoutReason: null },
-      });
+      await placePlayerInDivision(div.id, player.id);
       if (guildId && div.discordRoleId) {
         await addGuildMemberRole(guildId, discordId, div.discordRoleId);
       }
