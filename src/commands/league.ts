@@ -245,58 +245,61 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
   const { ChannelType, PermissionsBitField } = await import("discord.js");
 
   try {
-    const category = await interaction.guild.channels.create({
-      name: categoryName,
-      type: ChannelType.GuildCategory,
-    });
+    const guild = interaction.guild;
+    const created: string[] = [];
+    const reused: string[] = [];
 
-    const channels = await Promise.all([
-      interaction.guild.channels.create({
-        name: "league-info",
-        type: ChannelType.GuildText,
-        parent: category.id,
-        topic: "League rules, schedule, announcements. Read-only for most.",
-      }),
-      interaction.guild.channels.create({
-        name: "signups",
-        type: ChannelType.GuildText,
-        parent: category.id,
-        topic: "Use /league post-signup here. Players click the button to register.",
-      }),
-      interaction.guild.channels.create({
-        name: "results",
-        type: ChannelType.GuildText,
-        parent: category.id,
-        topic: "Auto-posted by the bot whenever a set is recorded.",
-      }),
-      interaction.guild.channels.create({
-        name: "league-chat",
-        type: ChannelType.GuildText,
-        parent: category.id,
-        topic: "General league chat. Match scheduling, banter, etc.",
-      }),
-    ]);
+    // Category — reuse if same-name category already exists
+    let category = guild.channels.cache.find(
+      (c) => c.type === ChannelType.GuildCategory && c.name === categoryName,
+    );
+    if (!category) {
+      category = await guild.channels.create({
+        name: categoryName,
+        type: ChannelType.GuildCategory,
+      });
+      created.push(`category "${categoryName}"`);
+    } else {
+      reused.push(`category "${categoryName}"`);
+    }
+    const categoryId = category.id;
 
-    const [playerRole, adminRole, modRole] = await Promise.all([
-      interaction.guild.roles.create({
-        name: "League Player",
-        mentionable: true,
-        permissions: new PermissionsBitField(),
-        reason: "Created by /league bootstrap-server",
-      }),
-      interaction.guild.roles.create({
-        name: "League Admin",
-        mentionable: true,
-        permissions: new PermissionsBitField(),
-        reason: "Created by /league bootstrap-server — bound to bot's ADMIN tier",
-      }),
-      interaction.guild.roles.create({
-        name: "League Mod",
-        mentionable: true,
-        permissions: new PermissionsBitField(),
-        reason: "Created by /league bootstrap-server — bound to bot's MOD tier",
-      }),
-    ]);
+    // Channels — reuse if same name exists under this category
+    async function ensureChannel(name: string, topic: string) {
+      const existing = guild.channels.cache.find(
+        (c) => c.type === ChannelType.GuildText && c.name === name && c.parentId === categoryId,
+      );
+      if (existing && existing.type === ChannelType.GuildText) {
+        reused.push(`#${name}`);
+        return existing;
+      }
+      const ch = await guild.channels.create({
+        name, type: ChannelType.GuildText, parent: categoryId, topic,
+      });
+      created.push(`#${name}`);
+      return ch;
+    }
+    const infoChan = await ensureChannel("league-info", "League rules, schedule, announcements. Read-only for most.");
+    const signupChan = await ensureChannel("signups", "Use /league post-signup here. Players click the button to register.");
+    const resultsChan = await ensureChannel("results", "Auto-posted by the bot whenever a set is recorded.");
+    const chatChan = await ensureChannel("league-chat", "General league chat. Match scheduling, banter, etc.");
+
+    // Roles — reuse if same name exists
+    async function ensureRole(name: string, reason: string) {
+      const existing = guild.roles.cache.find((r) => r.name === name);
+      if (existing) {
+        reused.push(`role "${name}"`);
+        return existing;
+      }
+      const r = await guild.roles.create({
+        name, mentionable: true, permissions: new PermissionsBitField(), reason,
+      });
+      created.push(`role "${name}"`);
+      return r;
+    }
+    const playerRole = await ensureRole("League Player", "Created by /league bootstrap-server");
+    const adminRole = await ensureRole("League Admin", "Created by /league bootstrap-server — bound to bot's ADMIN tier");
+    const modRole = await ensureRole("League Mod", "Created by /league bootstrap-server — bound to bot's MOD tier");
 
     // Wire the management roles to the bot's permission tiers so anyone
     // assigned the Discord role gets the matching permission on the web
@@ -314,15 +317,16 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       }),
     ]);
 
-    const [infoChan, signupChan, resultsChan, chatChan] = channels;
-
     const lines = [
       `✅ **${categoryName}** scaffolded.`,
+      created.length > 0 ? `  Created: ${created.join(", ")}` : `  (nothing new — everything already existed)`,
+      reused.length > 0 ? `  Reused: ${reused.join(", ")}` : null,
       ``,
-      `📌 <#${infoChan!.id}> — league-info`,
-      `📝 <#${signupChan!.id}> — signups`,
-      `🏆 <#${resultsChan!.id}> — results (auto-announce target)`,
-      `💬 <#${chatChan!.id}> — league-chat`,
+      ``,
+      `📌 <#${infoChan.id}> — league-info`,
+      `📝 <#${signupChan.id}> — signups`,
+      `🏆 <#${resultsChan.id}> — results (auto-announce target)`,
+      `💬 <#${chatChan.id}> — league-chat`,
       ``,
       `🎭 Roles created:`,
       `• <@&${playerRole.id}> — League Player (mentionable, no extra perms)`,
@@ -332,8 +336,8 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       `Assign Admin/Mod to staff in **Server Settings → Members** and they immediately get the matching permissions on www.balatroleague.com + /league commands.`,
       ``,
       `**Next**: set this env var on your bot host so result announcements land in the right channel:`,
-      `\`RESULTS_CHANNEL_ID=${resultsChan!.id}\``,
-    ];
+      `\`RESULTS_CHANNEL_ID=${resultsChan.id}\``,
+    ].filter((l) => l !== null) as string[];
 
     await interaction.editReply(lines.join("\n"));
   } catch (err) {
