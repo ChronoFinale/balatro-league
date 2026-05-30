@@ -97,19 +97,37 @@ export async function bulkImportSeason(formData: FormData) {
         membersSkipped++;
         continue;
       }
-      // Resolve a display name — prefer Discord guild nick → CSV name → "Unknown"
+
+      // Verify the Discord ID against the actual guild + grab the live name.
+      // If they're not in the guild, fall back to the CSV name with a warning
+      // (admin may be importing players who haven't joined yet).
       let displayName = challongeName.trim();
-      if (guildId && (!displayName)) {
+      let foundInGuild = false;
+      if (guildId) {
         const m = await fetchGuildMember(guildId, discordId);
-        if (m) displayName = m.nick || m.user?.username || displayName;
+        if (m) {
+          foundInGuild = true;
+          displayName = m.nick || m.user?.username || displayName;
+        }
+      }
+      if (!foundInGuild) {
+        membersErrors.push(`${divisionName} / ${displayName || discordId}: not in guild — used CSV name as fallback`);
       }
       if (!displayName) displayName = `Player ${discordId.slice(-4)}`;
 
-      const player = await prisma.player.upsert({
-        where: { discordId },
-        create: { discordId, displayName },
-        update: { displayName },
-      });
+      // Don't clobber a player who's already set their own custom name.
+      // Upsert with a conditional update guard via findUnique-then-update.
+      const existing = await prisma.player.findUnique({ where: { discordId } });
+      const player = existing
+        ? (existing.hasCustomDisplayName
+            ? existing
+            : await prisma.player.update({
+                where: { discordId },
+                data: { displayName, hasCustomDisplayName: false },
+              }))
+        : await prisma.player.create({
+            data: { discordId, displayName, hasCustomDisplayName: false },
+          });
       const placement = await placePlayerInDivision(div.id, player.id);
       if (placement.transferred) {
         transferred.push(`${player.displayName} (${placement.previousDivisionName} → ${div.name})`);
