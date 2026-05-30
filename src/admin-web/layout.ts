@@ -1,7 +1,7 @@
 import { html, raw, type RawHtml } from "./html.js";
 
-// Nav groups by who can see them.
-// PUBLIC always visible. PLAYER only when logged in. ADMIN only when isAdmin.
+// Top nav: small, intent-grouped. Public + player + (single) admin entry.
+// PUBLIC always visible. PLAYER only when logged in. ADMIN_TOP only when isAdmin.
 const PUBLIC_NAV = [
   { href: "/standings", label: "Standings" },
   { href: "/players", label: "Players" },
@@ -10,13 +10,18 @@ const PUBLIC_NAV = [
 const PLAYER_NAV = [
   { href: "/me", label: "My profile" },
 ] as const;
-const ADMIN_NAV = [
+const ADMIN_TOP_NAV = [
+  { href: "/admin", label: "Admin" },
+] as const;
+
+// Sub-nav shown only when active path starts with /admin (and user is admin).
+const ADMIN_SUB_NAV = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/players", label: "Players" },
   { href: "/admin/rankings", label: "Rankings" },
   { href: "/admin/divisions", label: "Divisions" },
   { href: "/admin/signups", label: "Signups" },
-  { href: "/admin/seasons", label: "Manage seasons" },
+  { href: "/admin/seasons", label: "Seasons" },
 ] as const;
 
 const STYLES = `
@@ -41,6 +46,11 @@ const STYLES = `
   nav { display: flex; gap: 16px; }
   nav a { color: var(--muted); padding: 4px 8px; border-radius: 4px; }
   nav a.active { color: var(--text); background: var(--surface-2); }
+  .subnav { background: var(--surface-2); border-bottom: 1px solid var(--border); padding: 8px 24px; }
+  .subnav-inner { max-width: 1100px; margin: 0 auto; }
+  .subnav nav { gap: 12px; }
+  .subnav nav a { font-size: 13px; padding: 4px 10px; }
+  .subnav nav a.active { background: var(--bg); color: var(--accent-2); }
   main { max-width: 1100px; margin: 24px auto; padding: 0 24px; }
   h2 { margin-top: 0; }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
@@ -95,11 +105,30 @@ export function layout(opts: {
   const visibleNav = [
     ...PUBLIC_NAV,
     ...(opts.sessionUser ? PLAYER_NAV : []),
-    ...(opts.isAdmin ? ADMIN_NAV : []),
+    ...(opts.isAdmin ? ADMIN_TOP_NAV : []),
   ];
   const navItems = visibleNav.map(
-    (n) => html`<a href="${n.href}" class="${n.href === opts.activePath ? "active" : ""}">${n.label}</a>`,
+    (n) => {
+      // "Admin" top entry stays highlighted on every /admin/* sub-page
+      const isActive = n.href === "/admin"
+        ? opts.activePath.startsWith("/admin")
+        : n.href === opts.activePath;
+      return html`<a href="${n.href}" class="${isActive ? "active" : ""}">${n.label}</a>`;
+    },
   );
+
+  // Secondary nav strip — only on /admin/* pages, only for admins.
+  const showAdminSub = opts.isAdmin && opts.activePath.startsWith("/admin");
+  const adminSubItems = showAdminSub
+    ? ADMIN_SUB_NAV.map((n) => {
+        // Exact match for Dashboard (/admin), prefix-match for sub-pages
+        const isActive =
+          n.href === "/admin"
+            ? opts.activePath === "/admin"
+            : opts.activePath.startsWith(n.href);
+        return html`<a href="${n.href}" class="${isActive ? "active" : ""}">${n.label}</a>`;
+      })
+    : null;
   const flash = opts.flash
     ? html`<div class="flash ${opts.flash.kind}">${opts.flash.message}</div>`
     : raw("");
@@ -109,6 +138,10 @@ export function layout(opts: {
         <a href="/auth/logout" class="muted" style="font-size:12px">logout</a>
       </span>`
     : html`<span style="margin-left:auto"><a href="/auth/discord/login" class="muted" style="font-size:12px">Login with Discord</a></span>`;
+  const subNav = adminSubItems
+    ? html`<div class="subnav"><div class="subnav-inner"><nav>${adminSubItems}</nav></div></div>`
+    : raw("");
+
   return html`<!doctype html>
 <html lang="en">
 <head>
@@ -124,6 +157,7 @@ export function layout(opts: {
     <nav>${navItems}</nav>
     ${userArea}
   </header>
+  ${subNav}
   <main>
     ${flash}
     ${opts.body}
