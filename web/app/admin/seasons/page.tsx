@@ -4,7 +4,7 @@ import { requireAdmin } from "@/lib/admin";
 import { SiteNav } from "@/components/SiteNav";
 import { AdminNav } from "@/components/AdminNav";
 import { TierEditor } from "@/components/TierEditor";
-import { createSeason, activateSeason } from "./actions";
+import { activateSeason, createSeason, setSeasonPreset } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -31,17 +31,19 @@ function parseTemplateConfig(json: string) {
 export default async function AdminSeasonsPage() {
   await requireAdmin();
 
-  const [seasons, templatesRaw, lastUsed] = await Promise.all([
+  const [seasons, templatesRaw, lastUsed, presets] = await Promise.all([
     prisma.season.findMany({
       include: {
         _count: { select: { divisions: true } },
         tiers: { orderBy: { position: "asc" }, include: { _count: { select: { divisions: true } } } },
         divisions: { include: { _count: { select: { members: true, pairings: true } } } },
+        matchConfigPreset: true,
       },
       orderBy: [{ isActive: "desc" }, { startedAt: "desc" }],
     }),
     prisma.tierTemplate.findMany({ orderBy: [{ isLastUsed: "desc" }, { name: "asc" }] }),
     prisma.tierTemplate.findUnique({ where: { name: "Last used" } }),
+    prisma.matchConfigPreset.findMany({ orderBy: { name: "asc" } }),
   ]);
 
   const templates = templatesRaw.map((t) => ({
@@ -123,6 +125,20 @@ export default async function AdminSeasonsPage() {
                 <div className="muted">
                   {players} player(s) · {sets} set(s) · group size {s.targetGroupSize} (min {s.minGroupSize})
                 </div>
+                <form
+                  action={setSeasonPreset}
+                  style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center" }}
+                >
+                  <input type="hidden" name="id" value={s.id} />
+                  <label className="muted" style={{ fontSize: 12 }}>Match preset:</label>
+                  <select name="presetId" defaultValue={s.matchConfigPresetId ?? ""} style={{ flex: 1 }}>
+                    <option value="">— Use Default —</option>
+                    {presets.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <button type="submit" className="secondary">Save</button>
+                </form>
                 {!s.isActive && (
                   <form action={activateSeason} style={{ marginTop: 8 }}>
                     <input type="hidden" name="id" value={s.id} />

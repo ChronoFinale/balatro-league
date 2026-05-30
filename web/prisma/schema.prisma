@@ -66,6 +66,11 @@ model Season {
   // are flagged as warnings instead of becoming tiny divisions).
   minGroupSize    Int  @default(3)
 
+  // Which match-config preset /start-match uses for this season. Null falls
+  // back to the preset named "Default" at match-time.
+  matchConfigPresetId String?
+  matchConfigPreset   MatchConfigPreset? @relation(fields: [matchConfigPresetId], references: [id], onDelete: SetNull)
+
   divisions   Division[]
   tiers       Tier[]
 
@@ -112,16 +117,19 @@ model Signup {
   @@index([roundId, withdrawn])
 }
 
-// Admin-configurable deck + stake whitelist used by the /start-match flow
-// to generate the deck pool for a match. Pool entries are (deck × stake)
-// pairs, sampled without same-combo duplicates per match.
-model AllowedDeck {
-  id   String @id @default(cuid())
-  name String @unique
-}
-model AllowedStake {
-  id   String @id @default(cuid())
-  name String @unique
+// Named match-config preset — admin defines the deck + stake whitelist used
+// by /start-match for a season. Multiple presets so admins can save "Standard",
+// "Wild Stakes Only", etc. Per-season selection via Season.matchConfigPresetId.
+// Falls back to the preset named "Default" if a season hasn't picked one.
+model MatchConfigPreset {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  decks     String[] // Postgres array — order is display order
+  stakes    String[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  seasons   Season[]
 }
 
 // A guided 2-game series session driven by the bot in a Discord thread.

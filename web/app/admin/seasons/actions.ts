@@ -120,3 +120,14 @@ export async function deleteTemplate(formData: FormData) {
   await prisma.tierTemplate.delete({ where: { id } });
   revalidatePath("/admin/seasons/templates");
 }
+
+export async function setSeasonPreset(formData: FormData) {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  const presetIdRaw = String(formData.get("presetId") ?? "");
+  if (!id) return;
+  // Empty string from the "— Use Default —" option means clear the FK.
+  const matchConfigPresetId = presetIdRaw === "" ? null : presetIdRaw;
+  await prisma.season.update({ where: { id }, data: { matchConfigPresetId } });
+  revalidatePath("/admin/seasons");
+}

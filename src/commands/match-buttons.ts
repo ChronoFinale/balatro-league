@@ -17,7 +17,7 @@ import {
 import { MatchSessionState, Prisma, type MatchSession } from "@prisma/client";
 import { announceResult } from "../announce.js";
 import { prisma } from "../db.js";
-import { generatePool, getAllowedDecks, getAllowedStakes } from "../match-config.js";
+import { generatePool, presetForDivision } from "../match-config.js";
 import { renderMatch } from "../match-render.js";
 import {
   emptyGameState,
@@ -128,11 +128,11 @@ async function handleAccept(interaction: ButtonInteraction, session: MatchSessio
   const { playerB } = await loadPlayers(session);
   if (!(await requireActor(interaction, playerB.discordId))) return;
 
-  const [decks, stakes] = await Promise.all([getAllowedDecks(), getAllowedStakes()]);
-  if (decks.length === 0 || stakes.length === 0) {
-    return reply(interaction, "Deck/stake pool is empty — ask an admin to configure it before accepting.");
+  const preset = await presetForDivision(session.divisionId);
+  if (!preset || preset.decks.length === 0 || preset.stakes.length === 0) {
+    return reply(interaction, "This season's match config preset is missing or empty — ask an admin to set one before accepting.");
   }
-  const pool = generatePool(decks, stakes);
+  const pool = generatePool(preset.decks, preset.stakes);
 
   const { playerA } = await loadPlayers(session);
   const firstId = Math.random() < 0.5 ? playerA.id : playerB.id;

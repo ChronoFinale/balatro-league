@@ -8,7 +8,7 @@ import {
 } from "discord.js";
 import { activePublicSeason } from "../active-season.js";
 import { prisma } from "../db.js";
-import { generatePool, getAllowedDecks, getAllowedStakes, seedDefaultsIfEmpty } from "../match-config.js";
+import { presetForSeason, seedDefaultPresetIfEmpty } from "../match-config.js";
 import { renderMatch } from "../match-render.js";
 import { getOrCreatePlayer } from "../players.js";
 import type { SlashCommand } from "./types.js";
@@ -95,11 +95,13 @@ export const startMatch: SlashCommand = {
       return;
     }
 
-    // Make sure deck/stake pool is seeded
-    await seedDefaultsIfEmpty();
-    const [decks, stakes] = await Promise.all([getAllowedDecks(), getAllowedStakes()]);
-    if (decks.length === 0 || stakes.length === 0) {
-      await interaction.editReply("Deck or stake pool is empty — ask an admin to configure it.");
+    // Resolve the season's match-config preset (or auto-create Default on first run).
+    await seedDefaultPresetIfEmpty();
+    const preset = await presetForSeason(season.id);
+    if (!preset || preset.decks.length === 0 || preset.stakes.length === 0) {
+      await interaction.editReply(
+        "This season's match config preset is empty or missing — ask an admin to set one in `/admin/match-config` and assign it to the season.",
+      );
       return;
     }
 

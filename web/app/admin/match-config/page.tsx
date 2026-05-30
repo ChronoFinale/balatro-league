@@ -1,87 +1,247 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
 import { SiteNav } from "@/components/SiteNav";
 import { AdminNav } from "@/components/AdminNav";
-import { addDeck, addStake, removeDeck, removeStake, seedDefaults } from "./actions";
+import {
+  addDeck,
+  addStake,
+  createPreset,
+  deletePreset,
+  removeDeck,
+  removeStake,
+  renamePreset,
+  seedDefaultPreset,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
-export default async function MatchConfigPage() {
+export default async function MatchConfigPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ preset?: string }>;
+}) {
   await requireAdmin();
-  const [decks, stakes] = await Promise.all([
-    prisma.allowedDeck.findMany({ orderBy: { name: "asc" } }),
-    prisma.allowedStake.findMany({ orderBy: { name: "asc" } }),
-  ]);
+  const { preset: presetIdParam } = await searchParams;
 
-  const totalCombos = decks.length * stakes.length;
+  const presets = await prisma.matchConfigPreset.findMany({
+    orderBy: { name: "asc" },
+    include: { _count: { select: { seasons: true } } },
+  });
+
+  // Pick which preset to show in the editor pane
+  const selected = presetIdParam
+    ? presets.find((p) => p.id === presetIdParam)
+    : presets[0];
 
   return (
     <>
       <SiteNav activePath="/admin" />
       <AdminNav activePath="/admin/match-config" />
       <main>
-        <h2>Match config</h2>
+        <h2>Match config presets</h2>
         <p className="muted">
-          Decks and stakes available to <code>/start-match</code>. Each match samples 9
-          unique (deck × stake) combos from the cartesian product —
-          <strong> {decks.length} × {stakes.length} = {totalCombos} possible combos</strong>.
-          {totalCombos < 9 && <span style={{ color: "#e74c3c" }}> ⚠ need at least 9 combos for a normal match.</span>}
+          A preset is a named set of decks + stakes used by <code>/start-match</code>. Seasons
+          pick which preset to use (see season detail); seasons without a preset fall back to
+          the one named <strong>Default</strong>.
         </p>
 
-        {decks.length === 0 && stakes.length === 0 && (
+        {presets.length === 0 ? (
           <div className="card">
-            <strong>Empty whitelist</strong>
-            <p className="muted">No decks or stakes configured. Seed with Balatro defaults to get started.</p>
-            <form action={seedDefaults}>
-              <button type="submit">Seed defaults (15 decks, 8 stakes)</button>
-            </form>
+            <strong>No presets yet</strong>
+            <p className="muted">Create one with Balatro's stock decks/stakes, or start from scratch.</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <form action={seedDefaultPreset}>
+                <button type="submit">Seed a Default preset (15 decks, 8 stakes)</button>
+              </form>
+              <CreatePresetForm seedAvailable={false} />
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 16 }}>
+            <PresetSidebar presets={presets} selectedId={selected?.id ?? null} />
+            {selected ? (
+              <PresetEditor preset={selected} />
+            ) : (
+              <div className="card muted">Pick a preset from the left, or create a new one.</div>
+            )}
           </div>
         )}
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <div className="card">
-            <strong>Decks ({decks.length})</strong>
-            <form action={addDeck} style={{ display: "flex", gap: 6, marginTop: 8 }}>
-              <input type="text" name="name" placeholder="e.g. Red" required style={{ flex: 1 }} />
-              <button type="submit">Add</button>
-            </form>
-            <ul style={{ marginTop: 12, padding: 0, listStyle: "none" }}>
-              {decks.map((d) => (
-                <li key={d.id} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
-                  <span>{d.name}</span>
-                  <form action={removeDeck}>
-                    <input type="hidden" name="id" value={d.id} />
-                    <button type="submit" className="muted" style={{ background: "none", border: "none", color: "#e74c3c", cursor: "pointer" }}>
-                      remove
-                    </button>
-                  </form>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="card">
-            <strong>Stakes ({stakes.length})</strong>
-            <form action={addStake} style={{ display: "flex", gap: 6, marginTop: 8 }}>
-              <input type="text" name="name" placeholder="e.g. White" required style={{ flex: 1 }} />
-              <button type="submit">Add</button>
-            </form>
-            <ul style={{ marginTop: 12, padding: 0, listStyle: "none" }}>
-              {stakes.map((s) => (
-                <li key={s.id} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
-                  <span>{s.name}</span>
-                  <form action={removeStake}>
-                    <input type="hidden" name="id" value={s.id} />
-                    <button type="submit" className="muted" style={{ background: "none", border: "none", color: "#e74c3c", cursor: "pointer" }}>
-                      remove
-                    </button>
-                  </form>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
       </main>
     </>
+  );
+}
+
+function PresetSidebar({
+  presets,
+  selectedId,
+}: {
+  presets: Array<{ id: string; name: string; _count: { seasons: number } }>;
+  selectedId: string | null;
+}) {
+  return (
+    <div className="card" style={{ alignSelf: "start" }}>
+      <strong>Presets</strong>
+      <ul style={{ marginTop: 8, padding: 0, listStyle: "none" }}>
+        {presets.map((p) => {
+          const isActive = p.id === selectedId;
+          return (
+            <li key={p.id} style={{ marginBottom: 4 }}>
+              <Link
+                href={`/admin/match-config?preset=${p.id}`}
+                style={{
+                  display: "block",
+                  padding: "6px 8px",
+                  borderRadius: 4,
+                  background: isActive ? "var(--bg-accent, rgba(88,101,242,0.15))" : "transparent",
+                  color: isActive ? "var(--text)" : undefined,
+                  textDecoration: "none",
+                }}
+              >
+                <div>{p.name}</div>
+                <div className="muted" style={{ fontSize: 11 }}>
+                  {p._count.seasons} season{p._count.seasons === 1 ? "" : "s"} using this
+                </div>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+      <hr style={{ margin: "12px 0", border: "none", borderTop: "1px solid var(--border)" }} />
+      <CreatePresetForm seedAvailable={true} />
+    </div>
+  );
+}
+
+function CreatePresetForm({ seedAvailable }: { seedAvailable: boolean }) {
+  return (
+    <form action={createPreset} style={{ display: "grid", gap: 6 }}>
+      <input type="text" name="name" placeholder="New preset name" required />
+      {seedAvailable && (
+        <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+          <input type="checkbox" name="seedDefaults" defaultChecked />
+          Pre-fill with Balatro defaults
+        </label>
+      )}
+      <button type="submit">Create preset</button>
+    </form>
+  );
+}
+
+function PresetEditor({
+  preset,
+}: {
+  preset: { id: string; name: string; decks: string[]; stakes: string[] };
+}) {
+  const totalCombos = preset.decks.length * preset.stakes.length;
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <div className="card">
+        <form action={renamePreset} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <input type="hidden" name="id" value={preset.id} />
+          <strong style={{ marginRight: 4 }}>Name:</strong>
+          <input type="text" name="name" defaultValue={preset.name} required style={{ flex: 1 }} />
+          <button type="submit">Save</button>
+          <form
+            action={deletePreset}
+            style={{ marginLeft: "auto" }}
+          >
+            <input type="hidden" name="id" value={preset.id} />
+            <button
+              type="submit"
+              className="secondary"
+              style={{ color: "#e74c3c" }}
+            >
+              Delete preset
+            </button>
+          </form>
+        </form>
+        <p className="muted" style={{ marginTop: 8 }}>
+          {preset.decks.length} decks × {preset.stakes.length} stakes ={" "}
+          <strong>{totalCombos} possible combos</strong>.
+          {totalCombos < 9 && (
+            <span style={{ color: "#e74c3c" }}> ⚠ need at least 9 for a normal match.</span>
+          )}
+        </p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <ListEditor
+          title="Decks"
+          items={preset.decks}
+          presetId={preset.id}
+          addAction={addDeck}
+          removeAction={removeDeck}
+          placeholder="e.g. Red"
+        />
+        <ListEditor
+          title="Stakes"
+          items={preset.stakes}
+          presetId={preset.id}
+          addAction={addStake}
+          removeAction={removeStake}
+          placeholder="e.g. White"
+        />
+      </div>
+    </div>
+  );
+}
+
+function ListEditor({
+  title,
+  items,
+  presetId,
+  addAction,
+  removeAction,
+  placeholder,
+}: {
+  title: string;
+  items: string[];
+  presetId: string;
+  addAction: (fd: FormData) => Promise<void>;
+  removeAction: (fd: FormData) => Promise<void>;
+  placeholder: string;
+}) {
+  return (
+    <div className="card">
+      <strong>{title} ({items.length})</strong>
+      <form action={addAction} style={{ display: "flex", gap: 6, marginTop: 8 }}>
+        <input type="hidden" name="id" value={presetId} />
+        <input type="text" name="name" placeholder={placeholder} required style={{ flex: 1 }} />
+        <button type="submit">Add</button>
+      </form>
+      <ul style={{ marginTop: 12, padding: 0, listStyle: "none" }}>
+        {items.map((name) => (
+          <li
+            key={name}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              padding: "4px 0",
+              borderBottom: "1px solid var(--border)",
+            }}
+          >
+            <span>{name}</span>
+            <form action={removeAction}>
+              <input type="hidden" name="id" value={presetId} />
+              <input type="hidden" name="name" value={name} />
+              <button
+                type="submit"
+                className="muted"
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#e74c3c",
+                  cursor: "pointer",
+                }}
+              >
+                remove
+              </button>
+            </form>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
