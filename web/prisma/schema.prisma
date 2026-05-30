@@ -1,9 +1,5 @@
 // Balatro League schema.
 //
-// NOTE: This file is a copy of /prisma/schema.prisma (the bot's authoritative copy).
-// Whenever the bot's schema changes, copy it here too:
-//   cp ../prisma/schema.prisma ./prisma/schema.prisma && npm run db:generate
-//
 // Domain shape:
 //   Season has many Divisions. Division has many Players (via DivisionMember).
 //   Inside a Division, every pair of players has exactly one Pairing (the 2-game series, best-of-2).
@@ -114,6 +110,57 @@ model Signup {
 
   @@unique([roundId, discordId])
   @@index([roundId, withdrawn])
+}
+
+// Admin-configurable deck + stake whitelist used by the /start-match flow
+// to generate the deck pool for a match. Pool entries are (deck × stake)
+// pairs, sampled without same-combo duplicates per match.
+model AllowedDeck {
+  id   String @id @default(cuid())
+  name String @unique
+}
+model AllowedStake {
+  id   String @id @default(cuid())
+  name String @unique
+}
+
+// A guided 2-game series session driven by the bot in a Discord thread.
+// Tracks coin toss + ban/pick state. When complete, writes a CONFIRMED Pairing.
+enum MatchSessionState {
+  WAITING_ACCEPT        // posted, awaiting opponent click
+  GAME_1_BAN            // banning phase for game 1
+  GAME_1_PICK           // first player picks from final 2
+  GAME_1_PLAYING        // played in Balatro, waiting for winner report
+  GAME_2_CHOOSE_FIRST   // game 1 loser picks who bans first in game 2
+  GAME_2_BAN            // banning phase for game 2
+  GAME_2_PICK
+  GAME_2_PLAYING
+  COMPLETE              // pairing written
+  CANCELLED             // never accepted or admin-killed
+}
+
+model MatchSession {
+  id            String            @id @default(cuid())
+  divisionId    String
+  playerAId     String            // initiator (ran /start-match)
+  playerBId     String            // opponent
+  state         MatchSessionState @default(WAITING_ACCEPT)
+  threadId      String?           // Discord thread id (set once accepted)
+  channelId     String?           // parent channel of the thread
+
+  // JSON blobs so we can evolve state shape without migrations.
+  pool          String?           // [{deck, stake}, ...] generated at accept
+  game1         String?           // {firstId, bans: [...], pickedDeck, winnerId}
+  game2         String?
+
+  pairingId     String?           // populated when COMPLETE
+
+  createdAt     DateTime          @default(now())
+  acceptedAt    DateTime?
+  completedAt   DateTime?
+
+  @@index([state])
+  @@index([threadId])
 }
 
 // Binding between a Discord role and a bot permission tier.

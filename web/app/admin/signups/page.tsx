@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
 import { SiteNav } from "@/components/SiteNav";
@@ -22,16 +23,20 @@ export default async function AdminSignupsPage() {
       <SiteNav activePath="/admin" />
       <AdminNav activePath="/admin/signups" />
       <main>
-        <h2>Signups</h2>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <h2 style={{ margin: 0 }}>Signups</h2>
+          <Link href="/admin/signups/new" style={{ marginLeft: "auto" }}>
+            <button type="button">New round</button>
+          </Link>
+        </div>
         <p className="muted">
-          Signup rounds let players opt in for an upcoming season. Use the Discord command{" "}
-          <code>/league post-signup</code> to open one.
+          Signup rounds let players opt in for an upcoming season. Open one from here or
+          via <code>/league post-signup</code> in Discord.
         </p>
 
         {rounds.length === 0 ? (
           <div className="card muted">
-            No signup rounds yet. Run <code>/league post-signup name:"Season 2 Signups"</code> in
-            your league's Discord.
+            No signup rounds yet. Click <strong>New round</strong> above to open one.
           </div>
         ) : (
           rounds.map((round) => {
