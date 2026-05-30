@@ -38,9 +38,9 @@ export default async function DeckSelectionPage({
   return (
     <>
       <SiteNav activePath="/admin" />
-      <AdminNav activePath="/admin/deck-selection" />
+      <AdminNav activePath="/admin/deck-bans" />
       <main>
-        <h2>Deck Selection presets</h2>
+        <h2>Deck Bans presets</h2>
         <p className="muted">
           A preset is a named set of decks + stakes that <code>/start-match</code> samples
           combos from for the ban/pick flow. Seasons pick which preset to use (set on each
@@ -89,7 +89,7 @@ function PresetSidebar({
           return (
             <li key={p.id} style={{ marginBottom: 4 }}>
               <Link
-                href={`/admin/deck-selection?preset=${p.id}`}
+                href={`/admin/deck-bans?preset=${p.id}`}
                 style={{
                   display: "block",
                   padding: "6px 8px",

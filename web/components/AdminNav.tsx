@@ -9,12 +9,11 @@ interface AdminLink {
 }
 const ADMIN_LINKS: AdminLink[] = [
   { href: "/admin", label: "Dashboard", exact: true },
+  { href: "/admin/seasons", label: "Seasons" },
   { href: "/admin/players", label: "Players" },
   { href: "/admin/rankings", label: "Rankings" },
   { href: "/admin/divisions", label: "Divisions" },
-  { href: "/admin/signups", label: "Signups" },
-  { href: "/admin/seasons", label: "Seasons" },
-  { href: "/admin/deck-selection", label: "Deck Selection" },
+  { href: "/admin/deck-bans", label: "Deck Bans" },
 ];
 
 export function AdminNav({ activePath }: { activePath: string }) {

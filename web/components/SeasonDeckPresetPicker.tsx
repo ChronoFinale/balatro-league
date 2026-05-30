@@ -88,7 +88,7 @@ export function SeasonDeckPresetPicker({
       {!previewPreset && selected === "" && (
         <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
           No <code>Default</code> preset exists yet — create one on{" "}
-          <a href="/admin/deck-selection">Deck Selection</a>.
+          <a href="/admin/deck-bans">Deck Bans</a>.
         </div>
       )}
     </div>

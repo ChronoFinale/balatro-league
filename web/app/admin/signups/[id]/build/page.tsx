@@ -81,15 +81,15 @@ export default async function BuildSeasonPage({
   return (
     <>
       <SiteNav activePath="/admin" />
-      <AdminNav activePath="/admin/signups" />
+      <AdminNav activePath="/admin/seasons" />
       <main>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <h2 style={{ margin: 0 }}>Build season from "{round.name}"</h2>
           <span className="pill" style={{ background: "rgba(46,204,113,0.2)", color: "#2ecc71" }}>
             {playerCount} signups
           </span>
-          <Link href="/admin/signups" className="muted" style={{ marginLeft: "auto" }}>
-            ← Back to signups
+          <Link href="/admin/seasons" className="muted" style={{ marginLeft: "auto" }}>
+            ← Back to seasons
           </Link>
         </div>
         <p className="muted">
