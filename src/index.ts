@@ -1,4 +1,5 @@
 import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
+import { checkChannelScope } from "./command-channels.js";
 import { buttonHandlers, selectMenuHandlers, slashCommands } from "./commands/index.js";
 import { setDiscordClient } from "./discord.js";
 import { env } from "./env.js";
@@ -21,6 +22,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (!command) {
         await interaction.reply({
           content: `Unknown command \`/${interaction.commandName}\`.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      const channelCheck = await checkChannelScope(command.channelScope, interaction.channelId);
+      if (!channelCheck.allowed) {
+        await interaction.reply({
+          content: channelCheck.reason ?? "This command isn't allowed in this channel.",
           flags: MessageFlags.Ephemeral,
         });
         return;

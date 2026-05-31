@@ -27,10 +27,8 @@ export interface GameState {
   pickedDeckIdx?: number; // which remaining combo was picked (index into this game's pool)
   winnerId?: string;
   // Per-game deck/stake pool. Generated fresh when this game starts so
-  // game2 and game3 don't reuse game1's shuffle — bans should reset to a
-  // new random subset of the preset each round. Older sessions written
-  // before this field existed may have an empty pool; callers that read
-  // it should treat that as "fall back to session.pool" for migration.
+  // game2 and game3 don't reuse game1's shuffle — bans reset to a new
+  // random subset of the preset each round.
   pool: DeckEntry[];
 }
 

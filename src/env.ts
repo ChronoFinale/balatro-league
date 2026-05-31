@@ -16,6 +16,12 @@ const schema = z.object({
   // operations (bootstrap, DM blast). Create one via Channel Settings →
   // Integrations → Webhooks → New Webhook → Copy Webhook URL.
   RESULTS_WEBHOOK_URL: z.string().url().optional(),
+  // Channel ID where match-flow commands (/start-match, /challenge, /report,
+  // /cancel-match) are allowed in addition to the per-division channels.
+  // Players use this channel for everything that isn't tied to a specific
+  // division (mostly /challenge for casual matches). Optional — if unset,
+  // match-flow commands only work in division channels.
+  BOT_COMMANDS_CHANNEL_ID: z.string().optional(),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 });
 

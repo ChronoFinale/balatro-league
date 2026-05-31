@@ -21,6 +21,7 @@ const BO_CHOICES = [
 ] as const;
 
 export const challenge: SlashCommand = {
+  channelScope: "match-flow",
   data: new SlashCommandBuilder()
     .setName("challenge")
     .setDescription("Casual best-of-N match against another player (not recorded to the league).")

@@ -33,10 +33,6 @@ function parseGame(json: string | null): GameState | null {
   if (!json) return null;
   try { return JSON.parse(json) as GameState; } catch { return null; }
 }
-function parsePool(json: string | null) {
-  if (!json) return [];
-  try { return JSON.parse(json) as Array<{ deck: string; stake: string }>; } catch { return []; }
-}
 
 async function loadSession(id: string) {
   return prisma.matchSession.findUnique({ where: { id } });
@@ -139,9 +135,7 @@ async function handleBan(interaction: ButtonInteraction, session: MatchSession, 
   const gameField: "game1" | "game2" | "game3" = `game${gameNum}` as const;
   const game = parseGame(session[gameField]);
   if (!game) return reply(interaction, "Game state missing.");
-  // Per-game pool lives inside the game state now. Fall back to session.pool
-  // only for sessions created before the per-game pool change shipped.
-  const pool = game.pool && game.pool.length > 0 ? game.pool : parsePool(session.pool);
+  const pool = game.pool;
 
   const phase = phaseFor(game, session.playerAId, session.playerBId, pool.length);
   if (phase.kind !== "BAN") return reply(interaction, "Not a ban phase.");
@@ -322,8 +316,7 @@ async function handlePick(interaction: ButtonInteraction, session: MatchSession,
   const gameJson = session[gameField];
   const game = parseGame(gameJson);
   if (!game) return reply(interaction, "Game state missing.");
-  // Per-game pool. Legacy fallback to session.pool for pre-change sessions.
-  const pool = game.pool && game.pool.length > 0 ? game.pool : parsePool(session.pool);
+  const pool = game.pool;
 
   const remaining = remainingCombos(pool, game.bans);
   if (!remaining.find((r) => r.idx === idx)) {

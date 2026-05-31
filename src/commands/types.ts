@@ -13,8 +13,16 @@ export type CommandBuilder =
   | SlashCommandOptionsOnlyBuilder
   | SlashCommandSubcommandsOnlyBuilder;
 
+// Where a command is allowed to run. Default ("any") means anywhere in the
+// guild. "match-flow" restricts to division channels OR the configured
+// bot-commands channel (BOT_COMMANDS_CHANNEL_ID env var) — used for the
+// matchmaking commands so they don't get spammed in random channels.
+export type ChannelScope = "any" | "match-flow";
+
 export interface SlashCommand {
   data: CommandBuilder;
+  // Defaults to "any" when omitted.
+  channelScope?: ChannelScope;
   execute(interaction: ChatInputCommandInteraction): Promise<void>;
   autocomplete?(interaction: AutocompleteInteraction): Promise<void>;
 }

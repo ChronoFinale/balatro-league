@@ -15,10 +15,6 @@ function parseGame(json: string | null): GameState | null {
   if (!json) return null;
   try { return JSON.parse(json) as GameState; } catch { return null; }
 }
-function parsePool(json: string | null): DeckEntry[] {
-  if (!json) return [];
-  try { return JSON.parse(json) as DeckEntry[]; } catch { return []; }
-}
 
 export function renderMatch(
   session: MatchSession,
@@ -50,9 +46,7 @@ export function renderMatch(
     return renderChooseFirst(session, playerA, playerB, game2);
   }
   if (!game) return renderError(session, playerA, playerB, "Game state missing");
-  // Per-game pool (with legacy fallback to session.pool for old sessions).
-  const pool = game.pool && game.pool.length > 0 ? game.pool : parsePool(session.pool);
-  return renderGame(session, playerA, playerB, pool, game, gameNum);
+  return renderGame(session, playerA, playerB, game.pool, game, gameNum);
 }
 
 function mention(player: Player): string {
