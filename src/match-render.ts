@@ -46,11 +46,16 @@ export function renderMatch(
     return renderCancelled(session, playerA, playerB);
   }
 
-  // Game 1 or 2 phases
-  const isGame1 = session.state.startsWith("GAME_1");
-  const game = isGame1 ? game1 : game2;
+  // Game 1 / 2 / 3 phases
+  const gameNum: 1 | 2 | 3 = session.state.startsWith("GAME_1") ? 1
+    : session.state.startsWith("GAME_2") ? 2 : 3;
+  const game = gameNum === 1 ? game1 : gameNum === 2 ? game2 : parseGame(session.game3);
+  // GAME_N_CHOOSE_FIRST is rendered by a separate path
+  if (session.state === "GAME_3_CHOOSE_FIRST") {
+    return renderChooseFirst(session, playerA, playerB, game2);
+  }
   if (!game) return renderError(session, playerA, playerB, "Game state missing");
-  return renderGame(session, playerA, playerB, pool, game, isGame1 ? 1 : 2);
+  return renderGame(session, playerA, playerB, pool, game, gameNum);
 }
 
 function mention(player: Player): string {
@@ -58,13 +63,17 @@ function mention(player: Player): string {
 }
 
 function renderWaitingAccept(s: MatchSession, a: Player, b: Player) {
+  const modeLine = s.isCasual
+    ? `Casual challenge · **Best of ${s.bestOf}** · not recorded to the league.`
+    : `League set (best of 2) · recorded to standings.`;
   const embed = new EmbedBuilder()
-    .setTitle("🎴 Match invite")
+    .setTitle(s.isCasual ? "🎴 Challenge" : "🎴 Match invite")
     .setDescription(
-      `${mention(a)} wants to play their league set against ${mention(b)}.\n\n` +
-        `${mention(b)}, accept within 5 minutes to start the match.`,
+      `${mention(a)} wants to play ${mention(b)}.\n` +
+        `${modeLine}\n\n` +
+        `${mention(b)}, accept within 5 minutes to start.`,
     )
-    .setColor(0x5865f2)
+    .setColor(s.isCasual ? 0x95a5a6 : 0x5865f2)
     .setFooter({ text: `Match ${s.id}` });
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`match:accept:${s.id}`).setLabel("Accept").setStyle(ButtonStyle.Success),
@@ -94,15 +103,17 @@ function renderChooseFirst(s: MatchSession, a: Player, b: Player, g1: GameState 
   return { embeds: [embed], components: [row] };
 }
 
-function renderGame(s: MatchSession, a: Player, b: Player, pool: DeckEntry[], game: GameState, gameNumber: 1 | 2) {
+function renderGame(s: MatchSession, a: Player, b: Player, pool: DeckEntry[], game: GameState, gameNumber: 1 | 2 | 3) {
   const phase = phaseFor(game, a.id, b.id, pool.length);
   const first = game.firstId === a.id ? a : b;
   const otherPlayer = game.firstId === a.id ? b : a;
   const remaining = remainingCombos(pool, game.bans);
+  const colors = { 1: 0x3498db, 2: 0x9b59b6, 3: 0xe67e22 };
+  const modeLabel = s.isCasual ? `Casual · Best of ${s.bestOf}` : "League";
 
   const embed = new EmbedBuilder()
-    .setTitle(`🎮 Game ${gameNumber}`)
-    .setColor(gameNumber === 1 ? 0x3498db : 0x9b59b6)
+    .setTitle(`🎮 Game ${gameNumber} — ${modeLabel}`)
+    .setColor(colors[gameNumber])
     .setFooter({ text: `Match ${s.id}` });
 
   if (phase.kind === "BAN") {
@@ -170,14 +181,25 @@ function renderGame(s: MatchSession, a: Player, b: Player, pool: DeckEntry[], ga
 }
 
 function renderComplete(s: MatchSession, a: Player, b: Player, g1: GameState | null, g2: GameState | null) {
-  const aWins = (g1?.winnerId === a.id ? 1 : 0) + (g2?.winnerId === a.id ? 1 : 0);
-  const bWins = (g1?.winnerId === b.id ? 1 : 0) + (g2?.winnerId === b.id ? 1 : 0);
-  const verdict = aWins === 2 ? `🏆 ${a.displayName} swept ${b.displayName}` :
-    bWins === 2 ? `🏆 ${b.displayName} swept ${a.displayName}` :
-    `🤝 ${a.displayName} 1-1 ${b.displayName}`;
+  const g3 = parseGame(s.game3);
+  const aWins =
+    (g1?.winnerId === a.id ? 1 : 0) +
+    (g2?.winnerId === a.id ? 1 : 0) +
+    (g3?.winnerId === a.id ? 1 : 0);
+  const bWins =
+    (g1?.winnerId === b.id ? 1 : 0) +
+    (g2?.winnerId === b.id ? 1 : 0) +
+    (g3?.winnerId === b.id ? 1 : 0);
+  const verdict =
+    aWins > bWins ? `🏆 ${a.displayName} ${aWins}-${bWins} ${b.displayName}` :
+    bWins > aWins ? `🏆 ${b.displayName} ${bWins}-${aWins} ${a.displayName}` :
+    `🤝 ${a.displayName} ${aWins}-${bWins} ${b.displayName}`;
+  const tail = s.isCasual
+    ? "Casual match — not recorded to the league."
+    : "Result recorded. If something looks wrong, ask an admin to override.";
   const embed = new EmbedBuilder()
     .setTitle("✅ Match complete")
-    .setDescription(`${verdict}\nResult recorded. If something looks wrong, ask an admin to override.`)
+    .setDescription(`${verdict}\n${tail}`)
     .setColor(0x2ecc71)
     .setFooter({ text: `Match ${s.id}` });
   return { embeds: [embed], components: [] };

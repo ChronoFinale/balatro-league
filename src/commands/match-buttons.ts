@@ -160,9 +160,13 @@ async function handleAccept(interaction: ButtonInteraction, session: MatchSessio
   const { playerB } = await loadPlayers(session);
   if (!(await requireActor(interaction, playerB.discordId))) return;
 
-  const preset = await presetForDivision(session.divisionId);
+  // Casual /challenge matches have no divisionId — fall back to the
+  // global Default preset.
+  const preset = session.divisionId
+    ? await presetForDivision(session.divisionId)
+    : await prisma.matchConfigPreset.findUnique({ where: { name: "Default" } });
   if (!preset || preset.decks.length === 0 || preset.stakes.length === 0) {
-    return reply(interaction, "This season's match config preset is missing or empty — ask an admin to set one before accepting.");
+    return reply(interaction, "Deck preset is missing or empty — ask an admin to set one before accepting.");
   }
   const pool = generatePool(preset.decks, preset.stakes);
 
@@ -224,14 +228,17 @@ async function handleDecline(interaction: ButtonInteraction, session: MatchSessi
 }
 
 async function handleChooseFirst(interaction: ButtonInteraction, session: MatchSession, firstIdRaw: string | undefined) {
-  if (session.state !== "GAME_2_CHOOSE_FIRST") {
-    return reply(interaction, "Not waiting for game-2 first-ban choice.");
+  const isGame2 = session.state === "GAME_2_CHOOSE_FIRST";
+  const isGame3 = session.state === "GAME_3_CHOOSE_FIRST";
+  if (!isGame2 && !isGame3) {
+    return reply(interaction, "Not waiting for a first-ban choice.");
   }
   if (!firstIdRaw) return reply(interaction, "Malformed button.");
-  const game1 = parseGame(session.game1);
-  if (!game1?.winnerId) return reply(interaction, "Game 1 winner not recorded.");
 
-  const loserId = game1.winnerId === session.playerAId ? session.playerBId : session.playerAId;
+  // Loser of the PREVIOUS game chooses who bans first in the next.
+  const prevGame = parseGame(isGame2 ? session.game1 : session.game2);
+  if (!prevGame?.winnerId) return reply(interaction, "Previous game winner not recorded.");
+  const loserId = prevGame.winnerId === session.playerAId ? session.playerBId : session.playerAId;
   const loser = await prisma.player.findUniqueOrThrow({ where: { id: loserId } });
   if (!(await requireActor(interaction, loser.discordId))) return;
 
@@ -239,10 +246,10 @@ async function handleChooseFirst(interaction: ButtonInteraction, session: MatchS
     return reply(interaction, "Invalid first-ban player.");
   }
 
-  const updated = await updateSession(session, {
-    state: MatchSessionState.GAME_2_BAN,
-    game2: JSON.stringify(emptyGameState(firstIdRaw)),
-  });
+  const data: Prisma.MatchSessionUpdateManyMutationInput = isGame2
+    ? { state: MatchSessionState.GAME_2_BAN, game2: JSON.stringify(emptyGameState(firstIdRaw)) }
+    : { state: MatchSessionState.GAME_3_BAN, game3: JSON.stringify(emptyGameState(firstIdRaw)) };
+  const updated = await updateSession(session, data);
   if (!updated) return raceLost(interaction);
   await refreshMessage(interaction, updated);
 }
@@ -254,11 +261,14 @@ async function handleBanBatch(interaction: StringSelectMenuInteraction, session:
   const indices = interaction.values.map((v) => parseInt(v, 10));
   if (indices.some((n) => Number.isNaN(n))) return reply(interaction, "Invalid selection.");
 
-  const isGame1 = session.state === "GAME_1_BAN";
-  const isGame2 = session.state === "GAME_2_BAN";
-  if (!isGame1 && !isGame2) return reply(interaction, "Not in a ban phase.");
+  const gameNum =
+    session.state === "GAME_1_BAN" ? 1 :
+    session.state === "GAME_2_BAN" ? 2 :
+    session.state === "GAME_3_BAN" ? 3 : 0;
+  if (gameNum === 0) return reply(interaction, "Not in a ban phase.");
 
-  const gameJson = isGame1 ? session.game1 : session.game2;
+  const gameField: "game1" | "game2" | "game3" = `game${gameNum}` as const;
+  const gameJson = session[gameField];
   const game = parseGame(gameJson);
   const pool = parsePool(session.pool);
   if (!game) return reply(interaction, "Game state missing.");
@@ -283,12 +293,15 @@ async function handleBanBatch(interaction: StringSelectMenuInteraction, session:
   const newPhase = phaseFor(newGame, session.playerAId, session.playerBId, pool.length);
   let newState: MatchSessionState = session.state;
   if (newPhase.kind === "PICK") {
-    newState = isGame1 ? MatchSessionState.GAME_1_PICK : MatchSessionState.GAME_2_PICK;
+    newState = gameNum === 1 ? MatchSessionState.GAME_1_PICK
+      : gameNum === 2 ? MatchSessionState.GAME_2_PICK
+      : MatchSessionState.GAME_3_PICK;
   }
 
-  const data: Prisma.MatchSessionUpdateManyMutationInput = isGame1
-    ? { game1: JSON.stringify(newGame), state: newState }
-    : { game2: JSON.stringify(newGame), state: newState };
+  const data: Prisma.MatchSessionUpdateManyMutationInput = {
+    [gameField]: JSON.stringify(newGame),
+    state: newState,
+  } as Prisma.MatchSessionUpdateManyMutationInput;
   const updated = await updateSession(session, data);
   if (!updated) return raceLost(interaction);
   await refreshMessage(interaction, updated);
@@ -299,11 +312,14 @@ async function handlePick(interaction: ButtonInteraction, session: MatchSession,
   const idx = parseInt(idxRaw, 10);
   if (Number.isNaN(idx)) return reply(interaction, "Invalid index.");
 
-  const isGame1 = session.state === "GAME_1_PICK";
-  const isGame2 = session.state === "GAME_2_PICK";
-  if (!isGame1 && !isGame2) return reply(interaction, "Not in a pick phase.");
+  const gameNum =
+    session.state === "GAME_1_PICK" ? 1 :
+    session.state === "GAME_2_PICK" ? 2 :
+    session.state === "GAME_3_PICK" ? 3 : 0;
+  if (gameNum === 0) return reply(interaction, "Not in a pick phase.");
 
-  const gameJson = isGame1 ? session.game1 : session.game2;
+  const gameField: "game1" | "game2" | "game3" = `game${gameNum}` as const;
+  const gameJson = session[gameField];
   const game = parseGame(gameJson);
   const pool = parsePool(session.pool);
   if (!game) return reply(interaction, "Game state missing.");
@@ -313,18 +329,20 @@ async function handlePick(interaction: ButtonInteraction, session: MatchSession,
     return reply(interaction, "That combo isn't in the remaining 2.");
   }
 
-  // SECOND player picks (the one who banned 3 in the middle, not the one
-  // who banned 1 + 3 = 4). phaseFor encodes this — pickerId is the other.
   const phase = phaseFor(game, session.playerAId, session.playerBId, pool.length);
   if (phase.kind !== "PICK") return reply(interaction, "Not a pick phase.");
   const picker = await prisma.player.findUniqueOrThrow({ where: { id: phase.pickerId } });
   if (!(await requireActor(interaction, picker.discordId))) return;
 
   const newGame: GameState = { ...game, pickedDeckIdx: idx };
-  const newState: MatchSessionState = isGame1 ? MatchSessionState.GAME_1_PLAYING : MatchSessionState.GAME_2_PLAYING;
-  const data: Prisma.MatchSessionUpdateManyMutationInput = isGame1
-    ? { game1: JSON.stringify(newGame), state: newState }
-    : { game2: JSON.stringify(newGame), state: newState };
+  const newState: MatchSessionState =
+    gameNum === 1 ? MatchSessionState.GAME_1_PLAYING
+    : gameNum === 2 ? MatchSessionState.GAME_2_PLAYING
+    : MatchSessionState.GAME_3_PLAYING;
+  const data: Prisma.MatchSessionUpdateManyMutationInput = {
+    [gameField]: JSON.stringify(newGame),
+    state: newState,
+  } as Prisma.MatchSessionUpdateManyMutationInput;
   const updated = await updateSession(session, data);
   if (!updated) return raceLost(interaction);
   await refreshMessage(interaction, updated);
@@ -342,15 +360,34 @@ async function handleWinner(interaction: ButtonInteraction, session: MatchSessio
 
   const isGame1 = session.state === "GAME_1_PLAYING";
   const isGame2 = session.state === "GAME_2_PLAYING";
-  if (!isGame1 && !isGame2) return reply(interaction, "Not waiting for a winner.");
+  const isGame3 = session.state === "GAME_3_PLAYING";
+  if (!isGame1 && !isGame2 && !isGame3) return reply(interaction, "Not waiting for a winner.");
 
-  const gameJson = isGame1 ? session.game1 : session.game2;
+  const gameJson = isGame1 ? session.game1 : isGame2 ? session.game2 : session.game3;
   const game = parseGame(gameJson);
   if (!game) return reply(interaction, "Game state missing.");
 
   const newGame: GameState = { ...game, winnerId: winnerIdRaw };
 
+  // Helper: count wins per player across played games (treating in-progress
+  // game as just-recorded if applicable).
+  const winsFor = (id: string, includeCurrent: boolean) => {
+    const g1 = parseGame(session.game1)?.winnerId;
+    const g2 = parseGame(session.game2)?.winnerId;
+    const g3 = parseGame(session.game3)?.winnerId;
+    let count = 0;
+    if (g1 === id) count++;
+    if (g2 === id && !(isGame2 && includeCurrent)) count++;
+    if (g3 === id && !(isGame3 && includeCurrent)) count++;
+    if (includeCurrent && winnerIdRaw === id) count++;
+    return count;
+  };
+
   if (isGame1) {
+    // BO1: end immediately. BO2 / BO3: go to game 2.
+    if (session.bestOf === 1) {
+      return finalizeMatch(interaction, session, newGame, "game1");
+    }
     const updated = await updateSession(session, {
       game1: JSON.stringify(newGame),
       state: MatchSessionState.GAME_2_CHOOSE_FIRST,
@@ -359,40 +396,95 @@ async function handleWinner(interaction: ButtonInteraction, session: MatchSessio
     return refreshMessage(interaction, updated);
   }
 
-  // Game 2 winner: finalize.
-  const game1 = parseGame(session.game1);
-  if (!game1?.winnerId) return reply(interaction, "Game 1 winner missing — can't finalize.");
+  if (isGame2) {
+    // BO3: if game 1+2 split (1-1), play game 3. Otherwise we're done.
+    if (session.bestOf === 3) {
+      const aTotal = winsFor(session.playerAId, true);
+      const bTotal = winsFor(session.playerBId, true);
+      if (aTotal === 1 && bTotal === 1) {
+        const updated = await updateSession(session, {
+          game2: JSON.stringify(newGame),
+          state: MatchSessionState.GAME_3_CHOOSE_FIRST,
+        });
+        if (!updated) return raceLost(interaction);
+        return refreshMessage(interaction, updated);
+      }
+    }
+    return finalizeMatch(interaction, session, newGame, "game2");
+  }
 
-  const aWins = (game1.winnerId === session.playerAId ? 1 : 0) + (winnerIdRaw === session.playerAId ? 1 : 0);
-  const bWins = (game1.winnerId === session.playerBId ? 1 : 0) + (winnerIdRaw === session.playerBId ? 1 : 0);
+  // Game 3 (BO3 only): always finalize.
+  return finalizeMatch(interaction, session, newGame, "game3");
+}
+
+async function finalizeMatch(
+  interaction: ButtonInteraction,
+  session: MatchSession,
+  finalGame: GameState,
+  finalGameField: "game1" | "game2" | "game3",
+) {
+  const { playerA, playerB } = await loadPlayers(session);
+  const g1 = parseGame(session.game1);
+  const g2 = parseGame(session.game2);
+  const g3 = parseGame(session.game3);
+  // Use finalGame for the field we just updated; existing for others.
+  const w1 = finalGameField === "game1" ? finalGame.winnerId : g1?.winnerId;
+  const w2 = finalGameField === "game2" ? finalGame.winnerId : g2?.winnerId;
+  const w3 = finalGameField === "game3" ? finalGame.winnerId : g3?.winnerId;
+
+  const aWins =
+    (w1 === session.playerAId ? 1 : 0) +
+    (w2 === session.playerAId ? 1 : 0) +
+    (w3 === session.playerAId ? 1 : 0);
+  const bWins =
+    (w1 === session.playerBId ? 1 : 0) +
+    (w2 === session.playerBId ? 1 : 0) +
+    (w3 === session.playerBId ? 1 : 0);
+
+  // Bump version first; if we lose the race, don't write the Pairing.
+  const updated = await updateSession(session, {
+    [finalGameField]: JSON.stringify(finalGame),
+    state: MatchSessionState.COMPLETE,
+    completedAt: new Date(),
+  } as Prisma.MatchSessionUpdateManyMutationInput);
+  if (!updated) return raceLost(interaction);
+
+  // Casual /challenge — no Pairing write, no announce. Show result + close.
+  if (session.isCasual || !session.divisionId) {
+    await refreshMessage(interaction, updated);
+    closeMatchThread(interaction, updated.threadId).catch(() => {});
+    return;
+  }
+
+  // League match — write the Pairing for the season standings.
+  // For BO2 (league default) we use the standard 2-game tally. For BO1 a
+  // single win is recorded as 2-0 (winner's perspective) so the standings
+  // points math (3 pts) works; BO3 not currently supported for league but
+  // would record sum of wins.
+  let gamesA = aWins;
+  let gamesB = bWins;
+  if (session.bestOf === 1) {
+    gamesA = aWins === 1 ? 2 : 0;
+    gamesB = bWins === 1 ? 2 : 0;
+  }
 
   const [canonA, canonB] = session.playerAId < session.playerBId
     ? [session.playerAId, session.playerBId]
     : [session.playerBId, session.playerAId];
-  const gamesWonA = canonA === session.playerAId ? aWins : bWins;
-  const gamesWonB = canonA === session.playerAId ? bWins : aWins;
+  const gamesWonA = canonA === session.playerAId ? gamesA : gamesB;
+  const gamesWonB = canonA === session.playerAId ? gamesB : gamesA;
 
-  // Bump version first; if we lose the race, don't write the Pairing.
-  const updated = await updateSession(session, {
-    game2: JSON.stringify(newGame),
-    state: MatchSessionState.COMPLETE,
-    completedAt: new Date(),
-  });
-  if (!updated) return raceLost(interaction);
-
-  // Normal /start-match results — NOT admin overrides. reporterId is the user
-  // who clicked the final winner button (both players have equal authority here).
   const reporter = interaction.user.id === playerA.discordId ? playerA : playerB;
   const pairing = await prisma.pairing.upsert({
     where: {
       divisionId_playerAId_playerBId: {
-        divisionId: session.divisionId,
+        divisionId: session.divisionId!,
         playerAId: canonA,
         playerBId: canonB,
       },
     },
     create: {
-      divisionId: session.divisionId,
+      divisionId: session.divisionId!,
       playerAId: canonA,
       playerBId: canonB,
       gamesWonA,

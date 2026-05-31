@@ -156,20 +156,31 @@ enum MatchSessionState {
   GAME_2_BAN            // banning phase for game 2
   GAME_2_PICK
   GAME_2_PLAYING
-  COMPLETE              // pairing written
+  GAME_3_CHOOSE_FIRST   // BO3 only — game 2 loser picks who bans first in game 3
+  GAME_3_BAN
+  GAME_3_PICK
+  GAME_3_PLAYING
+  COMPLETE              // pairing written (or just done if casual)
   CANCELLED             // never accepted or admin-killed
 }
 
 model MatchSession {
   id            String            @id @default(cuid())
-  divisionId    String
-  playerAId     String            // initiator (ran /start-match)
+  divisionId    String?           // null when isCasual=true (no league context)
+  playerAId     String            // initiator (ran /start-match OR /challenge)
   playerBId     String            // opponent
   state         MatchSessionState @default(WAITING_ACCEPT)
   // Bumped on every update; used for optimistic concurrency control so
   // racing button clicks can't double-write the state machine. Any update
   // is gated by `where: { id, version }` — a stale click hits 0 rows updated.
   version       Int               @default(0)
+  // Casual /challenge match — no division/season required, no Pairing
+  // written at COMPLETE, no auto-announce. Otherwise uses the same
+  // ban/pick state machine and Discord rendering.
+  isCasual      Boolean           @default(false)
+  // 1, 2, or 3. 1 = one game and done. 2 = league default. 3 = play game 3
+  // only if game 1 and 2 split (1-1 W-L).
+  bestOf        Int               @default(2)
   threadId      String?           // Discord thread id (set once accepted)
   channelId     String?           // parent channel of the thread
 
@@ -177,8 +188,9 @@ model MatchSession {
   pool          String?           // [{deck, stake}, ...] generated at accept
   game1         String?           // {firstId, bans: [...], pickedDeck, winnerId}
   game2         String?
+  game3         String?           // populated only when bestOf=3 and game 1+2 split
 
-  pairingId     String?           // populated when COMPLETE
+  pairingId     String?           // populated when COMPLETE (only for league matches)
 
   createdAt     DateTime          @default(now())
   // When the invite expires (WAITING_ACCEPT only). Survives bot restarts —
