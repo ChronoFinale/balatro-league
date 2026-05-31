@@ -13,7 +13,9 @@
     "postinstall": "node scripts/sync-schema.mjs && prisma generate --schema=./prisma/schema.prisma"
   },
   "dependencies": {
+    "@discordjs/rest": "^2.6.1",
     "@prisma/client": "^6.19.3",
+    "discord-api-types": "^0.38.48",
     "next": "16.2.6",
     "next-auth": "^5.0.0-beta.31",
     "prisma": "^6.19.3",

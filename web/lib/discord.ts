@@ -1,67 +1,72 @@
-// Thin Discord REST helpers used by the web app.
-// We don't want a full discord.js client here (heavy, expects a long-running
-// gateway connection). We just need HTTP calls authenticated with the bot token.
+// Web-side Discord REST client. Uses @discordjs/rest so bucket-aware
+// throttling, X-RateLimit-* header parsing, and 429 retries are handled
+// automatically — same library discord.js uses internally for the bot.
+//
+// Exposes thin wrappers so callers keep the same shape as before.
 
-const BASE_URL = "https://discord.com/api/v10";
+import { REST } from "@discordjs/rest";
+import {
+  ChannelType,
+  Routes,
+  type APIChannel,
+  type APIDMChannel,
+  type APIGuildMember,
+  type APIInvite,
+  type APIMessage,
+  type APIRole,
+  type APIUser,
+  type RESTPostAPIChannelMessageJSONBody,
+  type RESTPostAPIGuildChannelJSONBody,
+  type RESTPostAPIGuildRoleJSONBody,
+} from "discord-api-types/v10";
 
-function botAuthHeader(): string {
-  const token = process.env.DISCORD_TOKEN;
-  if (!token) throw new Error("DISCORD_TOKEN env var not set");
-  return `Bot ${token}`;
+let singleton: REST | null = null;
+function rest(): REST {
+  if (!singleton) {
+    const token = process.env.DISCORD_TOKEN;
+    if (!token) throw new Error("DISCORD_TOKEN env var not set");
+    // REST defaults: bucket-aware throttling on, retries 429s with Retry-After,
+    // queues per-route when bucket is empty. No additional config needed for our scale.
+    singleton = new REST({ version: "10" }).setToken(token);
+  }
+  return singleton;
 }
 
 interface DiscordMember {
   user?: { id: string; username: string };
   nick?: string | null;
-  roles: string[]; // role IDs the member has in this guild
+  roles: string[];
 }
 
-// Fetch a guild member. Returns null if the user isn't in the guild
-// (Discord returns 404) or if the bot doesn't have access.
-export async function fetchGuildMember(
-  guildId: string,
-  userId: string,
-): Promise<DiscordMember | null> {
-  const res = await fetch(`${BASE_URL}/guilds/${guildId}/members/${userId}`, {
-    headers: { Authorization: botAuthHeader() },
-    cache: "no-store",
-  });
-  if (res.status === 404) return null;
-  if (!res.ok) {
-    console.warn(`Discord fetchGuildMember failed: ${res.status} ${await res.text()}`);
+export async function fetchGuildMember(guildId: string, userId: string): Promise<DiscordMember | null> {
+  try {
+    return (await rest().get(Routes.guildMember(guildId, userId))) as APIGuildMember;
+  } catch (err) {
+    if (isNotFound(err)) return null;
+    console.warn(`Discord fetchGuildMember failed:`, err);
     return null;
   }
-  return res.json() as Promise<DiscordMember>;
 }
 
 interface DiscordUser {
   id: string;
   username: string;
-  global_name?: string | null; // Discord's new display name (since 2023)
+  global_name?: string | null;
   avatar?: string | null;
 }
 
-// Fetch a Discord user globally — works for ANY user ID regardless of
-// guild membership. Use when we just need a name for someone the bot
-// can see at all (signed up but not in the server, etc.). Bot uses its
-// own auth so the lookup doesn't depend on the target being in our guild.
 export async function fetchDiscordUser(userId: string): Promise<DiscordUser | null> {
-  const res = await fetch(`${BASE_URL}/users/${userId}`, {
-    headers: { Authorization: botAuthHeader() },
-    cache: "no-store",
-  });
-  if (res.status === 404) return null;
-  if (!res.ok) {
-    console.warn(`Discord fetchDiscordUser failed: ${res.status} ${await res.text()}`);
+  try {
+    return (await rest().get(Routes.user(userId))) as APIUser;
+  } catch (err) {
+    if (isNotFound(err)) return null;
+    console.warn(`Discord fetchDiscordUser failed:`, err);
     return null;
   }
-  return res.json() as Promise<DiscordUser>;
 }
 
-// Preferred display name for a user ID. Tries guild member first (so we
-// get the server-specific nick if set), falls back to global user
-// (so we still work for non-members). Returns null only if Discord
-// has no record of the user at all.
+// Preferred display name for a user. Guild nick first (server-specific),
+// then global username.
 export async function resolveDisplayName(guildId: string | undefined, userId: string): Promise<string | null> {
   if (guildId) {
     const m = await fetchGuildMember(guildId, userId);
@@ -81,8 +86,6 @@ export interface MessageEmbed {
   timestamp?: string;
 }
 
-// Discord component-v1 (legacy) action row + button JSON shapes.
-// type 1 = ActionRow, type 2 = Button. Styles: 1=Primary, 2=Secondary, 3=Success, 4=Danger.
 export interface ComponentButton {
   type: 2;
   custom_id: string;
@@ -95,218 +98,191 @@ export interface ComponentActionRow {
   components: ComponentButton[];
 }
 
-// Post a message to a Discord channel. Returns the new message id on success, null on failure.
 export async function postChannelMessage(
   channelId: string,
   payload: { content?: string; embeds?: MessageEmbed[]; components?: ComponentActionRow[] },
 ): Promise<string | null> {
-  const res = await discordFetch(`${BASE_URL}/channels/${channelId}/messages`, {
-    method: "POST",
-    headers: { Authorization: botAuthHeader(), "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    console.warn(`Discord postChannelMessage failed: ${res.status} ${await res.text()}`);
+  try {
+    const msg = (await rest().post(Routes.channelMessages(channelId), {
+      body: payload as RESTPostAPIChannelMessageJSONBody,
+    })) as APIMessage;
+    return msg.id ?? null;
+  } catch (err) {
+    console.warn(`Discord postChannelMessage failed:`, err);
     return null;
   }
-  const body = (await res.json()) as { id?: string };
-  return body.id ?? null;
 }
 
-// Edit an existing message (replace content/embeds/components).
 export async function editChannelMessage(
   channelId: string,
   messageId: string,
   payload: { content?: string; embeds?: MessageEmbed[]; components?: ComponentActionRow[] },
 ): Promise<boolean> {
-  const res = await discordFetch(`${BASE_URL}/channels/${channelId}/messages/${messageId}`, {
-    method: "PATCH",
-    headers: { Authorization: botAuthHeader(), "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    console.warn(`Discord editChannelMessage failed: ${res.status} ${await res.text()}`);
+  try {
+    await rest().patch(Routes.channelMessage(channelId, messageId), { body: payload });
+    return true;
+  } catch (err) {
+    console.warn(`Discord editChannelMessage failed:`, err);
     return false;
   }
-  return true;
 }
 
-// Wrapper that retries once on HTTP 429 (rate limit), honoring Retry-After.
-// Discord's rate limits are bucketed per route; for low-volume admin actions
-// one polite retry is usually enough.
-async function discordFetch(url: string, init: RequestInit): Promise<Response> {
-  let res = await fetch(url, init);
-  if (res.status === 429) {
-    const retryAfter = parseFloat(res.headers.get("retry-after") ?? "1");
-    const waitMs = Math.min(5000, Math.max(100, retryAfter * 1000));
-    console.warn(`Discord 429 on ${url} — retrying after ${waitMs}ms`);
-    await new Promise((r) => setTimeout(r, waitMs));
-    res = await fetch(url, init);
+// Open (or reuse) a DM channel with a user and post a message to it.
+export async function sendDirectMessage(
+  userId: string,
+  payload: { content?: string; embeds?: MessageEmbed[]; components?: ComponentActionRow[] },
+): Promise<boolean> {
+  try {
+    const dm = (await rest().post(Routes.userChannels(), { body: { recipient_id: userId } })) as APIDMChannel;
+    if (!dm.id) return false;
+    const msgId = await postChannelMessage(dm.id, payload);
+    return msgId !== null;
+  } catch (err) {
+    console.warn(`Discord sendDirectMessage(${userId}) failed:`, err);
+    return false;
   }
-  return res;
 }
 
-interface DiscordChannel {
-  id: string;
-  name: string;
-  type: number;       // 0 = GuildText, 4 = Category, 5 = Announcement, others = ignore
-  parent_id?: string | null;
-  position?: number;
+// Create a never-expiring invite to a channel.
+export async function createChannelInvite(
+  channelId: string,
+  options?: { maxAge?: number; maxUses?: number },
+): Promise<string | null> {
+  try {
+    const inv = (await rest().post(Routes.channelInvites(channelId), {
+      body: {
+        max_age: options?.maxAge ?? 0,
+        max_uses: options?.maxUses ?? 0,
+        unique: false,
+      },
+    })) as APIInvite;
+    return inv.code ? `https://discord.gg/${inv.code}` : null;
+  } catch (err) {
+    console.warn(`Discord createChannelInvite(${channelId}) failed:`, err);
+    return null;
+  }
 }
 
-interface DiscordRole {
-  id: string;
-  name: string;
-}
+interface DiscordRole { id: string; name: string }
 
-// Create a role in a guild. Returns the new role's id.
 export async function createGuildRole(
   guildId: string,
   name: string,
   options?: { color?: number; mentionable?: boolean },
 ): Promise<DiscordRole | null> {
-  const res = await fetch(`${BASE_URL}/guilds/${guildId}/roles`, {
-    method: "POST",
-    headers: { Authorization: botAuthHeader(), "Content-Type": "application/json" },
-    body: JSON.stringify({
-      name,
-      color: options?.color ?? 0,
-      mentionable: options?.mentionable ?? true,
-    }),
-  });
-  if (!res.ok) {
-    console.warn(`Discord createGuildRole failed: ${res.status} ${await res.text()}`);
+  try {
+    const r = (await rest().post(Routes.guildRoles(guildId), {
+      body: {
+        name,
+        color: options?.color ?? 0,
+        mentionable: options?.mentionable ?? true,
+      } as RESTPostAPIGuildRoleJSONBody,
+    })) as APIRole;
+    return { id: r.id, name: r.name };
+  } catch (err) {
+    console.warn(`Discord createGuildRole failed:`, err);
     return null;
   }
-  return res.json() as Promise<DiscordRole>;
 }
 
-// Add a role to a guild member.
 export async function addGuildMemberRole(guildId: string, userId: string, roleId: string): Promise<boolean> {
-  const res = await fetch(`${BASE_URL}/guilds/${guildId}/members/${userId}/roles/${roleId}`, {
-    method: "PUT",
-    headers: { Authorization: botAuthHeader() },
-  });
-  if (!res.ok) {
-    console.warn(`Discord addGuildMemberRole(${userId}, ${roleId}) failed: ${res.status} ${await res.text()}`);
+  try {
+    await rest().put(Routes.guildMemberRole(guildId, userId, roleId));
+    return true;
+  } catch (err) {
+    console.warn(`Discord addGuildMemberRole(${userId}, ${roleId}) failed:`, err);
     return false;
   }
-  return true;
 }
 
-// Remove a role from a guild member. Best-effort — 404 is treated as success
-// since the end state is the same (member doesn't have the role).
 export async function removeGuildMemberRole(guildId: string, userId: string, roleId: string): Promise<boolean> {
-  const res = await fetch(`${BASE_URL}/guilds/${guildId}/members/${userId}/roles/${roleId}`, {
-    method: "DELETE",
-    headers: { Authorization: botAuthHeader() },
-  });
-  if (!res.ok && res.status !== 404) {
-    console.warn(`Discord removeGuildMemberRole(${userId}, ${roleId}) failed: ${res.status} ${await res.text()}`);
+  try {
+    await rest().delete(Routes.guildMemberRole(guildId, userId, roleId));
+    return true;
+  } catch (err) {
+    if (isNotFound(err)) return true; // already removed
+    console.warn(`Discord removeGuildMemberRole(${userId}, ${roleId}) failed:`, err);
     return false;
   }
-  return true;
 }
 
-// Open (or reuse) a DM channel with a user and post a message to it.
-// Returns true if delivery probably succeeded; logs + returns false on the
-// common failure modes (user has DMs disabled, bot doesn't share a guild
-// with them, unknown user, etc.). Caller should treat failures as "they
-// didn't get it" without bubbling up the error.
-export async function sendDirectMessage(
-  userId: string,
-  payload: { content?: string; embeds?: MessageEmbed[]; components?: ComponentActionRow[] },
-): Promise<boolean> {
-  const createChannelRes = await discordFetch(`${BASE_URL}/users/@me/channels`, {
-    method: "POST",
-    headers: { Authorization: botAuthHeader(), "Content-Type": "application/json" },
-    body: JSON.stringify({ recipient_id: userId }),
-  });
-  if (!createChannelRes.ok) {
-    console.warn(`Discord createDM(${userId}) failed: ${createChannelRes.status} ${await createChannelRes.text()}`);
-    return false;
-  }
-  const channel = (await createChannelRes.json()) as { id?: string };
-  if (!channel.id) return false;
-  const messageId = await postChannelMessage(channel.id, payload);
-  return messageId !== null;
+interface DiscordChannel {
+  id: string;
+  name: string;
+  type: number;
+  parent_id?: string | null;
+  position?: number;
 }
 
-// Create a never-expiring single-use invite to a channel. Used to point
-// next-season subscribers at the signups channel directly. Returns the
-// invite URL (just the code, prepended with https://discord.gg/) or null.
-export async function createChannelInvite(
-  channelId: string,
-  options?: { maxAge?: number; maxUses?: number },
-): Promise<string | null> {
-  const res = await discordFetch(`${BASE_URL}/channels/${channelId}/invites`, {
-    method: "POST",
-    headers: { Authorization: botAuthHeader(), "Content-Type": "application/json" },
-    body: JSON.stringify({
-      max_age: options?.maxAge ?? 0,    // 0 = never expire
-      max_uses: options?.maxUses ?? 0,  // 0 = unlimited uses
-      unique: false,                     // reuse an existing equivalent invite if one exists
-    }),
-  });
-  if (!res.ok) {
-    console.warn(`Discord createChannelInvite(${channelId}) failed: ${res.status} ${await res.text()}`);
-    return null;
-  }
-  const body = (await res.json()) as { code?: string };
-  return body.code ? `https://discord.gg/${body.code}` : null;
-}
-
-// Create a guild text channel. If `visibleToRoleIds` is set, the channel is
-// private — @everyone gets VIEW_CHANNEL denied and only the listed roles
-// can see/send. Bot retains access via its own permissions.
 export async function createGuildTextChannel(
   guildId: string,
   name: string,
   options?: { parentId?: string; topic?: string; visibleToRoleIds?: string[] },
 ): Promise<DiscordChannel | null> {
-  const VIEW_CHANNEL = "1024"; // 1 << 10
-  const SEND_MESSAGES = "2048"; // 1 << 11
-  const allowMask = String((BigInt(VIEW_CHANNEL) | BigInt(SEND_MESSAGES)).toString());
+  // Permission flags as strings — Discord accepts the bitfield as a base-10
+  // string in JSON. 1 << 10 = 1024 (VIEW_CHANNEL), 1 << 11 = 2048 (SEND_MESSAGES).
+  const VIEW_CHANNEL = "1024";
+  const VIEW_AND_SEND = "3072"; // 1024 | 2048
   const visibleToRoleIds = options?.visibleToRoleIds?.filter(Boolean) ?? [];
   const overwrites = visibleToRoleIds.length > 0
     ? [
-        // Deny @everyone (whose role id == guild id)
         { id: guildId, type: 0, deny: VIEW_CHANNEL, allow: "0" },
-        // Allow each listed role to view + send
-        ...visibleToRoleIds.map((roleId) => ({ id: roleId, type: 0, allow: allowMask, deny: "0" })),
+        ...visibleToRoleIds.map((roleId) => ({
+          id: roleId,
+          type: 0,
+          allow: VIEW_AND_SEND,
+          deny: "0",
+        })),
       ]
     : undefined;
-  const res = await fetch(`${BASE_URL}/guilds/${guildId}/channels`, {
-    method: "POST",
-    headers: { Authorization: botAuthHeader(), "Content-Type": "application/json" },
-    body: JSON.stringify({
-      name,
-      type: 0,
-      parent_id: options?.parentId,
-      topic: options?.topic,
-      permission_overwrites: overwrites,
-    }),
-  });
-  if (!res.ok) {
-    console.warn(`Discord createGuildTextChannel failed: ${res.status} ${await res.text()}`);
+  try {
+    const ch = (await rest().post(Routes.guildChannels(guildId), {
+      body: {
+        name,
+        type: ChannelType.GuildText,
+        parent_id: options?.parentId,
+        topic: options?.topic,
+        permission_overwrites: overwrites,
+      } as RESTPostAPIGuildChannelJSONBody,
+    })) as APIChannel;
+    return {
+      id: ch.id,
+      name: ("name" in ch ? ch.name : null) ?? name,
+      type: ch.type,
+      parent_id: "parent_id" in ch ? ch.parent_id : null,
+    };
+  } catch (err) {
+    console.warn(`Discord createGuildTextChannel failed:`, err);
     return null;
   }
-  return res.json() as Promise<DiscordChannel>;
 }
 
-// List text-like channels in a guild. Used by the admin signup-create form
-// so admins can pick a channel without having to copy/paste an ID.
 export async function listGuildTextChannels(guildId: string): Promise<DiscordChannel[]> {
-  const res = await fetch(`${BASE_URL}/guilds/${guildId}/channels`, {
-    headers: { Authorization: botAuthHeader() },
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    console.warn(`Discord listGuildTextChannels failed: ${res.status} ${await res.text()}`);
+  try {
+    const all = (await rest().get(Routes.guildChannels(guildId))) as APIChannel[];
+    return all
+      .filter((c) => c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement)
+      .map((c) => ({
+        id: c.id,
+        name: ("name" in c ? c.name : null) ?? "",
+        type: c.type,
+        parent_id: "parent_id" in c ? c.parent_id : null,
+        position: "position" in c ? c.position : undefined,
+      }))
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  } catch (err) {
+    console.warn(`Discord listGuildTextChannels failed:`, err);
     return [];
   }
-  const all = (await res.json()) as DiscordChannel[];
-  return all
-    .filter((c) => c.type === 0 || c.type === 5)
-    .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 }
+
+// True for the discord.js DiscordAPIError shape when Discord returns 404.
+function isNotFound(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "status" in err &&
+    (err as { status: number }).status === 404
+  );
+}
+
