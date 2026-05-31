@@ -1,4 +1,5 @@
 import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
+import { ensureBotCommandsChannel } from "./bot-commands-channel.js";
 import { checkChannelScope } from "./command-channels.js";
 import { buttonHandlers, selectMenuHandlers, slashCommands } from "./commands/index.js";
 import { setDiscordClient } from "./discord.js";
@@ -93,3 +94,6 @@ await client.login(env.DISCORD_TOKEN);
 // Start the pg-boss worker AFTER the Discord client is logged in — DM
 // jobs need the client to send. Errors here don't abort the bot.
 initQueue().catch((err) => console.warn("[pg-boss] init failed:", err));
+// Auto-create the bot-commands channel if neither env var nor LeagueConfig
+// has one already. Best-effort — admin can always pin manually later.
+ensureBotCommandsChannel().catch((err) => console.warn("[bot-commands] init failed:", err));

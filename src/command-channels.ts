@@ -7,8 +7,8 @@
 // the bot bootstraps a season's division channels. This lets us avoid an
 // env-driven whitelist that admin would have to update every season.
 
+import { resolveBotCommandsChannelId } from "./bot-commands-channel.js";
 import { prisma } from "./db.js";
-import { env } from "./env.js";
 import type { ChannelScope } from "./commands/types.js";
 
 export interface ChannelCheckResult {
@@ -27,7 +27,8 @@ export async function checkChannelScope(
   if (!channelId) return { allowed: false, reason: "This command must be used in a channel." };
 
   if (scope === "match-flow") {
-    if (env.BOT_COMMANDS_CHANNEL_ID && channelId === env.BOT_COMMANDS_CHANNEL_ID) {
+    const botCommandsChannelId = await resolveBotCommandsChannelId();
+    if (botCommandsChannelId && channelId === botCommandsChannelId) {
       return { allowed: true };
     }
     const div = await prisma.division.findFirst({
@@ -35,9 +36,9 @@ export async function checkChannelScope(
       select: { id: true },
     });
     if (div) return { allowed: true };
-    const botCommandsMention = env.BOT_COMMANDS_CHANNEL_ID
-      ? `<#${env.BOT_COMMANDS_CHANNEL_ID}>`
-      : "a bot-commands channel (admin: set BOT_COMMANDS_CHANNEL_ID)";
+    const botCommandsMention = botCommandsChannelId
+      ? `<#${botCommandsChannelId}>`
+      : "the bot-commands channel (admin: run /league set-bot-commands-channel)";
     return {
       allowed: false,
       reason: `Run this in your division channel or ${botCommandsMention}.`,

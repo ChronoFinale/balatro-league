@@ -38,14 +38,24 @@ export async function presetForDivision(divisionId: string) {
 }
 
 // Cartesian product of (deck × stake), shuffled and sliced. No duplicate combos.
+// excludeDecks: deck NAMES to skip — used by game 2/3 to avoid repeating any
+// deck that already showed up in a prior game's pool. If filtering would
+// leave too few combos to fill `size`, we fall back to including the
+// excluded decks so the match can still proceed.
 export function generatePool(
   decks: string[],
   stakes: string[],
   size: number = DEFAULT_POOL_SIZE,
   rand: () => number = Math.random,
+  excludeDecks: string[] = [],
 ): DeckEntry[] {
+  const excluded = new Set(excludeDecks);
+  const filteredDecks = decks.filter((d) => !excluded.has(d));
+  // Only honor the exclusion if the filtered set can still fill the pool.
+  // Otherwise fall back to the full deck list so the match doesn't stall.
+  const usable = filteredDecks.length * stakes.length >= size ? filteredDecks : decks;
   const combos: DeckEntry[] = [];
-  for (const deck of decks) {
+  for (const deck of usable) {
     for (const stake of stakes) {
       combos.push({ deck, stake });
     }

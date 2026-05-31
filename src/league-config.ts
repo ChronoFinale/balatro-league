@@ -5,6 +5,11 @@ import { prisma } from "./db.js";
 
 export const LeagueConfigKey = {
   ResultsWebhookUrl: "results_webhook_url",
+  // Channel where match-flow commands (/start-match, /challenge, /report)
+  // are allowed in addition to division channels. Resolved as
+  // env.BOT_COMMANDS_CHANNEL_ID → LeagueConfig.BotCommandsChannelId →
+  // auto-created on bot startup if neither is set.
+  BotCommandsChannelId: "bot_commands_channel_id",
 } as const;
 
 export type LeagueConfigKey = (typeof LeagueConfigKey)[keyof typeof LeagueConfigKey];

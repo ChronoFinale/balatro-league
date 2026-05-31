@@ -328,7 +328,23 @@ async function handleChooseFirst(interaction: ButtonInteraction, session: MatchS
   if (!preset || preset.decks.length === 0 || preset.stakes.length === 0) {
     return reply(interaction, "Deck preset is missing or empty — ask an admin.");
   }
-  const freshPool = generatePool(preset.decks, preset.stakes);
+  // Collect every deck NAME that appeared in any prior game's pool so the
+  // new pool can avoid them (variety across games). generatePool falls
+  // back to the full deck list if the exclusion would starve the pool.
+  const priorDecks = new Set<string>();
+  const game1 = parseGame(session.game1);
+  if (game1?.pool) game1.pool.forEach((e) => priorDecks.add(e.deck));
+  if (isGame3) {
+    const game2 = parseGame(session.game2);
+    if (game2?.pool) game2.pool.forEach((e) => priorDecks.add(e.deck));
+  }
+  const freshPool = generatePool(
+    preset.decks,
+    preset.stakes,
+    undefined,
+    undefined,
+    [...priorDecks],
+  );
 
   const data: Prisma.MatchSessionUpdateManyMutationInput = isGame2
     ? { state: MatchSessionState.GAME_2_BAN, game2: JSON.stringify(emptyGameState(firstIdRaw, freshPool)) }
