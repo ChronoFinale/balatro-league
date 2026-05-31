@@ -54,28 +54,54 @@ export function computeStandings(
   return sortStandings(Array.from(byId.values()), pairings);
 }
 
-// Sort: points DESC → wins (2-0 count) DESC → draws (1-1 count) DESC
-// → stable by displayName so tied rows have a deterministic order.
-// Unbreakable ties (same pts/wins/draws) are flagged via tiedWithPrev
-// so the UI can show them and admin can manually shuffle if needed.
+// Sort: points DESC → head-to-head (if tied players already played) →
+// wins DESC → draws DESC → displayName for stable order. Unbreakable ties
+// flagged via tiedWithPrev so admin/UI can resolve via shootout.
 function sortStandings(
   rows: StandingRow[],
-  _pairings: Array<Pick<Pairing, "playerAId" | "playerBId" | "gamesWonA" | "gamesWonB">>,
+  pairings: Array<Pick<Pairing, "playerAId" | "playerBId" | "gamesWonA" | "gamesWonB">>,
 ): StandingRow[] {
-  void _pairings;
   const sorted = rows.slice().sort((x, y) => {
     if (y.points !== x.points) return y.points - x.points;
+    const h2h = headToHead(x.player.id, y.player.id, pairings);
+    if (h2h !== 0) return h2h;
     if (y.wins !== x.wins) return y.wins - x.wins;
     if (y.draws !== x.draws) return y.draws - x.draws;
     return x.player.displayName.localeCompare(y.player.displayName);
   });
-  // Flag rows that tie with the previous row on the substantive metrics.
+  // Mark rows tied on the entire chain (points/h2h/wins/draws) — admin
+  // shootout territory.
   for (let i = 1; i < sorted.length; i++) {
     const prev = sorted[i - 1]!;
     const cur = sorted[i]!;
-    if (prev.points === cur.points && prev.wins === cur.wins && prev.draws === cur.draws) {
+    if (
+      prev.points === cur.points &&
+      headToHead(prev.player.id, cur.player.id, pairings) === 0 &&
+      prev.wins === cur.wins &&
+      prev.draws === cur.draws
+    ) {
       cur.tiedWithPrev = true;
     }
   }
   return sorted;
+}
+
+// Returns negative if x should sort BEFORE y (x won their match), positive
+// if y should sort before x, 0 if they haven't played or drew.
+function headToHead(
+  xId: string,
+  yId: string,
+  pairings: Array<Pick<Pairing, "playerAId" | "playerBId" | "gamesWonA" | "gamesWonB">>,
+): number {
+  const meeting = pairings.find(
+    (p) => (p.playerAId === xId && p.playerBId === yId) || (p.playerAId === yId && p.playerBId === xId),
+  );
+  if (!meeting) return 0;
+  const xIsA = meeting.playerAId === xId;
+  const xGames = xIsA ? meeting.gamesWonA : meeting.gamesWonB;
+  const yGames = xIsA ? meeting.gamesWonB : meeting.gamesWonA;
+  // 2-0 only — a 1-1 doesn't break the tie
+  if (xGames === 2 && yGames === 0) return -1;
+  if (yGames === 2 && xGames === 0) return 1;
+  return 0;
 }

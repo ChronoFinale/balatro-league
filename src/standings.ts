@@ -67,20 +67,37 @@ export function computeStandings(
   return sortStandings(Array.from(byId.values()), pairings);
 }
 
-// Sort rules: points DESC → wins (2-0 count) DESC → draws (1-1 count) DESC
-// → displayName for a stable tiebreak. Unbreakable ties (same pts/wins/
-// draws) are admin-resolved manually.
+// Sort rules: points DESC → head-to-head (2-0 only) → wins DESC → draws DESC
+// → displayName for stable order. Mirrors web/lib/standings.ts.
 function sortStandings(
   rows: StandingRow[],
-  _pairings: Array<Pick<Pairing, "playerAId" | "playerBId" | "gamesWonA" | "gamesWonB">>,
+  pairings: Array<Pick<Pairing, "playerAId" | "playerBId" | "gamesWonA" | "gamesWonB">>,
 ): StandingRow[] {
-  void _pairings;
   return rows.slice().sort((x, y) => {
     if (y.points !== x.points) return y.points - x.points;
+    const h2h = headToHead(x.player.id, y.player.id, pairings);
+    if (h2h !== 0) return h2h;
     if (y.wins !== x.wins) return y.wins - x.wins;
     if (y.draws !== x.draws) return y.draws - x.draws;
     return x.player.displayName.localeCompare(y.player.displayName);
   });
+}
+
+function headToHead(
+  xId: string,
+  yId: string,
+  pairings: Array<Pick<Pairing, "playerAId" | "playerBId" | "gamesWonA" | "gamesWonB">>,
+): number {
+  const meeting = pairings.find(
+    (p) => (p.playerAId === xId && p.playerBId === yId) || (p.playerAId === yId && p.playerBId === xId),
+  );
+  if (!meeting) return 0;
+  const xIsA = meeting.playerAId === xId;
+  const xGames = xIsA ? meeting.gamesWonA : meeting.gamesWonB;
+  const yGames = xIsA ? meeting.gamesWonB : meeting.gamesWonA;
+  if (xGames === 2 && yGames === 0) return -1;
+  if (yGames === 2 && xGames === 0) return 1;
+  return 0;
 }
 
 // Formatting helper shared by /standings and admin previews. Kept for compact text use.
