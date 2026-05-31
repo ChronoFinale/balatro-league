@@ -23,13 +23,19 @@ import type { DeckEntry } from "./match-config.js";
 
 export interface GameState {
   firstId: string;        // who bans first in this game
-  bans: number[];         // indices into pool that have been banned
-  pickedDeckIdx?: number; // which remaining combo was picked
+  bans: number[];         // indices into THIS game's pool that have been banned
+  pickedDeckIdx?: number; // which remaining combo was picked (index into this game's pool)
   winnerId?: string;
+  // Per-game deck/stake pool. Generated fresh when this game starts so
+  // game2 and game3 don't reuse game1's shuffle — bans should reset to a
+  // new random subset of the preset each round. Older sessions written
+  // before this field existed may have an empty pool; callers that read
+  // it should treat that as "fall back to session.pool" for migration.
+  pool: DeckEntry[];
 }
 
-export function emptyGameState(firstId: string): GameState {
-  return { firstId, bans: [] };
+export function emptyGameState(firstId: string, pool: DeckEntry[]): GameState {
+  return { firstId, bans: [], pool };
 }
 
 // How many bans the second player makes, and the first player's two ban steps.

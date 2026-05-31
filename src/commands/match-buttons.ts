@@ -138,8 +138,10 @@ async function handleBan(interaction: ButtonInteraction, session: MatchSession, 
 
   const gameField: "game1" | "game2" | "game3" = `game${gameNum}` as const;
   const game = parseGame(session[gameField]);
-  const pool = parsePool(session.pool);
   if (!game) return reply(interaction, "Game state missing.");
+  // Per-game pool lives inside the game state now. Fall back to session.pool
+  // only for sessions created before the per-game pool change shipped.
+  const pool = game.pool && game.pool.length > 0 ? game.pool : parsePool(session.pool);
 
   const phase = phaseFor(game, session.playerAId, session.playerBId, pool.length);
   if (phase.kind !== "BAN") return reply(interaction, "Not a ban phase.");
@@ -206,7 +208,7 @@ async function handleAccept(interaction: ButtonInteraction, session: MatchSessio
   if (!preset || preset.decks.length === 0 || preset.stakes.length === 0) {
     return reply(interaction, "Deck preset is missing or empty — ask an admin to set one before accepting.");
   }
-  const pool = generatePool(preset.decks, preset.stakes);
+  const game1Pool = generatePool(preset.decks, preset.stakes);
 
   const { playerA } = await loadPlayers(session);
   const firstId = Math.random() < 0.5 ? playerA.id : playerB.id;
@@ -230,8 +232,10 @@ async function handleAccept(interaction: ButtonInteraction, session: MatchSessio
   const updated = await updateSession(session, {
     state: MatchSessionState.GAME_1_BAN,
     acceptedAt: new Date(),
-    pool: JSON.stringify(pool),
-    game1: JSON.stringify(emptyGameState(firstId)),
+    // session.pool is kept in sync with game1's pool for legacy callers;
+    // game2/game3 each get their own fresh pool generated at ChooseFirst.
+    pool: JSON.stringify(game1Pool),
+    game1: JSON.stringify(emptyGameState(firstId, game1Pool)),
     threadId,
   });
   if (!updated) return raceLost(interaction);
@@ -284,9 +288,20 @@ async function handleChooseFirst(interaction: ButtonInteraction, session: MatchS
     return reply(interaction, "Invalid first-ban player.");
   }
 
+  // Each game gets a fresh deck/stake pool — bans don't carry over and
+  // game N doesn't reuse game N-1's shuffle. Re-fetch the preset to draw
+  // from the same configured decks/stakes the match was set up with.
+  const preset = session.divisionId
+    ? await presetForDivision(session.divisionId)
+    : await prisma.matchConfigPreset.findUnique({ where: { name: "Default" } });
+  if (!preset || preset.decks.length === 0 || preset.stakes.length === 0) {
+    return reply(interaction, "Deck preset is missing or empty — ask an admin.");
+  }
+  const freshPool = generatePool(preset.decks, preset.stakes);
+
   const data: Prisma.MatchSessionUpdateManyMutationInput = isGame2
-    ? { state: MatchSessionState.GAME_2_BAN, game2: JSON.stringify(emptyGameState(firstIdRaw)) }
-    : { state: MatchSessionState.GAME_3_BAN, game3: JSON.stringify(emptyGameState(firstIdRaw)) };
+    ? { state: MatchSessionState.GAME_2_BAN, game2: JSON.stringify(emptyGameState(firstIdRaw, freshPool)) }
+    : { state: MatchSessionState.GAME_3_BAN, game3: JSON.stringify(emptyGameState(firstIdRaw, freshPool)) };
   const updated = await updateSession(session, data);
   if (!updated) return raceLost(interaction);
   await refreshMessage(interaction, updated);
@@ -306,8 +321,9 @@ async function handlePick(interaction: ButtonInteraction, session: MatchSession,
   const gameField: "game1" | "game2" | "game3" = `game${gameNum}` as const;
   const gameJson = session[gameField];
   const game = parseGame(gameJson);
-  const pool = parsePool(session.pool);
   if (!game) return reply(interaction, "Game state missing.");
+  // Per-game pool. Legacy fallback to session.pool for pre-change sessions.
+  const pool = game.pool && game.pool.length > 0 ? game.pool : parsePool(session.pool);
 
   const remaining = remainingCombos(pool, game.bans);
   if (!remaining.find((r) => r.idx === idx)) {

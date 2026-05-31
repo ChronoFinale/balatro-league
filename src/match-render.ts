@@ -25,7 +25,6 @@ export function renderMatch(
   playerA: Player,
   playerB: Player,
 ): { embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[] } {
-  const pool = parsePool(session.pool);
   const game1 = parseGame(session.game1);
   const game2 = parseGame(session.game2);
 
@@ -51,6 +50,8 @@ export function renderMatch(
     return renderChooseFirst(session, playerA, playerB, game2);
   }
   if (!game) return renderError(session, playerA, playerB, "Game state missing");
+  // Per-game pool (with legacy fallback to session.pool for old sessions).
+  const pool = game.pool && game.pool.length > 0 ? game.pool : parsePool(session.pool);
   return renderGame(session, playerA, playerB, pool, game, gameNum);
 }
 
