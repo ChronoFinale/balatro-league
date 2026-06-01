@@ -144,10 +144,10 @@ function PresetEditor({
           </form>
         </div>
         <p className="muted" style={{ marginTop: 8 }}>
-          {preset.decks.length} decks Ã— {preset.stakes.length} stakes ={" "}
+          {preset.decks.length} decks × {preset.stakes.length} stakes ={" "}
           <strong>{totalCombos} possible combos</strong>.
           {totalCombos < 9 && (
-            <span style={{ color: "#e74c3c" }}> âš  need at least 9 for a normal match.</span>
+            <span style={{ color: "#e74c3c" }}> ⚠ need at least 9 for a normal match.</span>
           )}
         </p>
       </div>

@@ -38,7 +38,7 @@ export async function deletePreset(formData: FormData) {
   await requireAdmin();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  // Season.matchConfigPresetId is ON DELETE SET NULL â€” any season pointing
+  // Season.matchConfigPresetId is ON DELETE SET NULL — any season pointing
   // at this preset will fall back to the Default preset at match-time.
   await prisma.matchConfigPreset.delete({ where: { id } });
   revalidatePath("/admin/deck-bans");
@@ -103,7 +103,7 @@ export async function removeStake(formData: FormData) {
   revalidatePath("/admin/deck-bans");
 }
 
-// Bootstrap action â€” creates the Default preset on demand if none exists.
+// Bootstrap action — creates the Default preset on demand if none exists.
 export async function seedDefaultPreset() {
   await requireAdmin();
   const existing = await prisma.matchConfigPreset.findUnique({
