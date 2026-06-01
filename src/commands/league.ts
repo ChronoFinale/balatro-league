@@ -85,6 +85,17 @@ export const league: SlashCommand = {
       sub
         .setName("unset-results-webhook")
         .setDescription("Stop using a webhook for results announces (falls back to bot REST). Owner only."),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("reset-discord-state")
+        .setDescription("Clear every Discord ID stored in the DB so bootstrap can rebuild fresh. Owner only.")
+        .addStringOption((opt) =>
+          opt
+            .setName("confirmation")
+            .setDescription("Type RESET DISCORD STATE to confirm. League data (seasons, players, results) is preserved.")
+            .setRequired(true),
+        ),
     ),
 
   async execute(interaction: ChatInputCommandInteraction) {
@@ -98,6 +109,7 @@ export const league: SlashCommand = {
     if (sub === "setup-results-webhook") return setupResultsWebhook(interaction);
     if (sub === "set-results-webhook") return setResultsWebhook(interaction);
     if (sub === "unset-results-webhook") return unsetResultsWebhook(interaction);
+    if (sub === "reset-discord-state") return resetDiscordState(interaction);
   },
 };
 
@@ -360,4 +372,85 @@ async function unsetResultsWebhook(interaction: ChatInputCommandInteraction) {
   await interaction.editReply(
     `Cleared. Results announces will fall back to bot REST via \`RESULTS_CHANNEL_ID\` env var (if set).`,
   );
+}
+
+const RESET_CONFIRMATION_PHRASE = "RESET DISCORD STATE";
+
+// Wipe every Discord ID we've stashed in the DB so /league bootstrap-server
+// (and the season's "Set up Discord channels" admin button) can rebuild
+// everything fresh. League DATA — seasons, divisions, players, pairings,
+// match sessions, signups — is left untouched.
+//
+// Cleared:
+//   Division.discordChannelId / discordRoleId
+//   Season.discordCategoryId / resultsChannelId / resultsWebhookUrl
+//   LeagueConfig.BotCommandsChannelId / BackupChannelId / ResultsWebhookUrl
+//   RoleBinding (all rows — bootstrap recreates them)
+//
+// Doesn't touch MatchSession.threadId or SignupRound.channelId/messageId
+// because those self-resolve (completed matches just stay dead-linked;
+// open signup rounds the admin will close + reopen separately).
+async function resetDiscordState(interaction: ChatInputCommandInteraction) {
+  const confirmation = interaction.options.getString("confirmation", true).trim();
+  if (confirmation !== RESET_CONFIRMATION_PHRASE) {
+    await interaction.reply({
+      content:
+        `Confirmation phrase didn't match. Type exactly \`${RESET_CONFIRMATION_PHRASE}\` to proceed. ` +
+        `Nothing was changed.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const [divResult, seasonResult, bindings, configKeys] = await Promise.all([
+    prisma.division.updateMany({
+      where: {
+        OR: [
+          { discordChannelId: { not: null } },
+          { discordRoleId: { not: null } },
+        ],
+      },
+      data: { discordChannelId: null, discordRoleId: null },
+    }),
+    prisma.season.updateMany({
+      where: {
+        OR: [
+          { discordCategoryId: { not: null } },
+          { resultsChannelId: { not: null } },
+          { resultsWebhookUrl: { not: null } },
+        ],
+      },
+      data: { discordCategoryId: null, resultsChannelId: null, resultsWebhookUrl: null },
+    }),
+    prisma.roleBinding.deleteMany({}),
+    prisma.leagueConfig.deleteMany({
+      where: {
+        key: {
+          in: [
+            LeagueConfigKey.BotCommandsChannelId,
+            LeagueConfigKey.BackupChannelId,
+            LeagueConfigKey.ResultsWebhookUrl,
+          ],
+        },
+      },
+    }),
+  ]);
+
+  const lines = [
+    `✅ Discord state cleared. League data (seasons, players, results) is intact.`,
+    ``,
+    `Cleared:`,
+    `• ${divResult.count} Division row(s): discordChannelId + discordRoleId set to null`,
+    `• ${seasonResult.count} Season row(s): discordCategoryId + per-season results overrides cleared`,
+    `• ${bindings.count} RoleBinding row(s) deleted`,
+    `• ${configKeys.count} LeagueConfig key(s) deleted (bot-commands, backup, results-webhook)`,
+    ``,
+    `**Next steps**:`,
+    `1. Delete the old Discord channels / roles / category if you haven't already`,
+    `2. Run \`/league bootstrap-server\` to recreate the staff scaffolding + RoleBindings`,
+    `3. On each active season's \`/admin/seasons/[id]\` page, click "Set up Discord channels & roles" to recreate per-division channels`,
+    `4. (Optional) Restart the bot — \`ensureBotCommandsChannel\` + \`ensureBackupChannel\` will auto-create those on startup since their LeagueConfig keys are gone`,
+  ];
+  await interaction.editReply(lines.join("\n"));
 }
