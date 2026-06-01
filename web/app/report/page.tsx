@@ -5,13 +5,11 @@
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
-import { reportSetFromWeb, type ReportResultStr } from "@/lib/report";
+import { loadReportPageData } from "@/lib/loaders/report";
 import { tierColors } from "@/lib/tier-colors";
 import { SiteNav } from "@/components/SiteNav";
-import { submitReportPageDispute } from "./actions";
+import { submitReportFromReportPage, submitReportPageDispute } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -24,85 +22,10 @@ export default async function ReportPage({
   if (!session?.user) redirect("/auth/signin?from=/report");
 
   const { ok, err, disputeOk, disputeErr } = await searchParams;
-  const user = session.user as { discordId: string; name?: string | null };
+  const user = session.user as { discordId: string };
 
-  const player = user.discordId
-    ? await prisma.player.findUnique({ where: { discordId: user.discordId } })
-    : null;
-
-  const myMembership = player
-    ? await prisma.divisionMember.findFirst({
-        where: {
-          playerId: player.id,
-          status: "ACTIVE",
-          division: { season: { isActive: true, visibility: "PUBLIC" } },
-        },
-        include: {
-          division: {
-            include: {
-              tier: true,
-              season: true,
-              members: { include: { player: true } },
-              pairings: { select: { playerAId: true, playerBId: true, status: true } },
-            },
-          },
-        },
-      })
-    : null;
-  const division = myMembership?.division;
-
-  // Recent confirmed/disputed matches the viewer played in the active
-  // season — so they can dispute one inline without bouncing to their
-  // profile page. Cap at 10; older history lives on /profile/[id].
-  const myRecentMatches = player && division
-    ? await prisma.pairing.findMany({
-        where: {
-          divisionId: division.id,
-          status: { in: ["CONFIRMED", "DISPUTED"] },
-          OR: [{ playerAId: player.id }, { playerBId: player.id }],
-        },
-        include: { playerA: true, playerB: true },
-        orderBy: { confirmedAt: "desc" },
-        take: 10,
-      })
-    : [];
-
-  // Opponent gating: hide players we've ALREADY confirmed against
-  // (can't double-report), but keep PENDING ones visible so the
-  // reporter sees a clear "already pending — wait for confirm" error
-  // rather than the dropdown silently dropping them.
-  const opponents = division?.members.filter((m) => m.playerId !== player!.id && m.status === "ACTIVE") ?? [];
-  const confirmedOpponentIds = new Set<string>();
-  const pendingOpponentIds = new Set<string>();
-  if (division && player) {
-    for (const p of division.pairings) {
-      const opp = p.playerAId === player.id ? p.playerBId : p.playerBId === player.id ? p.playerAId : null;
-      if (!opp) continue;
-      if (p.status === "CONFIRMED") confirmedOpponentIds.add(opp);
-      if (p.status === "PENDING") pendingOpponentIds.add(opp);
-    }
-  }
-  const reportableOpponents = opponents.filter((m) => !confirmedOpponentIds.has(m.playerId));
-
-  async function reportAction(formData: FormData) {
-    "use server";
-    const session = await auth();
-    const discordId = (session?.user as { discordId?: string } | undefined)?.discordId;
-    if (!discordId) redirect("/report?err=not-logged-in");
-    const opponentId = String(formData.get("opponentId") ?? "");
-    const result = String(formData.get("result") ?? "") as ReportResultStr;
-    if (!opponentId || !["2-0", "1-1", "0-2"].includes(result)) {
-      redirect("/report?err=missing-fields");
-    }
-    const r = await reportSetFromWeb(discordId!, opponentId, result);
-    if (!r.ok) redirect(`/report?err=${encodeURIComponent(r.reason)}`);
-    revalidatePath("/report");
-    revalidatePath("/me");
-    revalidatePath("/standings");
-    redirect("/report?ok=1");
-  }
-
-  const tc = division ? tierColors(division.tier.position) : null;
+  const { player, division, recentMatches } = await loadReportPageData(user.discordId);
+  const tc = division ? tierColors(division.tierPosition) : null;
 
   return (
     <>
@@ -138,26 +61,23 @@ export default async function ReportPage({
           <div className="card">
             <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
               <span className="muted">Your division:</span>
-              <span className="pill" style={{ background: tc.bg, color: tc.fg }}>{division.tier.name}</span>
-              <Link href={`/divisions/${division.id}`} style={{ textDecoration: "none" }}>{division.name}</Link>
-              <span className="muted" style={{ marginLeft: "auto", fontSize: 12 }}>{division.season.name}</span>
+              <span className="pill" style={{ background: tc.bg, color: tc.fg }}>{division.tierName}</span>
+              <Link href={`/divisions/${division.divisionId}`} style={{ textDecoration: "none" }}>{division.divisionName}</Link>
+              <span className="muted" style={{ marginLeft: "auto", fontSize: 12 }}>{division.seasonName}</span>
             </div>
 
-            {reportableOpponents.length === 0 ? (
+            {division.reportableOpponents.length === 0 ? (
               <p className="muted">No opponents left — you've played everyone in your division.</p>
             ) : (
-              <form action={reportAction} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <form action={submitReportFromReportPage} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 <span className="muted" style={{ fontSize: 12 }}>vs</span>
                 <select name="opponentId" required style={{ flex: "1 1 240px" }}>
                   <option value="">— pick an opponent —</option>
-                  {reportableOpponents.map((m) => {
-                    const isPending = pendingOpponentIds.has(m.playerId);
-                    return (
-                      <option key={m.playerId} value={m.playerId}>
-                        {m.player.displayName}{isPending ? " (already pending)" : ""}
-                      </option>
-                    );
-                  })}
+                  {division.reportableOpponents.map((o) => (
+                    <option key={o.playerId} value={o.playerId}>
+                      {o.displayName}{o.alreadyPending ? " (already pending)" : ""}
+                    </option>
+                  ))}
                 </select>
                 <select name="result" required defaultValue="2-0">
                   <option value="2-0">2-0 (I won both)</option>
@@ -187,7 +107,7 @@ export default async function ReportPage({
           </div>
         )}
 
-        {player && division && myRecentMatches.length > 0 && (
+        {player && division && recentMatches.length > 0 && (
           <div className="card">
             <strong>Your recent matches</strong>
             <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
@@ -205,25 +125,21 @@ export default async function ReportPage({
                 </tr>
               </thead>
               <tbody>
-                {myRecentMatches.map((p) => {
-                  const meIsA = p.playerAId === player.id;
-                  const opp = meIsA ? p.playerB : p.playerA;
-                  const myGames = meIsA ? p.gamesWonA : p.gamesWonB;
-                  const oppGames = meIsA ? p.gamesWonB : p.gamesWonA;
-                  const date = p.confirmedAt ? p.confirmedAt.toISOString().slice(0, 10) : "—";
-                  const isDisputed = p.status === "DISPUTED";
+                {recentMatches.map((m) => {
+                  const date = m.date ? m.date.toISOString().slice(0, 10) : "—";
+                  const isDisputed = m.status === "DISPUTED";
                   const outcome =
                     isDisputed ? { bg: "rgba(241,196,15,0.15)", fg: "#f1c40f", label: "DISPUTED" }
-                    : myGames > oppGames ? { bg: "rgba(46,204,113,0.15)", fg: "#2ecc71", label: "W" }
-                    : myGames < oppGames ? { bg: "rgba(231,76,60,0.15)", fg: "#e74c3c", label: "L" }
+                    : m.outcome === "WIN" ? { bg: "rgba(46,204,113,0.15)", fg: "#2ecc71", label: "W" }
+                    : m.outcome === "LOSS" ? { bg: "rgba(231,76,60,0.15)", fg: "#e74c3c", label: "L" }
                     : { bg: "rgba(241,196,15,0.15)", fg: "#f1c40f", label: "D" };
                   return (
-                    <tr key={p.id} style={isDisputed ? { opacity: 0.7 } : undefined}>
+                    <tr key={m.pairingId} style={isDisputed ? { opacity: 0.7 } : undefined}>
                       <td>{date}</td>
                       <td>
-                        <Link href={`/profile/${opp.id}`} style={{ color: "var(--text)" }}>{opp.displayName}</Link>
+                        <Link href={`/profile/${m.opponentPlayerId}`} style={{ color: "var(--text)" }}>{m.opponentDisplayName}</Link>
                       </td>
-                      <td><strong>{myGames}–{oppGames}</strong></td>
+                      <td><strong>{m.myGames}–{m.opponentGames}</strong></td>
                       <td><span className="pill" style={{ background: outcome.bg, color: outcome.fg, fontSize: isDisputed ? 10 : undefined }}>{outcome.label}</span></td>
                       <td>
                         <details>
@@ -231,7 +147,7 @@ export default async function ReportPage({
                             {isDisputed ? "Update dispute" : "Dispute"}
                           </summary>
                           <form action={submitReportPageDispute} style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4, minWidth: 220 }}>
-                            <input type="hidden" name="pairingId" value={p.id} />
+                            <input type="hidden" name="pairingId" value={m.pairingId} />
                             <label style={{ fontSize: 11 }} className="muted">What it should be (your POV):</label>
                             <select name="proposed" defaultValue="unsure" style={{ fontSize: 12 }}>
                               <option value="unsure">— not sure, let helper decide —</option>

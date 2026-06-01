@@ -1,0 +1,138 @@
+// Loader for the /standings page. Returns:
+//   - Active public season with tiers and divisions (lightweight: id +
+//     name + position + groupNumber + active/dropped member ids +
+//     confirmed pairing counts for the "X/Y matches" pill)
+//   - Cached standings rows for every division at once
+//   - BMP MMR snapshots for visible players (opt-in via cookie; skipped
+//     when the viewer has the toggle off)
+//
+// computeStandings is NOT called here — the cache is authoritative for
+// the standings rows. loadDivisionStandings transparently fills cold-cache
+// divisions, so the first viewer pays the compute cost once.
+
+import { prisma } from "@/lib/prisma";
+import { loadDivisionStandings } from "@/lib/standings-cache";
+
+export type StandingsRowsForDivision = Awaited<ReturnType<typeof loadDivisionStandings>>;
+
+export interface StandingsDivisionSummary {
+  id: string;
+  name: string;
+  groupNumber: number;
+  activeMemberIds: string[];
+  droppedMemberIds: string[];
+  playedMatches: number;
+  rows: StandingsRowsForDivision;
+}
+
+export interface StandingsTierSummary {
+  id: string;
+  name: string;
+  position: number;
+  divisions: StandingsDivisionSummary[];
+}
+
+export interface StandingsPageData {
+  season: { id: string; name: string } | null;
+  tiers: StandingsTierSummary[];
+  minTierPosition: number;
+  maxTierPosition: number;
+  // Map of playerId → ranked MMR for the BMP column. Empty when the
+  // viewer has the toggle off — no DB roundtrip wasted on hidden data.
+  mmrByPlayerId: Map<string, number>;
+}
+
+export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Promise<StandingsPageData> {
+  const season = await prisma.season.findFirst({
+    where: { isActive: true, visibility: "PUBLIC" },
+    select: {
+      id: true,
+      name: true,
+      tiers: {
+        orderBy: { position: "asc" },
+        select: {
+          id: true,
+          name: true,
+          position: true,
+          divisions: {
+            orderBy: { groupNumber: "asc" },
+            select: {
+              id: true,
+              name: true,
+              groupNumber: true,
+              members: { select: { playerId: true, status: true } },
+              // _count is a single SQL count(), cheap.
+              _count: { select: { pairings: { where: { status: "CONFIRMED" } } } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!season) {
+    return {
+      season: null,
+      tiers: [],
+      minTierPosition: 0,
+      maxTierPosition: 0,
+      mmrByPlayerId: new Map(),
+    };
+  }
+
+  const tierPositions = season.tiers.map((t) => t.position);
+  const minTierPosition = tierPositions.length > 0 ? Math.min(...tierPositions) : 0;
+  const maxTierPosition = tierPositions.length > 0 ? Math.max(...tierPositions) : 0;
+
+  // Load cached standings rows for every division in parallel.
+  const allDivIds = season.tiers.flatMap((t) => t.divisions.map((d) => d.id));
+  const standingsByDivisionId = new Map<string, StandingsRowsForDivision>();
+  const results = await Promise.all(
+    allDivIds.map(async (id) => [id, await loadDivisionStandings(id)] as const),
+  );
+  for (const [id, rows] of results) standingsByDivisionId.set(id, rows);
+
+  // BMP MMR column is opt-in. Skip the query entirely when hidden.
+  let mmrByPlayerId = new Map<string, number>();
+  if (opts.showBmpMmr) {
+    const allPlayerIds = season.tiers.flatMap((t) =>
+      t.divisions.flatMap((d) => d.members.map((m) => m.playerId)),
+    );
+    if (allPlayerIds.length > 0) {
+      const snapshots = await prisma.playerMmrSnapshot.findMany({
+        where: { playerId: { in: allPlayerIds } },
+        orderBy: { capturedAt: "desc" },
+        distinct: ["playerId"],
+        select: { playerId: true, rankedMmr: true },
+      });
+      mmrByPlayerId = new Map(
+        snapshots
+          .filter((s) => s.playerId && s.rankedMmr != null)
+          .map((s) => [s.playerId!, s.rankedMmr!] as const),
+      );
+    }
+  }
+
+  const tiers: StandingsTierSummary[] = season.tiers.map((t) => ({
+    id: t.id,
+    name: t.name,
+    position: t.position,
+    divisions: t.divisions.map((d): StandingsDivisionSummary => ({
+      id: d.id,
+      name: d.name,
+      groupNumber: d.groupNumber,
+      activeMemberIds: d.members.filter((m) => m.status === "ACTIVE").map((m) => m.playerId),
+      droppedMemberIds: d.members.filter((m) => m.status === "DROPPED").map((m) => m.playerId),
+      playedMatches: d._count.pairings,
+      rows: standingsByDivisionId.get(d.id) ?? [],
+    })),
+  }));
+
+  return {
+    season: { id: season.id, name: season.name },
+    tiers,
+    minTierPosition,
+    maxTierPosition,
+    mmrByPlayerId,
+  };
+}
