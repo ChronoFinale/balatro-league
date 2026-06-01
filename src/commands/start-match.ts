@@ -9,7 +9,7 @@ import {
 import { activePublicSeason } from "../active-season.js";
 import { actorFromInteractionUser, recordAudit } from "../audit.js";
 import { prisma } from "../db.js";
-import { getLeagueSettings } from "../league-settings.js";
+import { getLeagueSettingsForSeason } from "../league-settings.js";
 import { presetForSeason, seedDefaultPresetIfEmpty } from "../match-config.js";
 import { renderMatch } from "../match-render.js";
 import { getOrCreatePlayer } from "../players.js";
@@ -142,7 +142,7 @@ export const startMatch: SlashCommand = {
     // Create the session — expiresAt is DB-backed so it survives bot restarts.
     // The accept handler checks it before doing anything else; the boot sweep
     // (match-sweep.ts) also cleans up expired invites we never saw a click on.
-    const settings = await getLeagueSettings();
+    const settings = await getLeagueSettingsForSeason(season.id);
     const expiresAt = new Date(Date.now() + settings.matchInviteExpiryMinutes * 60 * 1000);
     const session = await prisma.matchSession.create({
       data: {

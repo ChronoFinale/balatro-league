@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { loadAdminSeasonDetail } from "@/lib/loaders/admin";
+import { prisma } from "@/lib/prisma";
 import { SiteNav } from "@/components/SiteNav";
 import { AdminNav } from "@/components/AdminNav";
 import { SeasonDeckPresetPicker } from "@/components/SeasonDeckPresetPicker";
@@ -20,6 +21,7 @@ import {
   setSeasonPreset,
   setSeasonVisibility,
 } from "../actions";
+import { setSeasonRulesTemplate } from "../../settings/actions";
 import { archiveSeasonChannels, awardSeasonChampionRoles, bootstrapSeasonDiscord, setSeasonDiscordCategory, setSeasonResultsChannel, setSeasonResultsWebhook, stripSeasonDivisionRoles } from "../bootstrap-actions";
 import { cloneSeasonAsDraft } from "../clone-actions";
 
@@ -35,6 +37,12 @@ export default async function SeasonDetailPage({
   await requireAdmin();
   const { id } = await params;
   const { imported } = await searchParams;
+  // Loaded inline (small table, cheap query) — not worth threading
+  // through loadAdminSeasonDetail just for this picker.
+  const rulesTemplates = await prisma.leagueRulesTemplate.findMany({
+    orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+    select: { id: true, name: true, isDefault: true },
+  });
   const data = await loadAdminSeasonDetail(id, {
     listGuildTextChannels,
     guildId: process.env.DISCORD_GUILD_ID,
@@ -129,6 +137,20 @@ export default async function SeasonDetailPage({
               saveAction={setSeasonPreset}
             />
           </div>
+          <form action={setSeasonRulesTemplate} style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            <input type="hidden" name="seasonId" value={season.id} />
+            <label className="muted" style={{ fontSize: 12 }}>Rules template:</label>
+            <select name="leagueRulesTemplateId" defaultValue={season.leagueRulesTemplateId ?? ""} style={{ fontSize: 12 }}>
+              <option value="">— Use default —</option>
+              {rulesTemplates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.isDefault ? "★ " : ""}{t.name}
+                </option>
+              ))}
+            </select>
+            <button type="submit" className="secondary" style={{ fontSize: 11 }}>Save</button>
+            <Link href="/admin/settings" className="muted" style={{ fontSize: 11 }}>Manage templates →</Link>
+          </form>
           <details style={{ marginTop: 8 }}>
             <summary className="muted" style={{ cursor: "pointer", fontSize: 12 }}>Discord overrides for this season</summary>
             <div style={{ display: "grid", gap: 8, marginTop: 8 }}>

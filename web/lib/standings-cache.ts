@@ -3,7 +3,7 @@
 // round trip. Same DB so writes from either side stay in sync.
 
 import { prisma } from "@/lib/prisma";
-import { getLeagueSettings } from "@/lib/league-settings";
+import { getLeagueSettingsForSeason } from "@/lib/league-settings";
 import { computeStandings, type StandingRow } from "@/lib/standings";
 
 interface CachedRow {
@@ -36,7 +36,7 @@ export async function recomputeDivisionStandings(divisionId: string): Promise<vo
     },
   });
   if (!div) return;
-  const { scoring } = await getLeagueSettings();
+  const { scoring } = await getLeagueSettingsForSeason(div.seasonId);
   const rows = computeStandings(div.members.map((m) => m.player), div.pairings, div.shootouts, scoring);
   const payload: CachedRow[] = rows.map((r) => ({
     playerId: r.player.id,
@@ -71,7 +71,7 @@ export async function loadDivisionStandings(divisionId: string): Promise<Standin
       },
     });
     if (!div) return [];
-    const { scoring } = await getLeagueSettings();
+    const { scoring } = await getLeagueSettingsForSeason(div.seasonId);
     const rows = computeStandings(div.members.map((m) => m.player), div.pairings, div.shootouts, scoring);
     const payload: CachedRow[] = rows.map((r) => ({
       playerId: r.player.id,

@@ -10,7 +10,7 @@
 // the read that depends on it, not buried in the page's render flow.
 
 import { prisma } from "@/lib/prisma";
-import { getLeagueSettings, type ScoringConfig } from "@/lib/league-settings";
+import { getLeagueSettingsForSeason, type ScoringConfig } from "@/lib/league-settings";
 
 export interface MeStandingsRow {
   points: number;
@@ -187,7 +187,12 @@ async function deriveStandingsFromPairings(
   if (allMine.length === 0) {
     return { points: 0, wins: 0, draws: 0, losses: 0 };
   }
-  const { scoring } = await getLeagueSettings();
+  const division = await prisma.division.findUnique({
+    where: { id: divisionId },
+    select: { seasonId: true },
+  });
+  if (!division) return null;
+  const { scoring } = await getLeagueSettingsForSeason(division.seasonId);
   return tallyForPlayer(playerId, allMine, scoring);
 }
 

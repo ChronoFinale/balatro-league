@@ -1,9 +1,15 @@
 "use server";
 
-// Server action for /admin/settings. Validates input, writes all keys
-// in one transaction, invalidates the in-process settings cache, and
-// triggers a standings recompute (since scoring changes ripple through
-// every cached row).
+// Server actions for /admin/settings (league rules template manager).
+// All writes:
+//   1. Validate the input (cross-field constraint: pool - bans >= 1)
+//   2. Mutate the LeagueRulesTemplate row
+//   3. Invalidate the in-process settings cache (so the next read picks
+//      up the new values immediately on the web side; bot picks up
+//      within ~30s via its own TTL)
+//   4. Recompute standings IF the change could affect them (scoring
+//      changes) — affected divisions only, scoped to seasons that
+//      reference the template OR the default if no season specifies
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -13,73 +19,185 @@ import { invalidateLeagueSettingsCache } from "@/lib/league-settings";
 import { prisma } from "@/lib/prisma";
 import { recomputeDivisionStandings } from "@/lib/standings-cache";
 
-const CONFIG_KEYS = {
-  PointsFor20Win: "points_for_2_0_win",
-  PointsFor11Draw: "points_for_1_1_draw",
-  PointsForLoss: "points_for_loss",
-  FirstPlayerBans: "first_player_bans",
-  SecondPlayerBans: "second_player_bans",
-  MatchPoolSize: "match_pool_size",
-  MatchInviteExpiryMinutes: "match_invite_expiry_minutes",
-  ReportAutoConfirmSeconds: "report_auto_confirm_seconds",
-} as const;
+const NUMERIC_FIELDS = [
+  ["pointsFor20Win", 0],
+  ["pointsFor11Draw", 0],
+  ["pointsForLoss", 0],
+  ["firstPlayerBans", 1],
+  ["secondPlayerBans", 0],
+  ["matchPoolSize", 3],
+  ["matchInviteExpiryMinutes", 1],
+  ["reportAutoConfirmSeconds", 0],
+] as const;
 
-export async function saveLeagueSettings(formData: FormData) {
-  const { user } = await requireAdmin();
-  const updatedBy = user.discordId;
-
-  const fields: Array<[keyof typeof CONFIG_KEYS, number, number]> = [
-    ["PointsFor20Win", parseInt(String(formData.get("PointsFor20Win") ?? ""), 10), 0],
-    ["PointsFor11Draw", parseInt(String(formData.get("PointsFor11Draw") ?? ""), 10), 0],
-    ["PointsForLoss", parseInt(String(formData.get("PointsForLoss") ?? ""), 10), 0],
-    ["FirstPlayerBans", parseInt(String(formData.get("FirstPlayerBans") ?? ""), 10), 1],
-    ["SecondPlayerBans", parseInt(String(formData.get("SecondPlayerBans") ?? ""), 10), 0],
-    ["MatchPoolSize", parseInt(String(formData.get("MatchPoolSize") ?? ""), 10), 3],
-    ["MatchInviteExpiryMinutes", parseInt(String(formData.get("MatchInviteExpiryMinutes") ?? ""), 10), 1],
-    ["ReportAutoConfirmSeconds", parseInt(String(formData.get("ReportAutoConfirmSeconds") ?? ""), 10), 0],
-  ];
-  for (const [name, value, min] of fields) {
-    if (!Number.isFinite(value) || value < min) {
-      redirect(`/admin/settings?err=${encodeURIComponent(`${name} must be an integer >= ${min}`)}`);
+function parseFields(formData: FormData): { values: Record<string, number>; error: string | null } {
+  const values: Record<string, number> = {};
+  for (const [name, min] of NUMERIC_FIELDS) {
+    const raw = formData.get(name);
+    const n = parseInt(String(raw ?? ""), 10);
+    if (!Number.isFinite(n) || n < min) {
+      return { values, error: `${name} must be an integer >= ${min}` };
     }
+    values[name] = n;
   }
-  // Cross-field sanity: pool must leave at least 1 combo to pick from.
-  const first = fields.find((f) => f[0] === "FirstPlayerBans")![1];
-  const second = fields.find((f) => f[0] === "SecondPlayerBans")![1];
-  const pool = fields.find((f) => f[0] === "MatchPoolSize")![1];
-  if (pool - first - second < 1) {
-    redirect(`/admin/settings?err=${encodeURIComponent("Pool size must leave at least 1 combo after both players ban")}`);
+  const remaining = values.matchPoolSize! - values.firstPlayerBans! - values.secondPlayerBans!;
+  if (remaining < 1) {
+    return { values, error: "Pool size must leave at least 1 combo after both players ban" };
   }
+  return { values, error: null };
+}
 
-  await prisma.$transaction(
-    fields.map(([name, value]) =>
-      prisma.leagueConfig.upsert({
-        where: { key: CONFIG_KEYS[name] },
-        create: { key: CONFIG_KEYS[name], value: String(value), updatedBy },
-        update: { value: String(value), updatedBy },
-      }),
-    ),
-  );
+// Create a new template OR update an existing one (when `id` present).
+// Caller form must include all numeric fields plus `name`.
+export async function saveRulesTemplate(formData: FormData) {
+  const { user } = await requireAdmin();
+  const id = String(formData.get("id") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) redirect("/admin/settings?err=name-required");
+
+  const { values, error } = parseFields(formData);
+  if (error) redirect(`/admin/settings?err=${encodeURIComponent(error)}`);
+
+  const data = { name, ...values };
+  let resultId: string;
+  if (id) {
+    const updated = await prisma.leagueRulesTemplate.update({ where: { id }, data });
+    resultId = updated.id;
+  } else {
+    const created = await prisma.leagueRulesTemplate.create({ data });
+    resultId = created.id;
+  }
   invalidateLeagueSettingsCache();
   recordAudit({
     actor: actorFromAdminUser(user),
-    action: "league-settings.save",
-    summary: "Updated league rules (scoring + ban policy)",
-    metadata: Object.fromEntries(fields.map(([name, value]) => [name, value])),
+    action: id ? "rules-template.update" : "rules-template.create",
+    targetType: "LeagueRulesTemplate",
+    targetId: resultId,
+    summary: `${id ? "Updated" : "Created"} rules template "${name}"`,
+    metadata: values,
   });
 
-  // Scoring change ⇒ standings cache is now stale. Recompute every
-  // active-season division so /standings reflects the new rules
-  // without waiting for the next pairing write.
-  const activeDivisions = await prisma.division.findMany({
-    where: { season: { isActive: true } },
+  // Scoring change can ripple into standings. Recompute every division
+  // referencing this template — and if it's the default, also any
+  // season that doesn't pick a specific template.
+  const tpl = await prisma.leagueRulesTemplate.findUnique({ where: { id: resultId } });
+  const affectedDivisions = await prisma.division.findMany({
+    where: tpl?.isDefault
+      ? {
+          OR: [
+            { season: { leagueRulesTemplateId: resultId } },
+            { season: { leagueRulesTemplateId: null, isActive: true } },
+          ],
+        }
+      : { season: { leagueRulesTemplateId: resultId } },
     select: { id: true },
   });
-  for (const d of activeDivisions) {
+  for (const d of affectedDivisions) {
     await recomputeDivisionStandings(d.id).catch(() => {});
   }
 
   revalidatePath("/admin/settings");
   revalidatePath("/standings");
   redirect("/admin/settings?ok=1");
+}
+
+// Mark a template as the new default; clear isDefault on every other
+// template in a single transaction so there's always exactly one.
+export async function setDefaultRulesTemplate(formData: FormData) {
+  const { user } = await requireAdmin();
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return;
+  const tpl = await prisma.leagueRulesTemplate.findUnique({ where: { id } });
+  if (!tpl) return;
+  await prisma.$transaction([
+    prisma.leagueRulesTemplate.updateMany({ where: { isDefault: true }, data: { isDefault: false } }),
+    prisma.leagueRulesTemplate.update({ where: { id }, data: { isDefault: true } }),
+  ]);
+  invalidateLeagueSettingsCache();
+  recordAudit({
+    actor: actorFromAdminUser(user),
+    action: "rules-template.set-default",
+    targetType: "LeagueRulesTemplate",
+    targetId: id,
+    summary: `Set "${tpl.name}" as the default rules template`,
+  });
+  // Standings of seasons that fall through to the default will now
+  // resolve differently. Recompute the active-season divisions that
+  // don't pick a specific template.
+  const fallthroughDivs = await prisma.division.findMany({
+    where: { season: { leagueRulesTemplateId: null, isActive: true } },
+    select: { id: true },
+  });
+  for (const d of fallthroughDivs) {
+    await recomputeDivisionStandings(d.id).catch(() => {});
+  }
+  revalidatePath("/admin/settings");
+  revalidatePath("/standings");
+}
+
+// Delete a template. Refuses if it's the default OR if any season
+// references it (would force a silent rules change on those seasons).
+export async function deleteRulesTemplate(formData: FormData) {
+  const { user } = await requireAdmin();
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return;
+  const tpl = await prisma.leagueRulesTemplate.findUnique({
+    where: { id },
+    include: { _count: { select: { seasons: true } } },
+  });
+  if (!tpl) return;
+  if (tpl.isDefault) {
+    redirect(`/admin/settings?err=${encodeURIComponent("Can't delete the default template — set another as default first.")}`);
+  }
+  if (tpl._count.seasons > 0) {
+    redirect(`/admin/settings?err=${encodeURIComponent(`Template is used by ${tpl._count.seasons} season(s) — point them elsewhere first.`)}`);
+  }
+  await prisma.leagueRulesTemplate.delete({ where: { id } });
+  invalidateLeagueSettingsCache();
+  recordAudit({
+    actor: actorFromAdminUser(user),
+    action: "rules-template.delete",
+    targetType: "LeagueRulesTemplate",
+    targetId: id,
+    summary: `Deleted rules template "${tpl.name}"`,
+  });
+  revalidatePath("/admin/settings");
+}
+
+// Per-season picker. Lives here rather than in /admin/seasons so the
+// rules-template-related actions are all colocated.
+export async function setSeasonRulesTemplate(formData: FormData) {
+  const { user } = await requireAdmin();
+  const seasonId = String(formData.get("seasonId") ?? "").trim();
+  const templateIdRaw = String(formData.get("leagueRulesTemplateId") ?? "").trim();
+  if (!seasonId) return;
+  const leagueRulesTemplateId = templateIdRaw === "" ? null : templateIdRaw;
+  const season = await prisma.season.findUnique({ where: { id: seasonId }, select: { name: true } });
+  await prisma.season.update({ where: { id: seasonId }, data: { leagueRulesTemplateId } });
+  invalidateLeagueSettingsCache();
+  if (season) {
+    let templateName = "default";
+    if (leagueRulesTemplateId) {
+      const tpl = await prisma.leagueRulesTemplate.findUnique({ where: { id: leagueRulesTemplateId }, select: { name: true } });
+      templateName = tpl?.name ?? leagueRulesTemplateId;
+    }
+    recordAudit({
+      actor: actorFromAdminUser(user),
+      action: "season.set-rules-template",
+      targetType: "Season",
+      targetId: seasonId,
+      summary: `"${season.name}" rules template: ${templateName}`,
+      metadata: { leagueRulesTemplateId },
+    });
+  }
+  // Recompute this season's standings since scoring may have changed.
+  const divisions = await prisma.division.findMany({
+    where: { seasonId },
+    select: { id: true },
+  });
+  for (const d of divisions) {
+    await recomputeDivisionStandings(d.id).catch(() => {});
+  }
+  revalidatePath(`/admin/seasons/${seasonId}`);
+  revalidatePath("/standings");
 }

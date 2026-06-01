@@ -1,23 +1,20 @@
-// Web-side mirror of src/league-settings.ts. Same defaults, same cache
-// TTL, same validation — keeps the two surfaces (Discord report flow,
-// web report form + standings page) reading consistent rules.
+// Reads the league rules — scoring + ban policy + timeouts — from
+// LeagueRulesTemplate. Templates replace the old per-key LeagueConfig
+// rows so admin can save multiple named rule sets and pick one per
+// season (e.g. "Standard" for the main league, "Casual" for a relaxed
+// off-season run).
 //
-// Two separate caches (one per Node process) is fine: TTL is short and
-// admin writes call invalidateLeagueSettingsCache() on the side they
-// wrote from. The other side picks up the change within TTL_MS.
+// Two callers:
+//   getLeagueSettings()                — the default template (for
+//                                        flows with no season context)
+//   getLeagueSettingsForSeason(id)     — the season's specific template,
+//                                        falls back to default
+//
+// Hardcoded DEFAULTS still exist as the floor when no template exists
+// at all (fresh DB before the migration seeded one).
 
+import type { LeagueRulesTemplate } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-
-const LeagueConfigKey = {
-  PointsFor20Win: "points_for_2_0_win",
-  PointsFor11Draw: "points_for_1_1_draw",
-  PointsForLoss: "points_for_loss",
-  FirstPlayerBans: "first_player_bans",
-  SecondPlayerBans: "second_player_bans",
-  MatchPoolSize: "match_pool_size",
-  MatchInviteExpiryMinutes: "match_invite_expiry_minutes",
-  ReportAutoConfirmSeconds: "report_auto_confirm_seconds",
-} as const;
 
 export interface ScoringConfig {
   pointsFor20Win: number;
@@ -48,17 +45,44 @@ export const DEFAULTS: LeagueSettings = {
 
 const TTL_MS = 30 * 1000;
 // Module-level cache survives hot-reload via globalThis (Next dev otherwise
-// reinitializes it on every file change).
+// reinitializes it on every file change). Per-season cache is keyed by
+// season id; default template is the empty-string slot.
 declare global {
   // eslint-disable-next-line no-var
-  var __leagueSettingsCache: { value: LeagueSettings; expiresAt: number } | null | undefined;
+  var __leagueSettingsCache: Map<string, { value: LeagueSettings; expiresAt: number }> | null | undefined;
+}
+
+function cache(): Map<string, { value: LeagueSettings; expiresAt: number }> {
+  if (!globalThis.__leagueSettingsCache) {
+    globalThis.__leagueSettingsCache = new Map();
+  }
+  return globalThis.__leagueSettingsCache;
 }
 
 export async function getLeagueSettings(): Promise<LeagueSettings> {
-  const c = globalThis.__leagueSettingsCache;
+  const key = "";
+  const c = cache().get(key);
   if (c && c.expiresAt > Date.now()) return c.value;
-  const value = await readLeagueSettingsFresh();
-  globalThis.__leagueSettingsCache = { value, expiresAt: Date.now() + TTL_MS };
+  const template = await prisma.leagueRulesTemplate.findFirst({ where: { isDefault: true } });
+  const value = templateToSettings(template);
+  cache().set(key, { value, expiresAt: Date.now() + TTL_MS });
+  return value;
+}
+
+export async function getLeagueSettingsForSeason(seasonId: string): Promise<LeagueSettings> {
+  const c = cache().get(seasonId);
+  if (c && c.expiresAt > Date.now()) return c.value;
+  const season = await prisma.season.findUnique({
+    where: { id: seasonId },
+    select: { leagueRulesTemplate: true },
+  });
+  // Fall back to default template when the season hasn't picked one.
+  // Doing the second lookup here (vs always loading default at season
+  // load) avoids the round-trip when the season already has a template.
+  const template = season?.leagueRulesTemplate
+    ?? await prisma.leagueRulesTemplate.findFirst({ where: { isDefault: true } });
+  const value = templateToSettings(template);
+  cache().set(seasonId, { value, expiresAt: Date.now() + TTL_MS });
   return value;
 }
 
@@ -66,45 +90,31 @@ export function invalidateLeagueSettingsCache(): void {
   globalThis.__leagueSettingsCache = null;
 }
 
-async function readLeagueSettingsFresh(): Promise<LeagueSettings> {
-  const rows = await prisma.leagueConfig.findMany({
-    where: { key: { in: Object.values(LeagueConfigKey) } },
-  });
-  const byKey = new Map(rows.map((r) => [r.key, r.value]));
-  const readInt = (key: string, fallback: number, minInclusive: number): number => {
-    const raw = byKey.get(key);
-    if (raw == null) return fallback;
-    const n = parseInt(raw, 10);
-    if (!Number.isFinite(n) || n < minInclusive) {
-      console.warn(`[league-settings] ${key}=${raw} out of range; using default ${fallback}`);
-      return fallback;
-    }
-    return n;
-  };
-  const scoring: ScoringConfig = {
-    pointsFor20Win: readInt(LeagueConfigKey.PointsFor20Win, DEFAULTS.scoring.pointsFor20Win, 0),
-    pointsFor11Draw: readInt(LeagueConfigKey.PointsFor11Draw, DEFAULTS.scoring.pointsFor11Draw, 0),
-    pointsForLoss: readInt(LeagueConfigKey.PointsForLoss, DEFAULTS.scoring.pointsForLoss, 0),
-  };
-  const firstBans = readInt(LeagueConfigKey.FirstPlayerBans, DEFAULTS.matchPolicy.firstPlayerBans, 1);
-  const secondBans = readInt(LeagueConfigKey.SecondPlayerBans, DEFAULTS.matchPolicy.secondPlayerBans, 0);
-  const poolSize = readInt(LeagueConfigKey.MatchPoolSize, DEFAULTS.matchPolicy.poolSize, 3);
-  const remaining = poolSize - firstBans - secondBans;
-  let matchPolicy: MatchPolicy;
+function templateToSettings(template: LeagueRulesTemplate | null | undefined): LeagueSettings {
+  if (!template) return DEFAULTS;
+  const remaining = template.matchPoolSize - template.firstPlayerBans - template.secondPlayerBans;
   if (remaining < 1) {
     console.warn(
-      `[league-settings] match policy invalid (pool ${poolSize}, first ${firstBans}, ` +
-        `second ${secondBans}); falling back to defaults`,
+      `[league-settings] template "${template.name}" has invalid policy ` +
+        `(pool ${template.matchPoolSize}, first ${template.firstPlayerBans}, ` +
+        `second ${template.secondPlayerBans}); falling back to hardcoded defaults`,
     );
-    matchPolicy = DEFAULTS.matchPolicy;
-  } else {
-    matchPolicy = { firstPlayerBans: firstBans, secondPlayerBans: secondBans, poolSize, picksFromRemaining: remaining };
+    return DEFAULTS;
   }
   return {
-    scoring,
-    matchPolicy,
-    matchInviteExpiryMinutes: readInt(LeagueConfigKey.MatchInviteExpiryMinutes, DEFAULTS.matchInviteExpiryMinutes, 1),
-    reportAutoConfirmSeconds: readInt(LeagueConfigKey.ReportAutoConfirmSeconds, DEFAULTS.reportAutoConfirmSeconds, 0),
+    scoring: {
+      pointsFor20Win: template.pointsFor20Win,
+      pointsFor11Draw: template.pointsFor11Draw,
+      pointsForLoss: template.pointsForLoss,
+    },
+    matchPolicy: {
+      firstPlayerBans: template.firstPlayerBans,
+      secondPlayerBans: template.secondPlayerBans,
+      poolSize: template.matchPoolSize,
+      picksFromRemaining: remaining,
+    },
+    matchInviteExpiryMinutes: template.matchInviteExpiryMinutes,
+    reportAutoConfirmSeconds: template.reportAutoConfirmSeconds,
   };
 }
 

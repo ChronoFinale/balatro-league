@@ -159,6 +159,14 @@ model Season {
   matchConfigPresetId String?
   matchConfigPreset   MatchConfigPreset? @relation(fields: [matchConfigPresetId], references: [id], onDelete: SetNull)
 
+  // League rules template for THIS season (scoring + ban policy +
+  // timeouts). Null = use the global default template. Once a season
+  // starts, in-flight matches stamp their policy onto the session at
+  // accept time so mid-season template changes don't break ongoing
+  // play — but new sessions read the season's template.
+  leagueRulesTemplateId String?
+  leagueRulesTemplate   LeagueRulesTemplate? @relation(fields: [leagueRulesTemplateId], references: [id], onDelete: SetNull)
+
   // Discord category to nest per-division channels under. Set once per season
   // via /admin/seasons. If null, division channels are created at top level.
   discordCategoryId   String?
@@ -580,6 +588,42 @@ model Pairing {
 
   @@unique([divisionId, playerAId, playerBId])
   @@index([divisionId, status])
+}
+
+// Named bundle of league rules: scoring + ban policy + timeouts.
+// Replaces the legacy per-key LeagueConfig values for these fields.
+// Exactly one row has isDefault=true at any time — that's the one used
+// when a season hasn't picked a specific template (and the one
+// /admin/settings edits "for everyone"). Admin can create alternates
+// (e.g. "Casual Rules", "Strict 2-Ban") and pick per season on the
+// season detail page.
+model LeagueRulesTemplate {
+  id                       String   @id @default(cuid())
+  name                     String   @unique
+  isDefault                Boolean  @default(false)
+
+  // Scoring per pairing — see web/lib/league-settings.ts for the
+  // pointsFromGames math that consumes these.
+  pointsFor20Win           Int      @default(3)
+  pointsFor11Draw          Int      @default(1)
+  pointsForLoss            Int      @default(0)
+
+  // Ban/pick policy. Pool size minus first+second bans must leave at
+  // least 1 combo for the picker; UI validates on save.
+  firstPlayerBans          Int      @default(4)
+  secondPlayerBans         Int      @default(3)
+  matchPoolSize            Int      @default(9)
+
+  // Timeouts
+  matchInviteExpiryMinutes Int      @default(5)
+  reportAutoConfirmSeconds Int      @default(120)
+
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  seasons                  Season[]
+
+  @@index([isDefault])
 }
 
 // Append-only audit log of admin actions + key system events. Read by

@@ -24,7 +24,7 @@ import { isCanonicalDeck } from "../balatro-info.js";
 import { resolveChallengesChannelId } from "../challenges-channel.js";
 import { prisma } from "../db.js";
 import { env } from "../env.js";
-import { getLeagueSettings } from "../league-settings.js";
+import { getLeagueSettings, getLeagueSettingsForSeason } from "../league-settings.js";
 import { generatePool, presetForDivision } from "../match-config.js";
 import { renderMatch } from "../match-render.js";
 import { recomputeDivisionStandings } from "../standings-cache.js";
@@ -456,7 +456,11 @@ async function handleAccept(interaction: ButtonInteraction, session: MatchSessio
   // Read the current league settings once and stamp the resulting
   // policy onto the session — that snapshot stays valid for this
   // match's full lifetime even if an admin changes the config later.
-  const settings = await getLeagueSettings();
+  // League matches use the season's template; casual /challenge has
+  // no season context so it reads the global default.
+  const settings = session.divisionId
+    ? await getLeagueSettingsForSeason((await prisma.division.findUnique({ where: { id: session.divisionId }, select: { seasonId: true } }))!.seasonId)
+    : await getLeagueSettings();
   // For custom-combo, pool is the single agreed combo; bans don't apply
   // but we keep the policy stamp consistent so legacy callers don't break.
   const game1Pool = customCombo
