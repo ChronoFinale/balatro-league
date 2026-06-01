@@ -8,7 +8,7 @@ import {
   lockChannelForEveryone,
   setChannelParent,
 } from "@/lib/discord";
-import { enqueueBootstrapDivision } from "@/lib/queue";
+import { enqueueBootstrapDivision, enqueueStripDivisionRole } from "@/lib/queue";
 
 // Save (or clear) the Discord category id a season's division channels
 // should be nested under.
@@ -167,5 +167,56 @@ export async function archiveSeasonChannels(formData: FormData) {
   }
 
   revalidatePath("/admin/seasons");
+  revalidatePath(`/admin/seasons/${id}`);
+}
+
+// Strip the per-division role from every member of every division in a
+// season. Fans out as one pg-boss job per (member, role) so a 100-player
+// season doesn't slam Discord with serial role-remove calls. Each job
+// is idempotent — if the player no longer has the role (left guild,
+// already removed), the call is a no-op.
+//
+// Doesn't delete the roles themselves — leaves them around so the
+// archived season channels still have a permission anchor. Admin can
+// delete the orphan roles manually if they want a cleaner role list.
+export async function stripSeasonDivisionRoles(formData: FormData) {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const guildId = process.env.DISCORD_GUILD_ID;
+  if (!guildId) {
+    console.warn("DISCORD_GUILD_ID not set; skipping role cleanup");
+    return;
+  }
+  const season = await prisma.season.findUnique({
+    where: { id },
+    include: {
+      divisions: {
+        where: { discordRoleId: { not: null } },
+        include: {
+          members: {
+            where: { status: "ACTIVE" },
+            include: { player: { select: { discordId: true } } },
+          },
+        },
+      },
+    },
+  });
+  if (!season) return;
+  let queued = 0;
+  for (const div of season.divisions) {
+    if (!div.discordRoleId) continue;
+    for (const m of div.members) {
+      await enqueueStripDivisionRole({
+        guildId,
+        discordId: m.player.discordId,
+        roleId: div.discordRoleId,
+      }).catch((err) =>
+        console.warn(`[strip-role] enqueue failed for ${m.player.discordId} in ${div.id}:`, err),
+      );
+      queued++;
+    }
+  }
+  console.log(`[strip-role] queued ${queued} role-remove jobs for season ${season.name}`);
   revalidatePath(`/admin/seasons/${id}`);
 }

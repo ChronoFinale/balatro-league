@@ -31,6 +31,7 @@ import {
   createGuildRole,
   createGuildTextChannel,
   postChannelMessage,
+  removeGuildMemberRole as removeGuildMemberRoleViaBot,
 } from "./discord-helpers.js";
 import { getConfig, setConfig, LeagueConfigKey } from "./league-config.js";
 import { buildLeagueExport, exportFilename, serializeExport } from "./league-export.js";
@@ -62,6 +63,7 @@ export async function initQueue(): Promise<void> {
   await boss.createQueue("report.auto-confirm");
   await boss.createQueue("archive.stale-threads");
   await boss.createQueue("devops.queue-stall-check");
+  await boss.createQueue("cleanup.strip-role");
   await boss.createQueue("dispute.spawn-thread");
   console.log("[pg-boss] queue started");
 
@@ -199,6 +201,22 @@ export async function initQueue(): Promise<void> {
   // fire at once. Idempotent.
   await boss.schedule("archive.stale-threads", "15 * * * *");
   console.log("[pg-boss] scheduled archive.stale-threads @ :15 hourly");
+
+  // Worker: strip ONE division role from ONE player. Fanned out by the
+  // end-of-season cleanup admin action so a 100-player season doesn't
+  // ddos Discord with serial role-remove calls. Idempotent — Discord
+  // returns 404 if the player no longer has the role, which the helper
+  // swallows.
+  await boss.work<StripRoleJob>(
+    "cleanup.strip-role",
+    { batchSize: 3, pollingIntervalSeconds: 2 },
+    async (jobs: Job<StripRoleJob>[]) => {
+      for (const job of jobs) {
+        const { guildId, discordId, roleId } = job.data;
+        await removeGuildMemberRoleViaBot(guildId, discordId, roleId);
+      }
+    },
+  );
 
   // Worker: scan pg-boss for jobs stuck in 'created' state >5min and
   // post to #devops. Pings DEVOPS role bindings ONLY — distinct from
@@ -467,6 +485,12 @@ function previousBmpSeason(s: string): string | null {
 interface DmJob {
   discordId: string;
   content: string;
+}
+
+interface StripRoleJob {
+  guildId: string;
+  discordId: string;
+  roleId: string;
 }
 
 interface BootstrapDivisionJob {

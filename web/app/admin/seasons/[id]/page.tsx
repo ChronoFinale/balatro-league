@@ -20,7 +20,7 @@ import {
   setSeasonPreset,
   setSeasonVisibility,
 } from "../actions";
-import { archiveSeasonChannels, bootstrapSeasonDiscord, setSeasonDiscordCategory, setSeasonResultsChannel, setSeasonResultsWebhook } from "../bootstrap-actions";
+import { archiveSeasonChannels, bootstrapSeasonDiscord, setSeasonDiscordCategory, setSeasonResultsChannel, setSeasonResultsWebhook, stripSeasonDivisionRoles } from "../bootstrap-actions";
 import { cloneSeasonAsDraft } from "../clone-actions";
 
 export const dynamic = "force-dynamic";
@@ -330,6 +330,23 @@ export default async function SeasonDetailPage({
             <form action={archiveSeasonChannels}>
               <input type="hidden" name="id" value={season.id} />
               <button type="submit" className="secondary">Archive division channels →</button>
+            </form>
+          </div>
+        )}
+
+        {season.endedAt && season.divisions.some((d) => d.discordRoleId) && (
+          <div className="card" style={{ marginTop: 16 }}>
+            <strong>🧹 Strip division roles</strong>
+            <p className="muted" style={{ fontSize: 12 }}>
+              Remove the per-division Discord role from every player who was in this season.
+              Stops role accumulation across seasons. Fans out as one job per (player, role)
+              through the queue — gentle on Discord, takes a few minutes for a full season.
+              The roles themselves stay (so archived channels keep their permission anchor);
+              delete them manually in Discord settings if you want a totally clean role list.
+            </p>
+            <form action={stripSeasonDivisionRoles}>
+              <input type="hidden" name="id" value={season.id} />
+              <button type="submit" className="secondary">Strip roles from players →</button>
             </form>
           </div>
         )}

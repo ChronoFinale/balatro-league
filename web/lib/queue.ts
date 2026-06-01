@@ -107,3 +107,16 @@ export async function enqueueDisputeSpawnThread(pairingId: string): Promise<void
   await ensureStarted();
   await getBoss().send("dispute.spawn-thread", { pairingId }, { retryLimit: 2 });
 }
+
+// End-of-season role cleanup — one job per (member, role) so a season
+// with 100 members fans out cleanly through the existing pg-boss
+// rate-limited worker rather than hammering Discord serially. Idempotent
+// per-job: if the player no longer has the role, the call is a no-op.
+export async function enqueueStripDivisionRole(job: {
+  guildId: string;
+  discordId: string;
+  roleId: string;
+}): Promise<void> {
+  await ensureStarted();
+  await getBoss().send("cleanup.strip-role", job, { retryLimit: 2, retryBackoff: true });
+}

@@ -49,6 +49,27 @@ export async function addGuildMemberRole(
   }
 }
 
+// Remove ONE role from ONE member. Idempotent — if the player isn't in
+// the guild anymore (left/kicked) or doesn't have the role, the call
+// silently succeeds. Used by the end-of-season role-cleanup fanout.
+export async function removeGuildMemberRole(
+  guildId: string,
+  userId: string,
+  roleId: string,
+): Promise<boolean> {
+  try {
+    const guild = await getGuild(guildId);
+    const member = await guild.members.fetch(userId).catch(() => null);
+    if (!member) return true; // player left the guild — nothing to do
+    if (!member.roles.cache.has(roleId)) return true; // already doesn't have it
+    await member.roles.remove(roleId);
+    return true;
+  } catch (err) {
+    console.warn(`[bot] removeGuildMemberRole(${userId}, ${roleId}) failed:`, err);
+    return false;
+  }
+}
+
 export async function ensureGuildCategory(
   guildId: string,
   name: string,
