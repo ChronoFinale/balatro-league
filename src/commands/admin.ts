@@ -18,7 +18,7 @@ import {
 import { announceResult } from "../announce.js";
 import { prisma } from "../db.js";
 import { buildLeagueExport, exportFilename, serializeExport } from "../league-export.js";
-import { requireAdmin } from "../permissions.js";
+import { requireAdmin, requireHelper } from "../permissions.js";
 import { getOrCreatePlayer } from "../players.js";
 import { gamesFromResult, parsePairingResult } from "../scoring.js";
 import { recomputeDivisionStandings } from "../standings-cache.js";
@@ -88,11 +88,20 @@ export const admin: SlashCommand = {
     ),
 
   async execute(interaction: ChatInputCommandInteraction) {
-    if (!(await requireAdmin(interaction))) return;
     const sub = interaction.options.getSubcommand();
-    if (sub === "record-set") return recordPairing(interaction);
+    // Helper+ subcommands: dispute mediation work. League Helpers can
+    // join match channels and record verbally-agreed results so they
+    // can resolve a dispute end-to-end without escalating to an Admin.
+    if (sub === "join-match" || sub === "record-set") {
+      if (!(await requireHelper(interaction))) return;
+      if (sub === "join-match") return joinMatch(interaction);
+      if (sub === "record-set") return recordPairing(interaction);
+    }
+    // Admin+ subcommands: anything that overrides existing results or
+    // exports sensitive data. Helpers can't accidentally rewrite a
+    // confirmed pairing or dump league state.
+    if (!(await requireAdmin(interaction))) return;
     if (sub === "override-result") return forceResult(interaction);
-    if (sub === "join-match") return joinMatch(interaction);
     if (sub === "export-results") return exportResults(interaction);
   },
 };

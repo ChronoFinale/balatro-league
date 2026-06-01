@@ -9,7 +9,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { fetchGuildMember } from "@/lib/discord";
 
-const TIER_RANK = { OWNER: 3, ADMIN: 2, MOD: 1 } as const;
+const TIER_RANK = { OWNER: 3, ADMIN: 2, HELPER: 1 } as const;
 type Tier = keyof typeof TIER_RANK;
 
 export async function tierOfCurrentUser(): Promise<Tier | null> {

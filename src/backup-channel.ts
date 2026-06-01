@@ -32,13 +32,13 @@ export async function ensureBackupChannel(): Promise<void> {
     console.warn("[backup-channel] DISCORD_GUILD_ID not set; skipping auto-create");
     return;
   }
-  // Restrict view + send to ADMIN / MOD role bindings. If no role
+  // Restrict view + send to ADMIN / HELPER role bindings. If no role
   // bindings exist yet (fresh install), the channel is created with
   // only @everyone-deny — bot itself is auto-allowed via the helper.
   // Admin can then bind roles via /league set-role and the channel
   // remains the canonical backup destination.
   const staffBindings = await prisma.roleBinding.findMany({
-    where: { tier: { in: ["ADMIN", "MOD"] } },
+    where: { tier: { in: ["ADMIN", "HELPER"] } },
   });
   const staffRoleIds = staffBindings.map((b) => b.discordRoleId);
   const category = await ensureGuildCategory(env.DISCORD_GUILD_ID, "🃏 Balatro League");

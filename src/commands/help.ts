@@ -21,7 +21,7 @@ const ADMIN_COMMANDS = [
   { cmd: "/admin record-set @p1 @p2 result", desc: "Manually record a set (e.g. agreed in DMs but never reported)" },
   { cmd: "/admin override-result set-id result reason", desc: "Force-resolve a disputed set" },
   { cmd: "/league bootstrap-server", desc: "One-time setup: creates category, channels, and roles" },
-  { cmd: "/league set-role tier role", desc: "Bind a Discord role to ADMIN/MOD/OWNER tier" },
+  { cmd: "/league set-role tier role", desc: "Bind a Discord role to OWNER/ADMIN/HELPER tier" },
   { cmd: "/league unset-role role", desc: "Remove a role's permission binding" },
   { cmd: "/league list-roles", desc: "Show every role currently bound to a tier" },
   { cmd: "/league setup-results-webhook", desc: "Auto-create a webhook for results announces (needs Manage Webhooks)" },

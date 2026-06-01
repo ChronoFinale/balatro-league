@@ -41,7 +41,7 @@ export const league: SlashCommand = {
             .addChoices(
               { name: "OWNER", value: "OWNER" },
               { name: "ADMIN", value: "ADMIN" },
-              { name: "MOD", value: "MOD" },
+              { name: "HELPER", value: "HELPER" },
             ),
         )
         .addRoleOption((opt) =>
@@ -221,7 +221,7 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
     }
     const playerRole = await ensureRole("League Player", "Created by /league bootstrap-server");
     const adminRole = await ensureRole("League Admin", "Created by /league bootstrap-server — bound to bot's ADMIN tier");
-    const modRole = await ensureRole("League Mod", "Created by /league bootstrap-server — bound to bot's MOD tier");
+    const helperRole = await ensureRole("League Helper", "Created by /league bootstrap-server — bound to bot's HELPER tier");
 
     // Wire the management roles to the bot's permission tiers so anyone
     // assigned the Discord role gets the matching permission on the web
@@ -233,9 +233,9 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
         update: { tier: "ADMIN" },
       }),
       prisma.roleBinding.upsert({
-        where: { discordRoleId: modRole.id },
-        create: { discordRoleId: modRole.id, tier: "MOD", createdBy: interaction.user.id },
-        update: { tier: "MOD" },
+        where: { discordRoleId: helperRole.id },
+        create: { discordRoleId: helperRole.id, tier: "HELPER", createdBy: interaction.user.id },
+        update: { tier: "HELPER" },
       }),
     ]);
 
@@ -252,9 +252,9 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       `🎭 Roles:`,
       `• <@&${playerRole.id}> — League Player`,
       `• <@&${adminRole.id}> — League Admin (bound to ADMIN tier)`,
-      `• <@&${modRole.id}> — League Mod (bound to MOD tier)`,
+      `• <@&${helperRole.id}> — League Helper (bound to HELPER tier)`,
       ``,
-      `Assign Admin/Mod to staff in **Server Settings → Members** and they immediately get the matching permissions on www.balatroleague.com.`,
+      `Assign Admin/Helper to staff in **Server Settings → Members** and they immediately get the matching permissions on www.balatroleague.com.`,
       ``,
       `**Next**: set this env var on your bot host so result announcements land in the right channel:`,
       `\`RESULTS_CHANNEL_ID=${resultsChan.id}\``,

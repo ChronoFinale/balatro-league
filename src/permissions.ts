@@ -3,7 +3,12 @@
 //   2. Env fallbacks (LEAGUE_OWNER_DISCORD_ID, LEAGUE_ADMIN_ROLE_ID) — kept so a fresh install
 //      with no bindings yet can still bootstrap, and so the owner can never lock themselves out.
 //
-// Tier ordering: OWNER > ADMIN > MOD. A higher tier always satisfies a lower-tier requirement.
+// Tier ordering: OWNER > ADMIN > HELPER. A higher tier always satisfies a lower-tier requirement.
+//
+// Role split:
+//   OWNER  — full power including destructive ops + role binding
+//   ADMIN  — season/division CRUD, force-resolve disputes, exports
+//   HELPER — dispute mediation: join match channels, record verbal results
 
 import type { PermissionTier } from "@prisma/client";
 import type { ChatInputCommandInteraction, GuildMember } from "discord.js";
@@ -13,7 +18,7 @@ import { env } from "./env.js";
 const TIER_RANK: Record<PermissionTier, number> = {
   OWNER: 3,
   ADMIN: 2,
-  MOD: 1,
+  HELPER: 1,
 };
 
 // Compute the highest tier a Discord user holds, given their guild roles.
@@ -70,6 +75,10 @@ export async function requireTier(
     flags: 64,
   });
   return false;
+}
+
+export async function requireHelper(interaction: ChatInputCommandInteraction): Promise<boolean> {
+  return requireTier(interaction, "HELPER");
 }
 
 export async function requireAdmin(interaction: ChatInputCommandInteraction): Promise<boolean> {
