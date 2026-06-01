@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
+import { loadAdminSeasonDetail } from "@/lib/loaders/admin";
 import { SiteNav } from "@/components/SiteNav";
 import { AdminNav } from "@/components/AdminNav";
 import { SeasonDeckPresetPicker } from "@/components/SeasonDeckPresetPicker";
@@ -25,26 +25,6 @@ import { cloneSeasonAsDraft } from "../clone-actions";
 
 export const dynamic = "force-dynamic";
 
-function parseTemplateConfig(json: string) {
-  try {
-    const arr = JSON.parse(json);
-    if (!Array.isArray(arr)) return [];
-    return arr.map((e: { name?: unknown; divisionCount?: unknown }) => ({
-      name: String(e?.name ?? ""),
-      divisionCount: Number(e?.divisionCount) || 1,
-    }));
-  } catch {
-    return [];
-  }
-}
-
-const DEFAULT_TIERS = [
-  { name: "Legendary", divisionCount: 1 },
-  { name: "Rare", divisionCount: 6 },
-  { name: "Uncommon", divisionCount: 6 },
-  { name: "Common", divisionCount: 6 },
-];
-
 export default async function SeasonDetailPage({
   params,
   searchParams,
@@ -55,54 +35,23 @@ export default async function SeasonDetailPage({
   await requireAdmin();
   const { id } = await params;
   const { imported } = await searchParams;
-
-  const [season, presets, defaultPreset, signupRound, templatesRaw, lastUsed] = await Promise.all([
-    prisma.season.findUnique({
-      where: { id },
-      include: {
-        tiers: { orderBy: { position: "asc" } },
-        divisions: {
-          orderBy: [{ tier: { position: "asc" } }, { groupNumber: "asc" }],
-          include: {
-            tier: true,
-            members: { include: { player: true } },
-            pairings: { where: { status: "CONFIRMED" } },
-          },
-        },
-        matchConfigPreset: true,
-      },
-    }),
-    prisma.matchConfigPreset.findMany({ orderBy: { name: "asc" } }),
-    prisma.matchConfigPreset.findUnique({ where: { name: "Default" } }),
-    prisma.signupRound.findFirst({
-      where: { resultingSeasonId: id },
-      include: { _count: { select: { signups: true } } },
-    }),
-    prisma.tierTemplate.findMany({ orderBy: [{ isLastUsed: "desc" }, { name: "asc" }] }),
-    prisma.tierTemplate.findUnique({ where: { name: "Last used" } }),
-  ]);
-
-  if (!season) notFound();
-
-  const templates = templatesRaw.map((t) => ({
-    id: t.id,
-    name: t.name,
-    config: parseTemplateConfig(t.config),
-    isLastUsed: t.isLastUsed,
-  }));
-  const initialTiers = lastUsed ? parseTemplateConfig(lastUsed.config) : DEFAULT_TIERS;
-
-  const totalMembers = season.divisions.reduce((sum, d) => sum + d.members.length, 0);
-  const totalConfirmed = season.divisions.reduce((sum, d) => sum + d.pairings.length, 0);
-  const totalExpected = season.divisions.reduce((sum, d) => {
-    const n = d.members.filter((m) => m.status === "ACTIVE").length;
-    return sum + (n < 2 ? 0 : (n * (n - 1)) / 2);
-  }, 0);
-
-  // Discord channel picker only needed if no signup round yet
-  const guildId = process.env.DISCORD_GUILD_ID;
-  const needsChannels = !signupRound && !season.endedAt;
-  const channels = needsChannels && guildId ? await listGuildTextChannels(guildId) : [];
+  const data = await loadAdminSeasonDetail(id, {
+    listGuildTextChannels,
+    guildId: process.env.DISCORD_GUILD_ID,
+  });
+  if (!data) notFound();
+  const {
+    season,
+    presets,
+    defaultPreset,
+    signupRound,
+    templates,
+    initialTiers,
+    totalMembers,
+    totalConfirmed,
+    totalExpected,
+    channels,
+  } = data;
 
   return (
     <>

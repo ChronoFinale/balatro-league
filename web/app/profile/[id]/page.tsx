@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { hasTier } from "@/lib/admin";
+import { loadProfileExtras } from "@/lib/loaders/profile-extras";
 import { getShowBmpMmr } from "@/lib/preferences";
-import { prisma } from "@/lib/prisma";
 import { loadPlayerHistory } from "@/lib/profile";
 import { tierColors } from "@/lib/tier-colors";
 import { SiteNav } from "@/components/SiteNav";
@@ -26,93 +26,21 @@ export default async function ProfilePage({
 
   const t = profile.totals;
 
-  // Viewer-owned profile? Only the profile owner can dispute their own
-  // matches. We look up the viewer's player record via Discord ID and
-  // compare against the profile's player id.
   const viewerSession = await auth();
-  const viewerDiscordId = (viewerSession?.user as { discordId?: string } | undefined)?.discordId;
-  const viewerPlayer = viewerDiscordId
-    ? await prisma.player.findUnique({ where: { discordId: viewerDiscordId }, select: { id: true } })
-    : null;
-  const isOwnProfile = !!viewerPlayer && viewerPlayer.id === profile.player.id;
-
-  // Easter egg: if this profile belongs to Sanji, render the impeach /
-  // don't-impeach poll under the totals strip. targetKey is a slug so
-  // we can add new targets later without a schema change. Detection is
-  // a case-insensitive substring on displayName so 'Sanji', 'sanji',
-  // 'Budget Sanji | JOIN PPTT!!!!' all match. Voting requires Discord
-  // OAuth login; one vote per logged-in user, switching sides updates.
-  const isSanji = profile.player.displayName.toLowerCase().includes("sanji");
-  const session = isSanji ? await auth() : null;
-  const voterDiscordId = (session?.user as { discordId?: string } | undefined)?.discordId;
-  let yesVotes = 0;
-  let noVotes = 0;
-  let myVote: "yes" | "no" | null = null;
-  if (isSanji) {
-    const counts = await prisma.easterEggVote.groupBy({
-      by: ["side"],
-      where: { targetKey: "sanji" },
-      _count: { side: true },
-    });
-    for (const c of counts) {
-      if (c.side === "yes") yesVotes = c._count.side;
-      if (c.side === "no") noVotes = c._count.side;
-    }
-    if (voterDiscordId) {
-      const mine = await prisma.easterEggVote.findUnique({
-        where: { targetKey_voterDiscordId: { targetKey: "sanji", voterDiscordId } },
-      });
-      if (mine?.side === "yes" || mine?.side === "no") myVote = mine.side;
-    }
-  }
-
-  // BMP history is opt-in via the global cookie toggle (SiteNav button).
-  // When hidden, skip the snapshot queries entirely — saves DB load when
-  // the viewer doesn't care about external rankings.
+  const viewerDiscordId =
+    (viewerSession?.user as { discordId?: string } | undefined)?.discordId ?? null;
   const showBmpMmr = await getShowBmpMmr();
-
-  // Full BMP Ranked history — one row per captured BMP season, freshest
-  // capture per season (distinct on bmpSeason, ordered by capturedAt
-  // desc). Worker auto-backfills any missing historical seasons on the
-  // next refresh, so once it runs for this player they'll have a row
-  // per season from season1 through current.
-  const bmpSeasonSnapshots = !showBmpMmr ? [] : await prisma.playerMmrSnapshot.findMany({
-    where: {
-      OR: [{ playerId: profile.player.id }, { discordId: profile.player.discordId }],
-      rankedMmr: { not: null },
-      bmpSeason: { not: null },
-    },
-    orderBy: [{ bmpSeason: "desc" }, { capturedAt: "desc" }],
-    distinct: ["bmpSeason"],
-  });
-  // Sort newest season first for display — distinct + orderBy doesn't
-  // guarantee final order in Postgres, especially with desc string sort
-  // on 'seasonN' which sorts season9 above season10 lexicographically.
-  bmpSeasonSnapshots.sort((a, b) => {
-    const aN = parseInt(a.bmpSeason?.replace(/^season/, "") ?? "0", 10);
-    const bN = parseInt(b.bmpSeason?.replace(/^season/, "") ?? "0", 10);
-    return bN - aN;
-  });
-  // Fallback: a player who's never been captured under an explicit
-  // bmpSeason (legacy data or initial fetch before BmpCurrentSeason was
-  // set) — pull their latest unlabeled snapshot so the card still renders.
-  const fallbackSnapshot = !showBmpMmr || bmpSeasonSnapshots.length > 0
-    ? null
-    : await prisma.playerMmrSnapshot.findFirst({
-        where: {
-          OR: [{ playerId: profile.player.id }, { discordId: profile.player.discordId }],
-          rankedMmr: { not: null },
-        },
-        orderBy: { capturedAt: "desc" },
-      });
-
-  // Admin-only: if the viewer is an admin, surface a record-set form scoped
-  // to this player's current division. Same opponent-filter rules as
-  // /admin/players (only unplayed opponents shown).
   const isAdmin = await hasTier("ADMIN");
-  const adminCtx = isAdmin
-    ? await loadAdminRecordContext(profile.player.id)
-    : null;
+  const { viewer, sanji, bmpSeasonSnapshots, fallbackSnapshot, adminCtx } = await loadProfileExtras({
+    profilePlayerId: profile.player.id,
+    profileDiscordId: profile.player.discordId,
+    profileDisplayName: profile.player.displayName,
+    viewerDiscordId,
+    isViewerAdmin: isAdmin,
+    showBmpMmr,
+  });
+  const isOwnProfile = viewer.isOwnProfile;
+  const { isSanji, voterDiscordId, yesVotes, noVotes, myVote } = sanji;
 
   return (
     <>
@@ -395,37 +323,3 @@ function formatBmpSeason(s: string | null): string {
   return m ? `Season ${m[1]}` : s;
 }
 
-interface AdminRecordContext {
-  divisionId: string;
-  divisionName: string;
-  opponents: Array<{ playerId: string; displayName: string }>;
-}
-
-async function loadAdminRecordContext(playerId: string): Promise<AdminRecordContext | null> {
-  const membership = await prisma.divisionMember.findFirst({
-    where: {
-      playerId,
-      status: "ACTIVE",
-      division: { season: { isActive: true } },
-    },
-    include: {
-      division: {
-        include: {
-          members: { where: { status: "ACTIVE" }, include: { player: true } },
-          pairings: { where: { status: "CONFIRMED" }, select: { playerAId: true, playerBId: true } },
-        },
-      },
-    },
-  });
-  if (!membership) return null;
-  const div = membership.division;
-  const played = new Set(
-    div.pairings
-      .filter((p) => p.playerAId === playerId || p.playerBId === playerId)
-      .map((p) => (p.playerAId === playerId ? p.playerBId : p.playerAId)),
-  );
-  const opponents = div.members
-    .filter((m) => m.playerId !== playerId && !played.has(m.playerId))
-    .map((m) => ({ playerId: m.playerId, displayName: m.player.displayName }));
-  return { divisionId: div.id, divisionName: div.name, opponents };
-}

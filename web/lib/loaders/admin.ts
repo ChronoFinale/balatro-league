@@ -579,6 +579,460 @@ export async function loadAdminPlayersListView(opts: {
   return result;
 }
 
+// ── /admin/signups/[id]/build ────────────────────────────────────────
+
+export interface BuildSeasonSnapshot {
+  rankedMmr: number | null;
+  rankedTier: string | null;
+  totalGames: number | null;
+  winRatePct: number | null;
+  peakMmr: number | null;
+  wins: number | null;
+  losses: number | null;
+  capturedAt: Date;
+  fetchError: string | null;
+}
+
+export interface BuildSeasonPriorInfo {
+  rank: number;
+  totalMembers: number;
+  divisionName: string;
+  tierName: string;
+  seasonName: string;
+  seasonStartedAt: Date;
+}
+
+export interface BuildSeasonSignup {
+  id: string;
+  discordId: string;
+  displayName: string;
+  signedUpAt: Date;
+}
+
+export interface BuildSeasonPlayerRow {
+  id: string;
+  discordId: string;
+  displayName: string;
+  rating: number | null;
+  ratingNote: string | null;
+}
+
+export interface BuildSeasonPageData {
+  round: {
+    id: string;
+    name: string;
+    status: "OPEN" | "CLOSED" | "BUILT";
+    signups: BuildSeasonSignup[];
+  };
+  sortedSignups: BuildSeasonSignup[];
+  playerByDiscordId: Map<string, BuildSeasonPlayerRow>;
+  snapshotByDiscordId: Map<string, BuildSeasonSnapshot>;
+  priorSnapshotByDiscordId: Map<string, BuildSeasonSnapshot>;
+  priorByPlayerId: Map<string, BuildSeasonPriorInfo>;
+  skippedByPlayerId: Map<string, number>;
+  templates: Array<{
+    id: string;
+    name: string;
+    isLastUsed: boolean;
+    config: Array<{ name: string; divisionCount: number }>;
+  }>;
+  initialTiers: Array<{ name: string; divisionCount: number }>;
+  presets: Array<{ id: string; name: string }>;
+  totalSlots: number;
+  playerCount: number;
+}
+
+export type BuildSeasonResolution = "BUILT_REDIRECT" | "NOT_FOUND" | BuildSeasonPageData;
+
+// Returns a discriminated union — caller decides what to do with BUILT
+// (redirect to /admin/seasons) vs not-found (404).
+export async function loadBuildSeasonPage(roundId: string): Promise<BuildSeasonResolution> {
+  const [round, templatesRaw, lastUsed, presets] = await Promise.all([
+    prisma.signupRound.findUnique({
+      where: { id: roundId },
+      include: {
+        signups: {
+          where: { withdrawn: false },
+          orderBy: { signedUpAt: "asc" },
+          select: { id: true, discordId: true, displayName: true, signedUpAt: true },
+        },
+      },
+    }),
+    prisma.tierTemplate.findMany({
+      orderBy: [{ isLastUsed: "desc" }, { name: "asc" }],
+      select: { id: true, name: true, isLastUsed: true, config: true },
+    }),
+    prisma.tierTemplate.findUnique({ where: { name: "Last used" }, select: { config: true } }),
+    prisma.matchConfigPreset.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+  ]);
+  if (!round) return "NOT_FOUND";
+  if (round.status === "BUILT") return "BUILT_REDIRECT";
+
+  const discordIds = round.signups.map((s) => s.discordId);
+  const existingPlayers = await prisma.player.findMany({
+    where: { discordId: { in: discordIds } },
+    select: { id: true, discordId: true, displayName: true, rating: true, ratingNote: true },
+  });
+  const playerByDiscordId = new Map(existingPlayers.map((p) => [p.discordId, p]));
+
+  // BMP MMR snapshots — fetch once, group in JS to get latest + 2nd-latest
+  // per discord id without a second distinct query.
+  const allSnapshots = discordIds.length === 0 ? [] : await prisma.playerMmrSnapshot.findMany({
+    where: { discordId: { in: discordIds }, rankedMmr: { not: null } },
+    orderBy: { capturedAt: "desc" },
+    select: {
+      discordId: true,
+      rankedMmr: true,
+      rankedTier: true,
+      totalGames: true,
+      winRatePct: true,
+      peakMmr: true,
+      wins: true,
+      losses: true,
+      capturedAt: true,
+      fetchError: true,
+    },
+  });
+  const snapshotsByDiscordId = new Map<string, typeof allSnapshots>();
+  for (const s of allSnapshots) {
+    const arr = snapshotsByDiscordId.get(s.discordId) ?? [];
+    arr.push(s);
+    snapshotsByDiscordId.set(s.discordId, arr);
+  }
+  const stripDid = (s: typeof allSnapshots[number]): BuildSeasonSnapshot => ({
+    rankedMmr: s.rankedMmr,
+    rankedTier: s.rankedTier,
+    totalGames: s.totalGames,
+    winRatePct: s.winRatePct,
+    peakMmr: s.peakMmr,
+    wins: s.wins,
+    losses: s.losses,
+    capturedAt: s.capturedAt,
+    fetchError: s.fetchError,
+  });
+  const snapshotByDiscordId = new Map(
+    Array.from(snapshotsByDiscordId.entries()).map(([did, arr]) => [did, stripDid(arr[0]!)] as const),
+  );
+  const priorSnapshotByDiscordId = new Map(
+    Array.from(snapshotsByDiscordId.entries())
+      .filter(([, arr]) => arr.length >= 2)
+      .map(([did, arr]) => [did, stripDid(arr[1]!)] as const),
+  );
+
+  // Last-season rank for returners.
+  const returnerPlayerIds = existingPlayers.map((p) => p.id);
+  const priorMemberships = returnerPlayerIds.length === 0 ? [] : await prisma.divisionMember.findMany({
+    where: { playerId: { in: returnerPlayerIds }, status: "ACTIVE" },
+    include: {
+      division: {
+        include: {
+          tier: true,
+          season: { select: { id: true, name: true, startedAt: true } },
+          members: { where: { status: "ACTIVE" }, include: { player: true } },
+          pairings: {
+            where: { status: "CONFIRMED" },
+            select: { playerAId: true, playerBId: true, gamesWonA: true, gamesWonB: true },
+          },
+        },
+      },
+    },
+  });
+  const mostRecentMembershipByPlayerId = new Map<string, typeof priorMemberships[0]>();
+  for (const m of priorMemberships) {
+    const cur = mostRecentMembershipByPlayerId.get(m.playerId);
+    if (!cur || m.division.season.startedAt > cur.division.season.startedAt) {
+      mostRecentMembershipByPlayerId.set(m.playerId, m);
+    }
+  }
+  const priorByPlayerId = new Map<string, BuildSeasonPriorInfo>();
+  const standingsByDivisionId = new Map<string, ReturnType<typeof computeStandings>>();
+  for (const m of mostRecentMembershipByPlayerId.values()) {
+    const div = m.division;
+    let rows = standingsByDivisionId.get(div.id);
+    if (!rows) {
+      rows = computeStandings(div.members.map((mm) => mm.player), div.pairings);
+      standingsByDivisionId.set(div.id, rows);
+    }
+    const rank = rows.findIndex((r) => r.player.id === m.playerId) + 1;
+    priorByPlayerId.set(m.playerId, {
+      rank: rank || 0,
+      totalMembers: div.members.length,
+      divisionName: div.name,
+      tierName: div.tier.name,
+      seasonName: div.season.name,
+      seasonStartedAt: div.season.startedAt,
+    });
+  }
+
+  // Seasons skipped between prior membership and now ("gap returner" indicator).
+  const endedSeasons = await prisma.season.findMany({
+    where: { endedAt: { not: null } },
+    select: { startedAt: true },
+  });
+  const skippedByPlayerId = new Map<string, number>();
+  for (const [pid, info] of priorByPlayerId) {
+    const skipped = endedSeasons.filter((s) => s.startedAt > info.seasonStartedAt).length;
+    skippedByPlayerId.set(pid, skipped);
+  }
+
+  const sortedSignups = [...round.signups].sort((a, b) => {
+    const aMmr = snapshotByDiscordId.get(a.discordId)?.rankedMmr ?? -1;
+    const bMmr = snapshotByDiscordId.get(b.discordId)?.rankedMmr ?? -1;
+    if (aMmr !== bMmr) return bMmr - aMmr;
+    return a.signedUpAt.getTime() - b.signedUpAt.getTime();
+  });
+
+  const templates = templatesRaw.map((t) => ({
+    id: t.id,
+    name: t.name,
+    isLastUsed: t.isLastUsed,
+    config: parseTemplateConfig(t.config),
+  }));
+  const initialTiers = lastUsed ? parseTemplateConfig(lastUsed.config) : DEFAULT_TIERS_FALLBACK;
+  const totalSlots = initialTiers.reduce((sum, t) => sum + t.divisionCount * 5, 0);
+
+  return {
+    round: { id: round.id, name: round.name, status: round.status, signups: round.signups },
+    sortedSignups,
+    playerByDiscordId,
+    snapshotByDiscordId,
+    priorSnapshotByDiscordId,
+    priorByPlayerId,
+    skippedByPlayerId,
+    templates,
+    initialTiers,
+    presets,
+    totalSlots,
+    playerCount: round.signups.length,
+  };
+}
+
+// ── /admin/seasons/[id] ──────────────────────────────────────────────
+
+export interface AdminSeasonDetailData {
+  season: NonNullable<Awaited<ReturnType<typeof fetchAdminSeasonDetail>>>;
+  presets: Array<{ id: string; name: string; decks: string[]; stakes: string[] }>;
+  defaultPreset: { id: string; name: string; decks: string[]; stakes: string[] } | null;
+  signupRound: {
+    id: string;
+    status: "OPEN" | "CLOSED" | "BUILT";
+    channelId: string;
+    _count: { signups: number };
+  } | null;
+  templates: Array<{
+    id: string;
+    name: string;
+    isLastUsed: boolean;
+    config: Array<{ name: string; divisionCount: number }>;
+  }>;
+  initialTiers: Array<{ name: string; divisionCount: number }>;
+  totalMembers: number;
+  totalConfirmed: number;
+  totalExpected: number;
+  channels: Array<{ id: string; name: string }>;
+}
+
+async function fetchAdminSeasonDetail(id: string) {
+  return prisma.season.findUnique({
+    where: { id },
+    include: {
+      tiers: { orderBy: { position: "asc" } },
+      divisions: {
+        orderBy: [{ tier: { position: "asc" } }, { groupNumber: "asc" }],
+        include: {
+          tier: true,
+          members: { include: { player: true } },
+          pairings: { where: { status: "CONFIRMED" } },
+        },
+      },
+      matchConfigPreset: true,
+    },
+  });
+}
+
+export async function loadAdminSeasonDetail(
+  id: string,
+  opts: {
+    listGuildTextChannels: (guildId: string) => Promise<Array<{ id: string; name: string }>>;
+    guildId: string | undefined;
+  },
+): Promise<AdminSeasonDetailData | null> {
+  const [season, presets, defaultPreset, signupRound, templatesRaw, lastUsed] = await Promise.all([
+    fetchAdminSeasonDetail(id),
+    prisma.matchConfigPreset.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, decks: true, stakes: true },
+    }),
+    prisma.matchConfigPreset.findUnique({
+      where: { name: "Default" },
+      select: { id: true, name: true, decks: true, stakes: true },
+    }),
+    prisma.signupRound.findFirst({
+      where: { resultingSeasonId: id },
+      select: {
+        id: true,
+        status: true,
+        channelId: true,
+        _count: { select: { signups: true } },
+      },
+    }),
+    prisma.tierTemplate.findMany({
+      orderBy: [{ isLastUsed: "desc" }, { name: "asc" }],
+      select: { id: true, name: true, isLastUsed: true, config: true },
+    }),
+    prisma.tierTemplate.findUnique({ where: { name: "Last used" }, select: { config: true } }),
+  ]);
+  if (!season) return null;
+
+  const templates = templatesRaw.map((t) => ({
+    id: t.id,
+    name: t.name,
+    isLastUsed: t.isLastUsed,
+    config: parseTemplateConfig(t.config),
+  }));
+  const initialTiers = lastUsed ? parseTemplateConfig(lastUsed.config) : DEFAULT_TIERS_FALLBACK;
+  const totalMembers = season.divisions.reduce((sum, d) => sum + d.members.length, 0);
+  const totalConfirmed = season.divisions.reduce((sum, d) => sum + d.pairings.length, 0);
+  const totalExpected = season.divisions.reduce((sum, d) => {
+    const n = d.members.filter((m) => m.status === "ACTIVE").length;
+    return sum + (n < 2 ? 0 : (n * (n - 1)) / 2);
+  }, 0);
+  const needsChannels = !signupRound && !season.endedAt;
+  const channels = needsChannels && opts.guildId ? await opts.listGuildTextChannels(opts.guildId) : [];
+
+  return {
+    season,
+    presets,
+    defaultPreset,
+    signupRound,
+    templates,
+    initialTiers,
+    totalMembers,
+    totalConfirmed,
+    totalExpected,
+    channels,
+  };
+}
+
+// ── /admin/seasons (index) ───────────────────────────────────────────
+
+export type AdminSeasonsRound = {
+  id: string;
+  status: "OPEN" | "CLOSED" | "BUILT";
+  channelId: string;
+  resultingSeasonId: string | null;
+  _count: { signups: number };
+};
+
+export interface AdminSeasonsPageData {
+  // Kept as the existing Prisma shape — the page render was built against
+  // it. The loader's job here is to encapsulate the FETCH (8 parallel
+  // queries) rather than reshape data; collapsing the includes would be
+  // a separate, bigger change.
+  seasons: Awaited<ReturnType<typeof fetchAdminSeasons>>;
+  templates: Array<{
+    id: string;
+    name: string;
+    isLastUsed: boolean;
+    config: Array<{ name: string; divisionCount: number }>;
+  }>;
+  initialTierConfig: Array<{ name: string; divisionCount: number }>;
+  presets: Array<{ id: string; name: string; decks: string[]; stakes: string[] }>;
+  defaultPreset: { id: string; name: string; decks: string[]; stakes: string[] } | null;
+  roundsBySeason: Map<string, AdminSeasonsRound>;
+  channels: Array<{ id: string; name: string }>;
+  archivedCount: number;
+}
+
+const DEFAULT_TIERS_FALLBACK = [
+  { name: "Legendary", divisionCount: 1 },
+  { name: "Rare", divisionCount: 4 },
+  { name: "Uncommon", divisionCount: 6 },
+  { name: "Common", divisionCount: 6 },
+];
+
+async function fetchAdminSeasons(showArchived: boolean) {
+  return prisma.season.findMany({
+    where: showArchived ? {} : { archivedAt: null },
+    include: {
+      _count: { select: { divisions: true } },
+      tiers: { orderBy: { position: "asc" }, include: { _count: { select: { divisions: true } } } },
+      divisions: {
+        orderBy: [{ tier: { position: "asc" } }, { groupNumber: "asc" }],
+        include: {
+          tier: true,
+          _count: { select: { members: true, pairings: true } },
+        },
+      },
+      matchConfigPreset: true,
+    },
+    orderBy: [{ isActive: "desc" }, { startedAt: "desc" }],
+  });
+}
+
+export async function loadAdminSeasonsIndex(opts: {
+  showArchived: boolean;
+  listGuildTextChannels: (guildId: string) => Promise<Array<{ id: string; name: string }>>;
+  guildId: string | undefined;
+}): Promise<AdminSeasonsPageData> {
+  const [seasons, templatesRaw, lastUsed, presets, defaultPreset, signupRounds, archivedCount] =
+    await Promise.all([
+      fetchAdminSeasons(opts.showArchived),
+      prisma.tierTemplate.findMany({
+        orderBy: [{ isLastUsed: "desc" }, { name: "asc" }],
+        select: { id: true, name: true, isLastUsed: true, config: true },
+      }),
+      prisma.tierTemplate.findUnique({ where: { name: "Last used" }, select: { config: true } }),
+      prisma.matchConfigPreset.findMany({
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, decks: true, stakes: true },
+      }),
+      prisma.matchConfigPreset.findUnique({
+        where: { name: "Default" },
+        select: { id: true, name: true, decks: true, stakes: true },
+      }),
+      prisma.signupRound.findMany({
+        where: { resultingSeasonId: { not: null } },
+        select: {
+          id: true,
+          status: true,
+          channelId: true,
+          resultingSeasonId: true,
+          _count: { select: { signups: true } },
+        },
+      }),
+      prisma.season.count({ where: { archivedAt: { not: null } } }),
+    ]);
+
+  const needsChannels = seasons.some(
+    (s) => !s.endedAt && !signupRounds.find((r) => r.resultingSeasonId === s.id),
+  );
+  const channels =
+    needsChannels && opts.guildId ? await opts.listGuildTextChannels(opts.guildId) : [];
+
+  const templates = templatesRaw.map((t) => ({
+    id: t.id,
+    name: t.name,
+    isLastUsed: t.isLastUsed,
+    config: parseTemplateConfig(t.config),
+  }));
+  const initialTierConfig = lastUsed ? parseTemplateConfig(lastUsed.config) : DEFAULT_TIERS_FALLBACK;
+  const roundsBySeason = new Map(
+    signupRounds.map((r) => [r.resultingSeasonId!, r as AdminSeasonsRound]),
+  );
+
+  return {
+    seasons,
+    templates,
+    initialTierConfig,
+    presets,
+    defaultPreset,
+    roundsBySeason,
+    channels,
+    archivedCount,
+  };
+}
+
 // ── /admin/divisions/[id] ────────────────────────────────────────────
 
 export interface AdminDivisionDetailMember {

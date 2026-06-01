@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
+import { loadAdminSeasonsIndex } from "@/lib/loaders/admin";
 import { SiteNav } from "@/components/SiteNav";
 import { AdminNav } from "@/components/AdminNav";
 import { TierEditor } from "@/components/TierEditor";
@@ -10,10 +10,8 @@ import {
   configureTiers,
   createSeason,
   deleteSeason,
-  endSeason,
   finalizeSignupsForSeason,
   openSignupsForSeason,
-  renameSeason,
   setSeasonPreset,
   setSeasonVisibility,
   unarchiveSeason,
@@ -24,26 +22,6 @@ import { listGuildTextChannels } from "@/lib/discord";
 
 export const dynamic = "force-dynamic";
 
-const DEFAULT_TIERS = [
-  { name: "Legendary", divisionCount: 1 },
-  { name: "Rare", divisionCount: 4 },
-  { name: "Uncommon", divisionCount: 6 },
-  { name: "Common", divisionCount: 6 },
-];
-
-function parseTemplateConfig(json: string) {
-  try {
-    const arr = JSON.parse(json);
-    if (!Array.isArray(arr)) return [];
-    return arr.map((e) => ({
-      name: String(e?.name ?? ""),
-      divisionCount: Number(e?.divisionCount) || 1,
-    }));
-  } catch {
-    return [];
-  }
-}
-
 export default async function AdminSeasonsPage({
   searchParams,
 }: {
@@ -53,51 +31,20 @@ export default async function AdminSeasonsPage({
   const { archived: showArchivedFlag } = await searchParams;
   const showArchived = showArchivedFlag === "1";
 
-  const [seasons, templatesRaw, lastUsed, presets, defaultPreset, signupRounds, archivedCount] = await Promise.all([
-    prisma.season.findMany({
-      where: showArchived ? {} : { archivedAt: null },
-      include: {
-        _count: { select: { divisions: true } },
-        tiers: { orderBy: { position: "asc" }, include: { _count: { select: { divisions: true } } } },
-        divisions: {
-          orderBy: [{ tier: { position: "asc" } }, { groupNumber: "asc" }],
-          include: {
-            tier: true,
-            _count: { select: { members: true, pairings: true } },
-          },
-        },
-        matchConfigPreset: true,
-      },
-      orderBy: [{ isActive: "desc" }, { startedAt: "desc" }],
-    }),
-    prisma.tierTemplate.findMany({ orderBy: [{ isLastUsed: "desc" }, { name: "asc" }] }),
-    prisma.tierTemplate.findUnique({ where: { name: "Last used" } }),
-    prisma.matchConfigPreset.findMany({ orderBy: { name: "asc" } }),
-    prisma.matchConfigPreset.findUnique({ where: { name: "Default" } }),
-    prisma.signupRound.findMany({
-      where: { resultingSeasonId: { not: null } },
-      include: { _count: { select: { signups: true } } },
-    }),
-    prisma.season.count({ where: { archivedAt: { not: null } } }),
-  ]);
-
-  // discord channels for the "Open signups" picker (only fetched if at least
-  // one season is missing a linked round)
-  const needsChannels = seasons.some(
-    (s) => !s.endedAt && !signupRounds.find((r) => r.resultingSeasonId === s.id),
-  );
-  const guildId = process.env.DISCORD_GUILD_ID;
-  const channels = needsChannels && guildId ? await listGuildTextChannels(guildId) : [];
-  const roundsBySeason = new Map(signupRounds.map((r) => [r.resultingSeasonId!, r]));
-
-  const templates = templatesRaw.map((t) => ({
-    id: t.id,
-    name: t.name,
-    config: parseTemplateConfig(t.config),
-    isLastUsed: t.isLastUsed,
-  }));
-
-  const initial = lastUsed ? parseTemplateConfig(lastUsed.config) : DEFAULT_TIERS;
+  const {
+    seasons,
+    templates,
+    initialTierConfig: initial,
+    presets,
+    defaultPreset,
+    roundsBySeason,
+    channels,
+    archivedCount,
+  } = await loadAdminSeasonsIndex({
+    showArchived,
+    listGuildTextChannels,
+    guildId: process.env.DISCORD_GUILD_ID,
+  });
 
   return (
     <>
