@@ -159,9 +159,6 @@ export default async function ReportPage({
           </div>
         )}
 
-        <p className="muted" style={{ fontSize: 12, marginTop: 16 }}>
-          New to the league? <Link href="/how-to-play">How to play →</Link>
-        </p>
       </main>
     </>
   );
