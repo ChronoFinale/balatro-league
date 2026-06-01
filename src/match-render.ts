@@ -9,6 +9,7 @@ import {
   StringSelectMenuBuilder,
 } from "discord.js";
 import type { MatchSession, Player } from "@prisma/client";
+import { deckDescription, stakeDescription } from "./balatro-info.js";
 import { phaseFor, remainingCombos, type GameState } from "./match-session.js";
 import type { DeckEntry } from "./match-config.js";
 
@@ -142,11 +143,23 @@ function renderGame(s: MatchSession, a: Player, b: Player, pool: DeckEntry[], ga
       .setMinValues(expected)
       .setMaxValues(expected)
       .addOptions(
-        remaining.map(({ idx, combo }) => ({
-          label: `${combo.deck} / ${combo.stake}`,
-          value: String(idx),
-          default: pending.includes(idx),
-        })),
+        remaining.map(({ idx, combo }) => {
+          // Discord caps option description at 100 chars. Deck effect is
+          // the more useful signal for a ban decision; stake just modifies
+          // difficulty so we tack on a short tag when both fit.
+          const deckDesc = deckDescription(combo.deck);
+          const stakeDesc = stakeDescription(combo.stake);
+          let desc = deckDesc ?? "";
+          if (stakeDesc && desc.length + stakeDesc.length + 12 <= 100) {
+            desc = desc ? `${desc} · ${combo.stake}: ${stakeDesc}` : `${combo.stake}: ${stakeDesc}`;
+          }
+          return {
+            label: `${combo.deck} / ${combo.stake}`,
+            value: String(idx),
+            description: desc ? desc.slice(0, 100) : undefined,
+            default: pending.includes(idx),
+          };
+        }),
       );
     const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -166,8 +179,20 @@ function renderGame(s: MatchSession, a: Player, b: Player, pool: DeckEntry[], ga
 
   if (phase.kind === "PICK") {
     const picker = phase.pickerId === a.id ? a : b;
+    // Spell out each remaining combo's deck + stake effects in the embed
+    // so picker has full info without hovering a tooltip somewhere.
+    const optionLines = remaining.map(({ combo }, i) => {
+      const deckDesc = deckDescription(combo.deck);
+      const stakeDesc = stakeDescription(combo.stake);
+      return (
+        `**${i + 1}. ${combo.deck} / ${combo.stake}**` +
+        (deckDesc ? `\n  · ${combo.deck}: ${deckDesc}` : "") +
+        (stakeDesc ? `\n  · ${combo.stake} stake: ${stakeDesc}` : "")
+      );
+    });
     embed.setDescription(
-      `Bans done. **${picker.displayName}** picks the deck for this game from the 2 remaining.`,
+      `Bans done. **${picker.displayName}** picks the deck for this game from the 2 remaining.\n\n` +
+        optionLines.join("\n\n"),
     );
     const rows = chunkButtons(
       remaining.map(({ idx, combo }) =>

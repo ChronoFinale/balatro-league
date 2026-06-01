@@ -1,0 +1,36 @@
+{
+  "decks": [
+    { "name": "Red", "description": "+1 discard every round" },
+    { "name": "Blue", "description": "+1 hand every round" },
+    { "name": "Yellow", "description": "Start with extra $10" },
+    { "name": "Green", "description": "$2 per remaining hand, $1 per discard, no interest" },
+    { "name": "Black", "description": "+1 Joker slot, -1 hand every round" },
+    { "name": "Magic", "description": "Crystal Ball voucher + 2 Fool tarot cards to start" },
+    { "name": "Nebula", "description": "Telescope voucher; -1 consumable slot" },
+    { "name": "Ghost", "description": "Spectral cards in shop; start with Hex" },
+    { "name": "Abandoned", "description": "No face cards (J/Q/K) in starting deck" },
+    { "name": "Checkered", "description": "26 Spades + 26 Hearts only (no Clubs/Diamonds)" },
+    { "name": "Zodiac", "description": "Tarot + Planet Merchant + Overstock vouchers" },
+    { "name": "Painted", "description": "+2 hand size, -1 Joker slot" },
+    { "name": "Anaglyph", "description": "Double Tag after each Boss Blind" },
+    { "name": "Plasma", "description": "Balances Chips/Mult; x2 blind sizes" },
+    { "name": "Erratic", "description": "All ranks and suits randomized" },
+    { "name": "Violet", "description": "+1 Voucher in shop; Ante 1 Vouchers 50% off" },
+    { "name": "Indigo", "description": "+1 card from all Booster Packs (unskippable)" },
+    { "name": "Orange", "description": "Start with Giga Standard Pack + 2 Hanged Man" },
+    { "name": "Oracle", "description": "Medium + Clearance Sale; balance capped at $50" },
+    { "name": "Gradient", "description": "Cards count as +/-1 rank for Joker effects" },
+    { "name": "Heidelberg", "description": "Negative copy of 1 random consumable each shop" },
+    { "name": "Cocktail", "description": "Copies effects of 3 other decks (random or chosen)" }
+  ],
+  "stakes": [
+    { "name": "White", "description": "Base difficulty" },
+    { "name": "Red", "description": "Small Blind gives no reward" },
+    { "name": "Green", "description": "Required score scales faster" },
+    { "name": "Black", "description": "Eternal Jokers appear (can't be sold)" },
+    { "name": "Blue", "description": "-1 discard" },
+    { "name": "Purple", "description": "Required score scales even faster" },
+    { "name": "Orange", "description": "Booster Pack +$1 cost" },
+    { "name": "Gold", "description": "-1 hand size" }
+  ]
+}

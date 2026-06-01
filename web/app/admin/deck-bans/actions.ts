@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
+import { isCanonicalDeck, isCanonicalStake } from "@/lib/balatro-info";
 import defaults from "@/lib/match-defaults.json";
 
 const DEFAULT_PRESET_NAME = "Default";
@@ -49,6 +50,9 @@ export async function addDeck(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!id || !name) return;
+  // Only canonical decks (defined in src/data/balatro-info.json) are valid —
+  // prevents typos from creating phantom decks the ban menu can't describe.
+  if (!isCanonicalDeck(name)) return;
   const preset = await prisma.matchConfigPreset.findUniqueOrThrow({ where: { id } });
   if (preset.decks.includes(name)) return;
   await prisma.matchConfigPreset.update({
@@ -76,6 +80,7 @@ export async function addStake(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!id || !name) return;
+  if (!isCanonicalStake(name)) return;
   const preset = await prisma.matchConfigPreset.findUniqueOrThrow({ where: { id } });
   if (preset.stakes.includes(name)) return;
   await prisma.matchConfigPreset.update({

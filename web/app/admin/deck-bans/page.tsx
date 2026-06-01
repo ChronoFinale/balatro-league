@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
 import { SiteNav } from "@/components/SiteNav";
 import { AdminNav } from "@/components/AdminNav";
+import { CANONICAL_DECKS, CANONICAL_STAKES, deckDescription, stakeDescription } from "@/lib/balatro-info";
 import {
   addDeck,
   addStake,
@@ -165,18 +166,20 @@ function PresetEditor({
         <ListEditor
           title="Decks"
           items={preset.decks}
+          canonical={CANONICAL_DECKS}
+          describe={deckDescription}
           presetId={preset.id}
           addAction={addDeck}
           removeAction={removeDeck}
-          placeholder="e.g. Red"
         />
         <ListEditor
           title="Stakes"
           items={preset.stakes}
+          canonical={CANONICAL_STAKES}
+          describe={stakeDescription}
           presetId={preset.id}
           addAction={addStake}
           removeAction={removeStake}
-          placeholder="e.g. White"
         />
       </div>
     </div>
@@ -186,25 +189,39 @@ function PresetEditor({
 function ListEditor({
   title,
   items,
+  canonical,
+  describe,
   presetId,
   addAction,
   removeAction,
-  placeholder,
 }: {
   title: string;
   items: string[];
+  canonical: ReadonlyArray<{ name: string; description: string }>;
+  describe: (name: string) => string | undefined;
   presetId: string;
   addAction: (fd: FormData) => Promise<void>;
   removeAction: (fd: FormData) => Promise<void>;
-  placeholder: string;
 }) {
+  // Only show options the preset doesn't already have, so admin can't add
+  // duplicates and the dropdown shrinks as they fill the preset.
+  const available = canonical.filter((c) => !items.includes(c.name));
   return (
     <div className="card">
       <strong>{title} ({items.length})</strong>
       <form action={addAction} style={{ display: "flex", gap: 6, marginTop: 8 }}>
         <input type="hidden" name="id" value={presetId} />
-        <input type="text" name="name" placeholder={placeholder} required style={{ flex: 1 }} />
-        <button type="submit">Add</button>
+        <select name="name" required defaultValue="" style={{ flex: 1 }}>
+          <option value="" disabled>
+            {available.length === 0 ? `All ${title.toLowerCase()} added` : `Add a ${title.toLowerCase().replace(/s$/, "")}…`}
+          </option>
+          {available.map((c) => (
+            <option key={c.name} value={c.name}>
+              {c.name} — {c.description}
+            </option>
+          ))}
+        </select>
+        <button type="submit" disabled={available.length === 0}>Add</button>
       </form>
       <ul style={{ marginTop: 12, padding: 0, listStyle: "none" }}>
         {items.map((name) => (
@@ -215,9 +232,18 @@ function ListEditor({
               justifyContent: "space-between",
               padding: "4px 0",
               borderBottom: "1px solid var(--border)",
+              gap: 8,
             }}
+            title={describe(name) ?? ""}
           >
-            <span>{name}</span>
+            <span>
+              <strong>{name}</strong>
+              {describe(name) && (
+                <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>
+                  {describe(name)}
+                </span>
+              )}
+            </span>
             <form action={removeAction}>
               <input type="hidden" name="id" value={presetId} />
               <input type="hidden" name="name" value={name} />
