@@ -11,7 +11,7 @@
 
 import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
-import { prisma } from "@/lib/prisma";
+import { loadAdminDisputes } from "@/lib/loaders/admin";
 import { AdminNav } from "@/components/AdminNav";
 import { SiteNav } from "@/components/SiteNav";
 import { acceptDisputeProposal, rejectDispute } from "./actions";
@@ -26,20 +26,7 @@ export default async function AdminDisputesPage({
   await requireAdmin();
   const { ok, err } = await searchParams;
 
-  const disputes = await prisma.pairing.findMany({
-    where: {
-      status: "DISPUTED",
-      division: { season: { isActive: true } },
-    },
-    include: {
-      playerA: true,
-      playerB: true,
-      disputer: true,
-      reporter: true,
-      division: { include: { season: true, tier: true } },
-    },
-    orderBy: { disputedAt: "desc" },
-  });
+  const disputes = await loadAdminDisputes();
 
   return (
     <>
@@ -76,7 +63,7 @@ export default async function AdminDisputesPage({
             const hasProposal =
               d.disputeProposedGamesWonA != null && d.disputeProposedGamesWonB != null;
             return (
-              <div key={d.id} className="card">
+              <div key={d.pairingId} className="card">
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
                   <strong>
                     <Link href={`/profile/${d.playerA.id}`} style={{ color: "var(--text)" }}>{d.playerA.displayName}</Link>
@@ -84,7 +71,7 @@ export default async function AdminDisputesPage({
                     <Link href={`/profile/${d.playerB.id}`} style={{ color: "var(--text)" }}>{d.playerB.displayName}</Link>
                   </strong>
                   <Link href={`/admin/divisions/${d.divisionId}`} className="muted" style={{ fontSize: 12 }}>
-                    {d.division.name} · {d.division.tier.name}
+                    {d.divisionName} · {d.tierName}
                   </Link>
                   <span className="muted" style={{ marginLeft: "auto", fontSize: 11 }}>
                     Disputed{" "}
@@ -130,14 +117,14 @@ export default async function AdminDisputesPage({
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {hasProposal && (
                     <form action={acceptDisputeProposal}>
-                      <input type="hidden" name="pairingId" value={d.id} />
+                      <input type="hidden" name="pairingId" value={d.pairingId} />
                       <button type="submit" style={{ background: "#2ecc71", color: "#fff" }}>
                         ✓ Accept proposed
                       </button>
                     </form>
                   )}
                   <form action={rejectDispute}>
-                    <input type="hidden" name="pairingId" value={d.id} />
+                    <input type="hidden" name="pairingId" value={d.pairingId} />
                     <button type="submit" className="secondary">
                       Keep original
                     </button>

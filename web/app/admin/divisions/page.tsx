@@ -1,36 +1,15 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
+import { loadAdminDivisionsIndex } from "@/lib/loaders/admin";
 import { tierColors } from "@/lib/tier-colors";
 import { SiteNav } from "@/components/SiteNav";
 import { AdminNav } from "@/components/AdminNav";
 
 export const dynamic = "force-dynamic";
 
-function expectedPairings(memberCount: number): number {
-  return memberCount < 2 ? 0 : (memberCount * (memberCount - 1)) / 2;
-}
-
 export default async function AdminDivisionsPage() {
   await requireAdmin();
-
-  const season = await prisma.season.findFirst({
-    where: { isActive: true },
-    include: {
-      tiers: {
-        orderBy: { position: "asc" },
-        include: {
-          divisions: {
-            orderBy: { groupNumber: "asc" },
-            include: {
-              _count: { select: { members: true, pairings: true } },
-              pairings: { where: { status: "CONFIRMED" }, select: { id: true } },
-            },
-          },
-        },
-      },
-    },
-  });
+  const { season, tiers } = await loadAdminDivisionsIndex();
 
   return (
     <>
@@ -48,10 +27,10 @@ export default async function AdminDivisionsPage() {
           <div className="card muted">
             No active season — <Link href="/admin/seasons">create one</Link> first.
           </div>
-        ) : season.tiers.filter((t) => t.divisions.length > 0).length === 0 ? (
+        ) : tiers.filter((t) => t.divisions.length > 0).length === 0 ? (
           <div className="card muted">No divisions in this season.</div>
         ) : (
-          season.tiers
+          tiers
             .filter((t) => t.divisions.length > 0)
             .map((tier) => {
               const color = tierColors(tier.position);
@@ -67,9 +46,9 @@ export default async function AdminDivisionsPage() {
                   </h3>
                   <div className="grid grid-3">
                     {tier.divisions.map((d) => {
-                      const expected = expectedPairings(d._count.members);
-                      const confirmed = d.pairings.length;
-                      const pct = expected === 0 ? 0 : Math.round((confirmed / expected) * 100);
+                      const pct = d.expectedPairingCount === 0
+                        ? 0
+                        : Math.round((d.confirmedPairingCount / d.expectedPairingCount) * 100);
                       return (
                         <Link
                           key={d.id}
@@ -86,7 +65,7 @@ export default async function AdminDivisionsPage() {
                         >
                           <strong>{d.name}</strong>
                           <div className="muted" style={{ marginTop: 8 }}>
-                            {d._count.members}/{d.targetSize ?? season.targetGroupSize} players · {confirmed}/{expected} sets
+                            {d.memberCount}/{d.targetSize} players · {d.confirmedPairingCount}/{d.expectedPairingCount} sets
                           </div>
                           <div style={{ background: "var(--surface-2)", borderRadius: 99, height: 6, overflow: "hidden", marginTop: 6 }}>
                             <div style={{ background: "var(--accent-2)", height: "100%", width: `${pct}%` }} />
