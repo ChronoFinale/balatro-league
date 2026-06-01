@@ -120,15 +120,18 @@ export async function initQueue(): Promise<void> {
   await boss.schedule("refresh.active-mmrs", "0 12 * * *");
   console.log("[pg-boss] scheduled refresh.active-mmrs @ 12:00 UTC daily");
 
-  // Weekly league backup: build JSON snapshot, post to bot-commands as
+  // Daily league backup: build JSON snapshot, post to bot-commands as
   // an attachment. Off-platform redundancy in case Railway's Postgres
-  // loses data — admin scrolls back through bot-commands attachments.
+  // loses data — admin scrolls back through bot-commands attachments
+  // and picks the most recent before whatever broke.
   await boss.work("backup.league", { batchSize: 1 }, async () => {
     await runLeagueBackup();
   });
-  // Mondays at 06:00 UTC. Idempotent like the refresh schedule.
-  await boss.schedule("backup.league", "0 6 * * 1");
-  console.log("[pg-boss] scheduled backup.league @ 06:00 UTC Mondays");
+  // Daily at 06:00 UTC. Idempotent like the refresh schedule. File size
+  // is tiny (~250KB at current scale) so 7x the volume of weekly is a
+  // non-issue for Discord storage.
+  await boss.schedule("backup.league", "0 6 * * *");
+  console.log("[pg-boss] scheduled backup.league @ 06:00 UTC daily");
 }
 
 export async function enqueueDm(job: DmJob): Promise<void> {
