@@ -59,6 +59,21 @@ export default async function BuildSeasonPage({
           top tier, balancing skill across divisions within each tier.
         </p>
 
+        <details className="card" style={{ background: "rgba(118,199,255,0.06)", borderColor: "#76c7ff" }}>
+          <summary style={{ cursor: "pointer" }}><strong style={{ color: "#76c7ff" }}>ℹ️ How this works — full season-build flow</strong></summary>
+          <ol style={{ marginTop: 8, paddingLeft: 24, fontSize: 13, lineHeight: 1.6 }}>
+            <li><strong>Set ratings</strong> below — drag rows to reorder, or use the sort/auto-fill buttons. Top of the list = strongest player, ratings get re-numbered on Save.</li>
+            <li><strong>Pick the tier shape</strong> (Legendary / Rare / Uncommon / Common…) — use ✨ Suggest from N signups to auto-compute, or load a saved template.</li>
+            <li><strong>Click Build season</strong> — auto-seeds top-rated players into the top tier and snake-drafts within each tier to keep divisions balanced.</li>
+            <li><strong>Review &amp; tweak placements</strong> on the season detail page that opens — use the per-player "Move to…" dropdowns to nudge anyone between divisions.</li>
+            <li><strong>Lock in &amp; activate</strong> — when you're happy, hit the big green button. The league is now live, players see standings, /start-match works.</li>
+          </ol>
+          <p className="muted" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
+            Returning players' ratings come from end-of-last-season's recompute, so good finishers naturally
+            land in higher tiers and bottom finishers drop down. New signups fall in by BMP MMR.
+          </p>
+        </details>
+
         {err && (
           <div className="card" style={{ borderColor: "#e74c3c", color: "#e74c3c" }}>
             {err}

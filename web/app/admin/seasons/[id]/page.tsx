@@ -12,6 +12,7 @@ import { computeStandings } from "@/lib/standings";
 import { listGuildTextChannels } from "@/lib/discord";
 import {
   activateSeason,
+  addLatePlayerToDivision,
   configureTiers,
   deleteSeason,
   finalizeSignupsForSeason,
@@ -231,6 +232,15 @@ export default async function SeasonDetailPage({
                       you're happy with the shape. Changes save immediately. Click <strong>Lock in &amp; activate</strong>
                       when ready to start the league.
                     </p>
+                    <details style={{ marginTop: 6 }}>
+                      <summary style={{ cursor: "pointer", fontSize: 11, color: "#76c7ff" }}>What can I adjust here?</summary>
+                      <ul style={{ marginTop: 4, paddingLeft: 20, fontSize: 12, lineHeight: 1.6 }}>
+                        <li><strong>Move players</strong> between divisions with the "Move to…" dropdown on each row.</li>
+                        <li><strong>Add late signups</strong> via <Link href="/admin/players" style={{ color: "#76c7ff" }}>/admin/players</Link> — Add player + assign division.</li>
+                        <li><strong>Rename / delete</strong> the season from the bottom of this page if you need to restart.</li>
+                        <li>Once activated, players can run <code>/start-match</code> and standings start updating.</li>
+                      </ul>
+                    </details>
                   </div>
                   <form action={activateSeason}>
                     <input type="hidden" name="id" value={season.id} />
@@ -246,10 +256,34 @@ export default async function SeasonDetailPage({
               const tierDivs = season.divisions.filter((d) => d.tierId === tier.id);
               const tc = tierColors(tier.position);
               const isDraft = !season.isActive && !season.endedAt;
+              // Tier-level totals so admin sees at a glance how each tier is
+              // sized relative to its target (6 per division). Highlights
+              // tiers that are below 4 (too small for round-robin) or way
+              // over 7 (probably should split).
+              const tierMemberCount = tierDivs.reduce((sum, d) => sum + d.members.length, 0);
+              const target = tierDivs.length * 6;
+              const avgPerDiv = tierDivs.length === 0 ? 0 : tierMemberCount / tierDivs.length;
+              const tierWarning =
+                tierDivs.length === 0
+                  ? null
+                  : avgPerDiv < 4
+                    ? { color: "#e74c3c", text: "too few players" }
+                    : avgPerDiv > 7
+                      ? { color: "#e74c3c", text: "too many — consider adding a division" }
+                      : avgPerDiv < 5
+                        ? { color: "#f1c40f", text: "below target" }
+                        : null;
               return (
                 <div key={tier.id} style={{ marginTop: 12 }}>
-                  <h4 style={{ margin: "8px 0 4px" }}>
+                  <h4 style={{ margin: "8px 0 4px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <span className="pill" style={{ background: tc.bg, color: tc.fg }}>{tier.name}</span>
+                    <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>
+                      {tierMemberCount} player{tierMemberCount === 1 ? "" : "s"} across {tierDivs.length} division{tierDivs.length === 1 ? "" : "s"}
+                      {tierDivs.length > 0 && ` · ~${avgPerDiv.toFixed(1)}/div (target 5–6, capacity ${target})`}
+                    </span>
+                    {tierWarning && (
+                      <span style={{ fontSize: 11, color: tierWarning.color }}>⚠ {tierWarning.text}</span>
+                    )}
                   </h4>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 8 }}>
                     {tierDivs.map((d) => {
@@ -271,43 +305,57 @@ export default async function SeasonDetailPage({
                               {!isDraft && ` · ${d.pairings.length}/${expectedSets} matches`}
                             </span>
                           </div>
-                          {isDraft ? (
-                            d.members.length === 0 ? (
-                              <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Empty division.</div>
-                            ) : (
-                              <table style={{ fontSize: 12, marginTop: 4, width: "100%" }}>
-                                <tbody>
-                                  {d.members.map((m) => (
-                                    <tr key={m.id}>
-                                      <td style={{ padding: "2px 4px 2px 0" }}>
-                                        <Link href={`/profile/${m.player.id}`} style={{ color: "var(--text)" }}>{m.player.displayName}</Link>
-                                      </td>
-                                      <td style={{ padding: "2px 0", textAlign: "right" }}>
-                                        <form action={moveDivisionMember} style={{ display: "inline-flex", gap: 2 }}>
-                                          <input type="hidden" name="seasonId" value={season.id} />
-                                          <input type="hidden" name="playerId" value={m.player.id} />
-                                          <select
-                                            name="targetDivisionId"
-                                            required
-                                            defaultValue=""
-                                            style={{ fontSize: 11, padding: "1px 4px", maxWidth: 120 }}
-                                          >
-                                            <option value="" disabled>Move to…</option>
-                                            {moveTargets.map((t) => (
-                                              <option key={t.id} value={t.id}>{t.name}</option>
-                                            ))}
-                                          </select>
-                                          <button type="submit" className="secondary" style={{ fontSize: 11, padding: "1px 6px" }}>
-                                            Go
-                                          </button>
-                                        </form>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            )
-                          ) : standings.length > 0 ? (
+                          {isDraft && d.members.length === 0 && (
+                            <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Empty division.</div>
+                          )}
+                          {isDraft && d.members.length > 0 && (
+                            <table style={{ fontSize: 12, marginTop: 4, width: "100%" }}>
+                              <tbody>
+                                {d.members.map((m) => (
+                                  <tr key={m.id}>
+                                    <td style={{ padding: "2px 4px 2px 0" }}>
+                                      <Link href={`/profile/${m.player.id}`} style={{ color: "var(--text)" }}>{m.player.displayName}</Link>
+                                    </td>
+                                    <td style={{ padding: "2px 0", textAlign: "right" }}>
+                                      <form action={moveDivisionMember} style={{ display: "inline-flex", gap: 2 }}>
+                                        <input type="hidden" name="seasonId" value={season.id} />
+                                        <input type="hidden" name="playerId" value={m.player.id} />
+                                        <select
+                                          name="targetDivisionId"
+                                          required
+                                          defaultValue=""
+                                          style={{ fontSize: 11, padding: "1px 4px", maxWidth: 120 }}
+                                        >
+                                          <option value="" disabled>Move to…</option>
+                                          {moveTargets.map((t) => (
+                                            <option key={t.id} value={t.id}>{t.name}</option>
+                                          ))}
+                                        </select>
+                                        <button type="submit" className="secondary" style={{ fontSize: 11, padding: "1px 6px" }}>
+                                          Go
+                                        </button>
+                                      </form>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                          {isDraft && (
+                            <form action={addLatePlayerToDivision} style={{ display: "flex", gap: 4, marginTop: 6, fontSize: 11 }}>
+                              <input type="hidden" name="divisionId" value={d.id} />
+                              <input
+                                type="text"
+                                name="discordId"
+                                placeholder="+ Discord ID (17-20 digits)"
+                                required
+                                pattern="\d{17,20}"
+                                style={{ flex: 1, fontSize: 11, padding: "1px 4px" }}
+                              />
+                              <button type="submit" className="secondary" style={{ fontSize: 11, padding: "1px 6px" }}>Add</button>
+                            </form>
+                          )}
+                          {!isDraft && standings.length > 0 && (
                             <table style={{ fontSize: 12, marginTop: 4 }}>
                               <tbody>
                                 {top3.map((r, i) => (
@@ -324,7 +372,8 @@ export default async function SeasonDetailPage({
                                 )}
                               </tbody>
                             </table>
-                          ) : (
+                          )}
+                          {!isDraft && standings.length === 0 && (
                             <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>No members yet.</div>
                           )}
                         </div>

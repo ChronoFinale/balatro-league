@@ -527,6 +527,55 @@ export async function deleteSeason(formData: FormData) {
 // division. Wraps placePlayerInDivision so the transfer semantics + Discord
 // role bookkeeping are handled the same way as the bulk-import / add-by-id
 // flows. Used by the draft review UI on the season detail page.
+// Late add: resolve a Discord ID to a Player (upserting if needed) and
+// drop them into a specific division. Used by the per-division
+// "+ Add player" form in draft mode so admin can pull in late signups
+// without leaving the season detail page. Idempotent — re-adding a
+// player who's already in the division is a no-op (moves them within
+// the season otherwise).
+export async function addLatePlayerToDivision(formData: FormData) {
+  const { user } = await requireAdmin();
+  const divisionId = String(formData.get("divisionId") ?? "").trim();
+  const discordIdRaw = String(formData.get("discordId") ?? "").trim();
+  if (!divisionId || !discordIdRaw) return;
+
+  const division = await prisma.division.findUnique({
+    where: { id: divisionId },
+    select: { id: true, name: true, seasonId: true },
+  });
+  if (!division) {
+    redirect(`/admin/seasons?err=${encodeURIComponent("Division not found")}`);
+  }
+
+  const guildId = process.env.DISCORD_GUILD_ID;
+  let displayName = discordIdRaw;
+  if (guildId) {
+    const { resolveDiscordIdToDisplayName } = await import("@/lib/add-player");
+    const resolved = await resolveDiscordIdToDisplayName(guildId, discordIdRaw);
+    if ("error" in resolved) {
+      redirect(`/admin/seasons/${division!.seasonId}?err=${encodeURIComponent(resolved.error)}`);
+    }
+    displayName = resolved.displayName;
+  }
+
+  const player = await prisma.player.upsert({
+    where: { discordId: discordIdRaw },
+    create: { discordId: discordIdRaw, displayName },
+    update: { displayName },
+  });
+  const { placePlayerInDivision } = await import("@/lib/division-membership");
+  await placePlayerInDivision(division!.id, player.id);
+  recordAudit({
+    actor: actorFromAdminUser(user),
+    action: "division.add-late-player",
+    targetType: "DivisionMember",
+    targetId: player.id,
+    summary: `Added ${displayName} to ${division!.name} (late signup)`,
+    metadata: { seasonId: division!.seasonId, divisionId: division!.id, discordId: discordIdRaw },
+  });
+  revalidatePath(`/admin/seasons/${division!.seasonId}`);
+}
+
 export async function moveDivisionMember(formData: FormData) {
   const { user } = await requireAdmin();
   const seasonId = String(formData.get("seasonId") ?? "");
