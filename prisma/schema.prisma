@@ -281,6 +281,13 @@ model MatchSession {
   // rows from before this column existed). Stored on the session so an
   // in-flight match never breaks if an admin tweaks the policy mid-game.
   policy        String?
+  // Pre-agreed deck/stake combo specified by the initiator. JSON
+  // {deck, stake}. When set, the match skips ban/pick entirely —
+  // opponent's Accept = agreement to play this combo, and every game
+  // in the bestOf uses it. Lets players agree on non-standard combos
+  // (e.g. a deck not in the season's preset) without burning the
+  // ban/pick flow. Null = normal ban/pick path.
+  customCombo   String?
   game1         String?           // {firstId, bans: [...], pickedDeck, winnerId}
   game2         String?
   game3         String?           // populated only when bestOf=3 and game 1+2 split

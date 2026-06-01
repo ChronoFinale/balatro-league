@@ -40,6 +40,21 @@ function parseGame(json: string | null): GameState | null {
   try { return JSON.parse(json) as GameState; } catch { return null; }
 }
 
+// Decode the session.customCombo JSON. Returns null on parse failure or
+// missing fields so callers can treat it like "no custom combo set."
+function parseCustomCombo(json: string | null): { deck: string; stake: string } | null {
+  if (!json) return null;
+  try {
+    const v = JSON.parse(json);
+    if (v && typeof v.deck === "string" && typeof v.stake === "string") {
+      return { deck: v.deck, stake: v.stake };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function loadSession(id: string) {
   return prisma.matchSession.findUnique({ where: { id } });
 }
@@ -361,6 +376,11 @@ async function handleAccept(interaction: ButtonInteraction, session: MatchSessio
   const { playerB } = await loadPlayers(session);
   if (!(await requireActor(interaction, playerB.discordId))) return;
 
+  // Custom-combo path: skip the ban/pick flow entirely. game1 starts
+  // with the pre-agreed combo as a 1-item pool with pickedDeckIdx=0,
+  // so phaseFor immediately reads PLAYING.
+  const customCombo = session.customCombo ? parseCustomCombo(session.customCombo) : null;
+
   // Casual /challenge matches have no divisionId — fall back to the
   // global Default preset.
   const preset = session.divisionId
@@ -373,12 +393,14 @@ async function handleAccept(interaction: ButtonInteraction, session: MatchSessio
   // policy onto the session — that snapshot stays valid for this
   // match's full lifetime even if an admin changes the config later.
   const settings = await getLeagueSettings();
-  const game1Pool = generatePool(preset.decks, preset.stakes, settings.matchPolicy.poolSize);
+  // For custom-combo, pool is the single agreed combo; bans don't apply
+  // but we keep the policy stamp consistent so legacy callers don't break.
+  const game1Pool = customCombo
+    ? [customCombo]
+    : generatePool(preset.decks, preset.stakes, settings.matchPolicy.poolSize);
   const policySnapshot = {
     firstPlayerBans: settings.matchPolicy.firstPlayerBans,
     secondPlayerBans: settings.matchPolicy.secondPlayerBans,
-    // Stamp actual pool length, not requested — generatePool can return
-    // fewer combos if filtering left too few.
     poolSize: game1Pool.length,
   };
 
@@ -434,14 +456,21 @@ async function handleAccept(interaction: ButtonInteraction, session: MatchSessio
     }
   }
 
+  // Custom-combo skips ban/pick: game1 is initialized with pickedDeckIdx=0
+  // and state goes straight to GAME_1_PLAYING. Normal path goes through
+  // the usual GAME_1_BAN entry point.
+  const game1State: GameState = customCombo
+    ? { firstId, bans: [], pool: game1Pool, pickedDeckIdx: 0 }
+    : emptyGameState(firstId, game1Pool);
+  const initialState = customCombo
+    ? MatchSessionState.GAME_1_PLAYING
+    : MatchSessionState.GAME_1_BAN;
   const updated = await updateSession(session, {
-    state: MatchSessionState.GAME_1_BAN,
+    state: initialState,
     acceptedAt: new Date(),
-    // session.pool is kept in sync with game1's pool for legacy callers;
-    // game2/game3 each get their own fresh pool generated at ChooseFirst.
     pool: JSON.stringify(game1Pool),
     policy: JSON.stringify(policySnapshot),
-    game1: JSON.stringify(emptyGameState(firstId, game1Pool)),
+    game1: JSON.stringify(game1State),
     threadId: matchChannelId,
   });
   if (!updated) return raceLost(interaction);
@@ -647,10 +676,30 @@ async function handleWinner(interaction: ButtonInteraction, session: MatchSessio
     return count;
   };
 
+  // Custom-combo mode skips the inter-game "choose who bans first" step
+  // entirely — each subsequent game uses the same agreed combo and goes
+  // straight to PLAYING. The ChooseFirst handler isn't reachable.
+  const customCombo = session.customCombo ? parseCustomCombo(session.customCombo) : null;
+
   if (isGame1) {
     // BO1: end immediately. BO2 / BO3: go to game 2.
     if (session.bestOf === 1) {
       return finalizeMatch(interaction, session, newGame, "game1");
+    }
+    if (customCombo) {
+      // Skip CHOOSE_FIRST — start game 2 immediately with the same combo.
+      // FirstId alternates from game 1 for fairness (the player who didn't
+      // ban first in g1 plays first in g2; meaningless in custom mode but
+      // keeps the same code path for renderer assumptions).
+      const nextFirst = newGame.firstId === session.playerAId ? session.playerBId : session.playerAId;
+      const game2State: GameState = { firstId: nextFirst, bans: [], pool: [customCombo], pickedDeckIdx: 0 };
+      const updated = await updateSession(session, {
+        game1: JSON.stringify(newGame),
+        game2: JSON.stringify(game2State),
+        state: MatchSessionState.GAME_2_PLAYING,
+      });
+      if (!updated) return raceLost(interaction);
+      return refreshMessage(interaction, updated);
     }
     const updated = await updateSession(session, {
       game1: JSON.stringify(newGame),
@@ -666,6 +715,18 @@ async function handleWinner(interaction: ButtonInteraction, session: MatchSessio
       const aTotal = winsFor(session.playerAId, true);
       const bTotal = winsFor(session.playerBId, true);
       if (aTotal === 1 && bTotal === 1) {
+        if (customCombo) {
+          // Skip CHOOSE_FIRST for game 3 in custom-combo mode.
+          const nextFirst = newGame.firstId === session.playerAId ? session.playerBId : session.playerAId;
+          const game3State: GameState = { firstId: nextFirst, bans: [], pool: [customCombo], pickedDeckIdx: 0 };
+          const updated = await updateSession(session, {
+            game2: JSON.stringify(newGame),
+            game3: JSON.stringify(game3State),
+            state: MatchSessionState.GAME_3_PLAYING,
+          });
+          if (!updated) return raceLost(interaction);
+          return refreshMessage(interaction, updated);
+        }
         const updated = await updateSession(session, {
           game2: JSON.stringify(newGame),
           state: MatchSessionState.GAME_3_CHOOSE_FIRST,

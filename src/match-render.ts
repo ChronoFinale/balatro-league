@@ -70,12 +70,31 @@ function renderWaitingAccept(s: MatchSession, a: Player, b: Player) {
   const modeLine = s.isCasual
     ? `Casual challenge · **Best of ${s.bestOf}** · not recorded to the league.`
     : `League set (best of 2) · recorded to standings.`;
+  // Custom-combo invites tell the opponent what they're agreeing to up
+  // front. Accepting = both players agree to this deck/stake instead of
+  // running the ban/pick flow.
+  let comboLine = "";
+  if (s.customCombo) {
+    try {
+      const c = JSON.parse(s.customCombo) as { deck?: string; stake?: string };
+      if (c.deck && c.stake) {
+        const deckIcon = deckEmoji(c.deck) ?? "";
+        const stakeIcon = stakeEmoji(c.stake) ?? "";
+        const icons = [deckIcon, stakeIcon].filter(Boolean).join(" ");
+        comboLine =
+          `\n\n🎯 **Agreed combo** (skips ban/pick): ${icons ? `${icons} ` : ""}**${c.deck} / ${c.stake}**`;
+      }
+    } catch {
+      // ignore — malformed customCombo just doesn't render
+    }
+  }
   const embed = new EmbedBuilder()
     .setTitle(s.isCasual ? "🎴 Challenge" : "🎴 Match invite")
     .setDescription(
       `${mention(a)} wants to play ${mention(b)}.\n` +
-        `${modeLine}\n\n` +
-        `${mention(b)}, accept within 5 minutes to start.`,
+        `${modeLine}` +
+        comboLine +
+        `\n\n${mention(b)}, accept within 5 minutes to start.`,
     )
     .setColor(s.isCasual ? 0x95a5a6 : 0x5865f2)
     .setFooter({ text: `Match ${s.id}` });
