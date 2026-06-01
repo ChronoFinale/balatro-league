@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { isAdminUser } from "@/lib/admin";
+import { getShowBmpMmr } from "@/lib/preferences";
+import { toggleShowBmpMmr } from "@/app/preferences/actions";
 
 const PUBLIC_LINKS = [
   { href: "/standings", label: "Standings" },
@@ -15,6 +17,7 @@ export async function SiteNav({ activePath }: { activePath: string }) {
   const isLoggedIn = !!session?.user;
   const user = session?.user as { name?: string | null } | undefined;
   const isAdmin = isLoggedIn ? await isAdminUser() : false;
+  const showingBmpMmr = await getShowBmpMmr();
 
   const links: { href: string; label: string }[] = [...PUBLIC_LINKS];
   if (isLoggedIn) {
@@ -40,15 +43,25 @@ export async function SiteNav({ activePath }: { activePath: string }) {
         })}
       </nav>
       <span style={{ marginLeft: "auto", display: "flex", gap: 12, alignItems: "center" }}>
-        <Link
-          href="/settings"
-          title="Settings"
-          aria-label="Settings"
-          className={activePath === "/settings" ? "active" : ""}
-          style={{ fontSize: 18, lineHeight: 1, textDecoration: "none" }}
-        >
-          ⚙️
-        </Link>
+        <form action={toggleShowBmpMmr} style={{ display: "inline" }}>
+          <input type="hidden" name="next" value={showingBmpMmr ? "0" : "1"} />
+          <input type="hidden" name="returnTo" value={activePath || "/"} />
+          <button
+            type="submit"
+            className="muted"
+            title={showingBmpMmr ? "Hide BMP MMR columns" : "Show each player's balatromp.com Ranked MMR"}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              fontSize: 12,
+              cursor: "pointer",
+              color: "var(--muted)",
+            }}
+          >
+            {showingBmpMmr ? "hide BMP MMR" : "show BMP MMR"}
+          </button>
+        </form>
         {isLoggedIn ? (
           <>
             <Link href="/me" style={{ color: "var(--text)" }}>
