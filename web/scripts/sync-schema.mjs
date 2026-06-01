@@ -10,7 +10,7 @@
 // the web subtree), the existing committed copy is used — never fail the deploy
 // because of a missing optional sync.
 
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -34,4 +34,24 @@ for (const { from, to } of SYNC) {
   mkdirSync(dirname(dest), { recursive: true });
   copyFileSync(source, dest);
   console.log(`[sync] ${from.join("/")} -> ${to.join("/")}`);
+}
+
+// Sync the Balatro PNG assets from src/assets/balatro/{decks,stakes}/ to
+// web/public/balatro/{decks,stakes}/ so the web app can serve them as
+// static images. The bot also reads them locally for application-emoji
+// upload, so source-of-truth lives on the bot side.
+const ASSET_DIRS = ["decks", "stakes"];
+for (const sub of ASSET_DIRS) {
+  const sourceDir = resolve(repoRoot, "src", "assets", "balatro", sub);
+  const destDir = resolve(webRoot, "public", "balatro", sub);
+  if (!existsSync(sourceDir)) {
+    console.log(`[sync] skipping balatro/${sub} — source dir not found`);
+    continue;
+  }
+  mkdirSync(destDir, { recursive: true });
+  const files = readdirSync(sourceDir).filter((f) => f.endsWith(".png"));
+  for (const file of files) {
+    copyFileSync(resolve(sourceDir, file), resolve(destDir, file));
+  }
+  console.log(`[sync] balatro/${sub}: ${files.length} PNG(s) copied`);
 }

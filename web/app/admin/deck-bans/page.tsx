@@ -161,6 +161,7 @@ function PresetEditor({
           presetId={preset.id}
           addAction={addDeck}
           removeAction={removeDeck}
+          kind="decks"
         />
         <ListEditor
           title="Stakes"
@@ -170,6 +171,7 @@ function PresetEditor({
           presetId={preset.id}
           addAction={addStake}
           removeAction={removeStake}
+          kind="stakes"
         />
       </div>
     </div>
@@ -184,6 +186,7 @@ function ListEditor({
   presetId,
   addAction,
   removeAction,
+  kind,
 }: {
   title: string;
   items: string[];
@@ -192,10 +195,18 @@ function ListEditor({
   presetId: string;
   addAction: (fd: FormData) => Promise<void>;
   removeAction: (fd: FormData) => Promise<void>;
+  kind: "decks" | "stakes";
 }) {
   // Only show options the preset doesn't already have, so admin can't add
   // duplicates and the dropdown shrinks as they fill the preset.
   const available = canonical.filter((c) => !items.includes(c.name));
+  // Decks are 142×190 cards, stakes are 58×58 chips — render at small
+  // inline sizes so the list stays scannable. Both PNGs are served as
+  // static assets from web/public/balatro/ (synced from the bot's
+  // src/assets/balatro/ at install time).
+  const slug = (n: string) => n.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  const imgSize = kind === "decks" ? { w: 28, h: 38 } : { w: 24, h: 24 };
+  const imgFor = (name: string) => `/balatro/${kind}/${slug(name)}.png`;
   return (
     <div className="card">
       <strong>{title} ({items.length})</strong>
@@ -220,19 +231,35 @@ function ListEditor({
             style={{
               display: "flex",
               justifyContent: "space-between",
+              alignItems: "center",
               padding: "4px 0",
               borderBottom: "1px solid var(--border)",
               gap: 8,
             }}
             title={describe(name) ?? ""}
           >
-            <span>
-              <strong>{name}</strong>
-              {describe(name) && (
-                <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>
-                  {describe(name)}
-                </span>
-              )}
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imgFor(name)}
+                alt=""
+                width={imgSize.w}
+                height={imgSize.h}
+                style={{
+                  display: "inline-block",
+                  imageRendering: "pixelated",
+                  flexShrink: 0,
+                }}
+                onError={undefined}
+              />
+              <span>
+                <strong>{name}</strong>
+                {describe(name) && (
+                  <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>
+                    {describe(name)}
+                  </span>
+                )}
+              </span>
             </span>
             <form action={removeAction}>
               <input type="hidden" name="id" value={presetId} />
