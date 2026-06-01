@@ -126,13 +126,21 @@ function renderGame(s: MatchSession, a: Player, b: Player, pool: DeckEntry[], ga
         return combo ? `${combo.deck} / ${combo.stake}` : null;
       })
       .filter((s): s is string => !!s);
+    // Single-player reroll request reminder (other player needs to agree).
+    const rerollLine =
+      game.rerollVoteByA && !game.rerollVoteByB
+        ? `\n\n🔄 **${a.displayName}** wants to reroll the pool. **${b.displayName}** click "Confirm reroll" to apply.`
+        : !game.rerollVoteByA && game.rerollVoteByB
+        ? `\n\n🔄 **${b.displayName}** wants to reroll the pool. **${a.displayName}** click "Confirm reroll" to apply.`
+        : "";
     embed.setDescription(
       `**${first.displayName}** bans first (coin toss).\n\n` +
         `**${whose.displayName}** to ban — pick **${expected}** combo(s) in the menu, then click Confirm.\n` +
         `Pool: ${remaining.length} combo(s) remaining.` +
         (pendingLabels.length > 0
           ? `\n\n**Pending**: ${pendingLabels.join(", ")} _(not yet applied)_`
-          : ""),
+          : "") +
+        rerollLine,
     );
     // Multi-select dropdown of remaining combos; min == max means Discord
     // enforces an exact count of selections on submit. Default-mark the
@@ -161,12 +169,20 @@ function renderGame(s: MatchSession, a: Player, b: Player, pool: DeckEntry[], ga
           };
         }),
       );
+    const rerollLabel =
+      game.rerollVoteByA || game.rerollVoteByB
+        ? "Confirm reroll"
+        : "Reroll pool";
     const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`match:banconfirm:${s.id}`)
         .setLabel(pending.length === expected ? `Confirm ${expected} ban(s)` : `Select ${expected - pending.length} more…`)
         .setStyle(ButtonStyle.Danger)
         .setDisabled(pending.length !== expected),
+      new ButtonBuilder()
+        .setCustomId(`match:reroll:${s.id}`)
+        .setLabel(rerollLabel)
+        .setStyle(ButtonStyle.Secondary),
     );
     return {
       embeds: [embed],

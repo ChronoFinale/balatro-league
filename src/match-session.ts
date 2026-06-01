@@ -43,6 +43,11 @@ export interface GameState {
   // admin must resolve via /admin override-result before the match can
   // continue (or the match stays here forever).
   disputed?: boolean;
+  // Reroll consent. Either player can request a pool reroll during the
+  // ban phase; both must agree to apply. When both true, the pool is
+  // regenerated, bans/pendingBans are cleared, and the votes reset.
+  rerollVoteByA?: boolean;
+  rerollVoteByB?: boolean;
 }
 
 export function emptyGameState(firstId: string, pool: DeckEntry[]): GameState {

@@ -108,6 +108,7 @@ export const matchButtons: ButtonHandler = {
     if (action === "decline") return handleDecline(interaction, session);
     if (action === "choosefirst") return handleChooseFirst(interaction, session, parts[3]);
     if (action === "banconfirm") return handleBanConfirm(interaction, session);
+    if (action === "reroll") return handleReroll(interaction, session);
     if (action === "pick") return handlePick(interaction, session, parts[3]);
     if (action === "winner") return handleWinner(interaction, session, parts[3]);
 
@@ -189,6 +190,69 @@ async function handleBanSelect(interaction: StringSelectMenuInteraction, session
   const newGame: GameState = { ...ctx.game, pendingBans: selected };
   const updated = await updateSession(session, {
     [ctx.gameField]: JSON.stringify(newGame),
+  } as Prisma.MatchSessionUpdateManyMutationInput);
+  if (!updated) return raceLost(interaction);
+  await refreshMessage(interaction, updated);
+}
+
+// Both players consent → regenerate this game's pool. Excludes deck
+// NAMES seen in prior games for variety (same rule generatePool uses
+// at game start). Clears bans, pendingBans, and reroll votes so the
+// ban phase starts over with a fresh shuffle.
+async function handleReroll(interaction: ButtonInteraction, session: MatchSession) {
+  const gameNum =
+    session.state === "GAME_1_BAN" ? 1 :
+    session.state === "GAME_2_BAN" ? 2 :
+    session.state === "GAME_3_BAN" ? 3 : 0;
+  if (gameNum === 0) {
+    return reply(interaction, "Reroll only available during the ban phase.");
+  }
+  const { playerA, playerB } = await loadPlayers(session);
+  if (interaction.user.id !== playerA.discordId && interaction.user.id !== playerB.discordId) {
+    return reply(interaction, "Only the two players in this match can vote to reroll.");
+  }
+  const gameField: "game1" | "game2" | "game3" = `game${gameNum}` as const;
+  const game = parseGame(session[gameField]);
+  if (!game) return reply(interaction, "Game state missing.");
+
+  const voterIsA = interaction.user.id === playerA.discordId;
+  const newVotes: GameState = {
+    ...game,
+    rerollVoteByA: voterIsA ? true : game.rerollVoteByA,
+    rerollVoteByB: !voterIsA ? true : game.rerollVoteByB,
+  };
+
+  // Only one vote so far → save and wait.
+  if (!newVotes.rerollVoteByA || !newVotes.rerollVoteByB) {
+    const updated = await updateSession(session, {
+      [gameField]: JSON.stringify(newVotes),
+    } as Prisma.MatchSessionUpdateManyMutationInput);
+    if (!updated) return raceLost(interaction);
+    return refreshMessage(interaction, updated);
+  }
+
+  // Both agreed → regenerate the pool.
+  const preset = session.divisionId
+    ? await presetForDivision(session.divisionId)
+    : await prisma.matchConfigPreset.findUnique({ where: { name: "Default" } });
+  if (!preset || preset.decks.length === 0 || preset.stakes.length === 0) {
+    return reply(interaction, "Deck preset is missing or empty — ask an admin.");
+  }
+  const priorDecks = new Set<string>();
+  const g1 = parseGame(session.game1);
+  if (g1?.pool && gameNum !== 1) g1.pool.forEach((e) => priorDecks.add(e.deck));
+  if (gameNum === 3) {
+    const g2 = parseGame(session.game2);
+    if (g2?.pool) g2.pool.forEach((e) => priorDecks.add(e.deck));
+  }
+  const newPool = generatePool(preset.decks, preset.stakes, undefined, undefined, [...priorDecks]);
+  const rerolledGame: GameState = {
+    firstId: game.firstId,
+    bans: [],
+    pool: newPool,
+  };
+  const updated = await updateSession(session, {
+    [gameField]: JSON.stringify(rerolledGame),
   } as Prisma.MatchSessionUpdateManyMutationInput);
   if (!updated) return raceLost(interaction);
   await refreshMessage(interaction, updated);
