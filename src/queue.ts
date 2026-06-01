@@ -21,6 +21,7 @@ import { archiveStaleThreads } from "./archive-stale-threads.js";
 import { detectCurrentBmpSeason, fetchPlayerStats } from "./balatromp.js";
 import { spawnDisputeThread } from "./dispute-thread.js";
 import { resolveBackupChannelId } from "./backup-channel.js";
+import { resolveDevopsChannelId } from "./devops-channel.js";
 import { resolveBotCommandsChannelId } from "./bot-commands-channel.js";
 import { prisma } from "./db.js";
 import { env } from "./env.js";
@@ -305,11 +306,16 @@ export async function runLeagueBackup(): Promise<{
     console.warn("[backup.league] Discord client not ready; skipping post");
     return { postedTo: null, fileSize: buf.length, filename };
   }
-  // Backups go to the dedicated staff-private backup channel — falls
-  // back to bot-commands ONLY when no backup channel is set (legacy/
-  // first-boot transition). Once ensureBackupChannel runs and stores
-  // the id, this path uses the dedicated channel.
-  const channelId = (await resolveBackupChannelId()) ?? (await resolveBotCommandsChannelId());
+  // Resolution: explicit BackupChannelId override (env or LeagueConfig)
+  // → devops channel (default) → bot-commands (last-ditch fallback).
+  // Backups land in the devops channel by default so we don't have to
+  // maintain a separate staff-private channel just for weekly JSON
+  // attachments — devops is already staff-only and gets bot output
+  // anyway. If admin wants backups split out, they set BackupChannelId.
+  const channelId =
+    (await resolveBackupChannelId()) ??
+    (await resolveDevopsChannelId()) ??
+    (await resolveBotCommandsChannelId());
   if (!channelId) {
     console.warn("[backup.league] no destination channel resolved; skipping post");
     return { postedTo: null, fileSize: buf.length, filename };

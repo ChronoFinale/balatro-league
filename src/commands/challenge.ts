@@ -6,10 +6,12 @@ import {
   ChannelType,
   MessageFlags,
   SlashCommandBuilder,
+  ThreadAutoArchiveDuration,
   type ChatInputCommandInteraction,
   type TextChannel,
 } from "discord.js";
 import { CANONICAL_DECKS, CANONICAL_STAKES, isCanonicalDeck } from "../balatro-info.js";
+import { resolveChallengesChannelId } from "../challenges-channel.js";
 import { prisma } from "../db.js";
 import { getLeagueSettings } from "../league-settings.js";
 import { DEFAULT_PRESET_NAME, seedDefaultPresetIfEmpty } from "../match-config.js";
@@ -147,8 +149,78 @@ export const challenge: SlashCommand = {
       },
     });
 
-    const { embeds, components } = renderMatch(session, me, opp);
-    const message = await (interaction.channel as TextChannel).send({ embeds, components });
-    await interaction.editReply(`Challenge posted (Best of ${bestOf}): ${message.url}`);
+    // Create a private thread for the invite itself so it doesn't blow
+    // up #bot-commands with one public message per challenge. Parent is
+    // the dedicated #challenges channel when configured, else the channel
+    // /challenge was run from (bot-commands by default per channelScope).
+    // Opponent is added as a thread member → they get a Discord
+    // notification + the thread appears in their sidebar. Same thread
+    // is reused for the match itself after Accept.
+    const challengesId = await resolveChallengesChannelId();
+    let parent: TextChannel | null = null;
+    if (challengesId) {
+      try {
+        const fetched = await interaction.client.channels.fetch(challengesId);
+        if (fetched && fetched.type === ChannelType.GuildText) {
+          parent = fetched as TextChannel;
+        }
+      } catch {
+        // Fall through to interaction.channel.
+      }
+    }
+    if (!parent && interaction.channel?.type === ChannelType.GuildText) {
+      parent = interaction.channel as TextChannel;
+    }
+    if (!parent) {
+      await interaction.editReply("Couldn't find a channel to spawn the challenge thread.");
+      return;
+    }
+
+    let threadId: string | null = null;
+    try {
+      const suffix = session.id.slice(-6);
+      const thread = await parent.threads.create({
+        name: `Challenge · ${me.displayName} vs ${opp.displayName} · ${suffix}`,
+        type: ChannelType.PrivateThread,
+        // 60 min is the minimum auto-archive for private threads. Session
+        // expiry runs separately (5 min default) — match-sweep cancels
+        // the session, the thread itself sticks around until Discord
+        // auto-archives it.
+        autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
+        invitable: false,
+      });
+      await thread.members.add(me.discordId).catch(() => {});
+      await thread.members.add(opp.discordId).catch(() => {});
+      threadId = thread.id;
+    } catch (err) {
+      console.warn("[challenge] failed to create private thread:", err);
+      await interaction.editReply("Couldn't create the challenge thread — check the bot has Create Private Threads permission.");
+      return;
+    }
+
+    // Persist the thread id so handleAccept reuses this thread instead
+    // of creating a second one when the opponent accepts.
+    const updatedSession = await prisma.matchSession.update({
+      where: { id: session.id },
+      data: { threadId },
+    });
+
+    const { embeds, components } = renderMatch(updatedSession, me, opp);
+    try {
+      const thread = await interaction.client.channels.fetch(threadId);
+      if (thread && thread.type === ChannelType.PrivateThread) {
+        await thread.send({
+          content: `<@${opp.discordId}> — <@${me.discordId}> wants to play. Invite expires in ${settings.matchInviteExpiryMinutes} min.`,
+          embeds,
+          components,
+        });
+      }
+    } catch (err) {
+      console.warn("[challenge] failed to post invite into thread:", err);
+    }
+
+    await interaction.editReply(
+      `Challenge sent — opened a private thread with ${opponentUser}. Check your sidebar; expires in ${settings.matchInviteExpiryMinutes} min if not accepted.`,
+    );
   },
 };

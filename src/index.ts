@@ -1,5 +1,4 @@
 import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
-import { ensureBackupChannel } from "./backup-channel.js";
 import { ensureBalatroEmojis } from "./balatro-emojis.js";
 import { ensureCommandsRegistered } from "./commands/register.js";
 import { ensureBotCommandsChannel } from "./bot-commands-channel.js";
@@ -116,11 +115,8 @@ ensureBalatroEmojis(env.DISCORD_CLIENT_ID).catch((err) =>
 ensureCommandsRegistered().catch((err) =>
   console.warn("[register] auto-register failed:", err),
 );
-// Same pattern for the private backup channel — sensitive content
-// (full pairings + season config) should not land in public bot-commands.
-ensureBackupChannel().catch((err) => console.warn("[backup-channel] init failed:", err));
-// And the casual-challenges parent channel under a dedicated '🎴 Matches'
-// category so /challenge threads have their own home.
+// Casual-challenges parent channel — invisible/empty for players,
+// only used as the parent for ephemeral /challenge private threads.
 ensureChallengesChannel().catch((err) => console.warn("[challenges-channel] init failed:", err));
 // DevOps alert channel — infra-only, distinct from league admin. Used
 // by the queue-stall alarm; null is fine (alerts log to console).
