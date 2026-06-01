@@ -85,6 +85,13 @@ export const admin: SlashCommand = {
       sub
         .setName("export-results")
         .setDescription("Dump the league's restorable state as a JSON file attachment."),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("undo-report")
+        .setDescription("Remove a reported set so it's back to unplayed (for when something got reported wrong).")
+        .addUserOption((opt) => opt.setName("p1").setDescription("Either player in the set").setRequired(true))
+        .addUserOption((opt) => opt.setName("p2").setDescription("The other player").setRequired(true)),
     ),
 
   async execute(interaction: ChatInputCommandInteraction) {
@@ -92,10 +99,11 @@ export const admin: SlashCommand = {
     // Helper+ subcommands: dispute mediation work. League Helpers can
     // join match channels and record verbally-agreed results so they
     // can resolve a dispute end-to-end without escalating to an Admin.
-    if (sub === "join-match" || sub === "record-set") {
+    if (sub === "join-match" || sub === "record-set" || sub === "undo-report") {
       if (!(await requireHelper(interaction))) return;
       if (sub === "join-match") return joinMatch(interaction);
       if (sub === "record-set") return recordPairing(interaction);
+      if (sub === "undo-report") return undoReport(interaction);
     }
     // Admin+ subcommands: anything that overrides existing results or
     // exports sensitive data. Helpers can't accidentally rewrite a
@@ -105,6 +113,63 @@ export const admin: SlashCommand = {
     if (sub === "export-results") return exportResults(interaction);
   },
 };
+
+// Delete a pairing (any status) so the set goes back to unplayed.
+// Used when something was reported wrong before the game actually
+// happened. Helper-tier because it's reversible — just play and
+// /report again — and limited blast radius (one set).
+async function undoReport(interaction: ChatInputCommandInteraction) {
+  const p1User = interaction.options.getUser("p1", true);
+  const p2User = interaction.options.getUser("p2", true);
+  if (p1User.id === p2User.id) {
+    await interaction.reply({ content: "Same player twice — pick two different players.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  await interaction.deferReply();
+
+  const [p1, p2, activeSeason] = await Promise.all([
+    prisma.player.findUnique({ where: { discordId: p1User.id } }),
+    prisma.player.findUnique({ where: { discordId: p2User.id } }),
+    prisma.season.findFirst({ where: { isActive: true } }),
+  ]);
+  if (!p1 || !p2) {
+    await interaction.editReply("One or both players aren't in the league yet (no Player row).");
+    return;
+  }
+  if (!activeSeason) {
+    await interaction.editReply("No active season.");
+    return;
+  }
+
+  const [canonA, canonB] = p1.id < p2.id ? [p1.id, p2.id] : [p2.id, p1.id];
+  // Find the pairing across the active season's divisions (either player
+  // could be in any division of this season; the unique constraint is
+  // (divisionId, playerAId, playerBId) so we find by canonical pair).
+  const pairing = await prisma.pairing.findFirst({
+    where: {
+      playerAId: canonA,
+      playerBId: canonB,
+      division: { seasonId: activeSeason.id },
+    },
+    include: { division: { select: { id: true, name: true } } },
+  });
+  if (!pairing) {
+    await interaction.editReply(
+      `No set between **${p1User.username}** and **${p2User.username}** in ${activeSeason.name} — nothing to undo.`,
+    );
+    return;
+  }
+  await prisma.pairing.delete({ where: { id: pairing.id } });
+  // Standings cache no longer reflects this pairing — recompute the
+  // affected division. Fire-and-forget so the user doesn't wait on it.
+  recomputeDivisionStandings(pairing.division.id).catch(() => {});
+
+  const oldResult = `${pairing.gamesWonA}-${pairing.gamesWonB}`;
+  await interaction.editReply(
+    `Undone: deleted the **${oldResult}** set between **${p1User.username}** and **${p2User.username}** ` +
+      `in **${pairing.division.name}**. They can play and report again.`,
+  );
+}
 
 // Build a fresh league snapshot and post it as an ephemeral attachment
 // reply so only the admin who ran the command sees the file. The weekly

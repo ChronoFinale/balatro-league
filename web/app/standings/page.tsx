@@ -17,12 +17,23 @@ export default async function StandingsPage() {
             orderBy: { groupNumber: "asc" },
             include: {
               members: { select: { playerId: true, status: true } },
+              // Count CONFIRMED pairings so the division card can render
+              // a 'X/Y sets played' pill and a ✅ when the round-robin
+              // is complete. Cheap — Prisma _count is a single query.
+              _count: { select: { pairings: { where: { status: "CONFIRMED" } } } },
             },
           },
         },
       },
     },
   });
+
+  // Min/max tier position so up/down arrows only render where they
+  // actually mean something: no ↑ on Legendary (already top), no ↓
+  // on Common (already bottom).
+  const tierPositions = season?.tiers.map((t) => t.position) ?? [];
+  const minTierPos = tierPositions.length > 0 ? Math.min(...tierPositions) : 0;
+  const maxTierPos = tierPositions.length > 0 ? Math.max(...tierPositions) : 0;
 
   // Prefer the materialized standings cache for each division — falls
   // back to live computation transparently for cold-cache divisions,
@@ -64,7 +75,10 @@ export default async function StandingsPage() {
         ) : (
           <>
             <h2>{season.name} — Standings</h2>
-            {season.tiers.filter((t) => t.divisions.length > 0).map((tier) => (
+            {season.tiers.filter((t) => t.divisions.length > 0).map((tier) => {
+              const isTopTier = tier.position === minTierPos;
+              const isBottomTier = tier.position === maxTierPos;
+              return (
               <section key={tier.id} style={{ marginTop: 24 }}>
                 <h3>{tier.name}</h3>
                 <div className="grid grid-2">
@@ -76,12 +90,37 @@ export default async function StandingsPage() {
                       ...r,
                       dropped: droppedIds.has(r.player.id),
                     }));
+                    // Expected sets = N*(N-1)/2 across active members; the
+                    // division is "done" when confirmed = expected. Shows
+                    // as a pill + ✅ on the card header.
+                    const activeCount = div.members.filter((m) => m.status === "ACTIVE").length;
+                    const expectedSets = activeCount < 2 ? 0 : (activeCount * (activeCount - 1)) / 2;
+                    const playedSets = div._count.pairings;
+                    const complete = expectedSets > 0 && playedSets >= expectedSets;
+                    // Highlight promo/relegation positions in the rendered
+                    // standings. Top non-bottom: position 1 promotes. Bottom
+                    // non-top: last position relegates. Edge tiers don't
+                    // render the arrow since there's nowhere to go.
                     void tierColors;
                     return (
                       <div key={div.id} className="card">
-                        <strong>
-                          <Link href={`/divisions/${div.id}`} style={{ textDecoration: "none" }}>{div.name}</Link>
-                        </strong>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                          <strong>
+                            <Link href={`/divisions/${div.id}`} style={{ textDecoration: "none" }}>{div.name}</Link>
+                          </strong>
+                          <span
+                            className="pill"
+                            style={{
+                              background: complete ? "rgba(46,204,113,0.15)" : "rgba(149,165,166,0.15)",
+                              color: complete ? "#2ecc71" : "#95a5a6",
+                              fontSize: 11,
+                              marginLeft: "auto",
+                            }}
+                            title={complete ? "All sets played" : "Round-robin in progress"}
+                          >
+                            {complete ? "✅" : ""} {playedSets}/{expectedSets} sets
+                          </span>
+                        </div>
                         <table style={{ marginTop: 8 }}>
                           <thead>
                             <tr>
@@ -107,9 +146,18 @@ export default async function StandingsPage() {
                                   </Link>
                                 );
                                 const mmr = mmrByPlayerId.get(r.player.id);
+                                // ↑ for promotion position (#1, unless top tier).
+                                // ↓ for relegation position (last, unless bottom tier).
+                                const isPromoting = i === 0 && !isTopTier;
+                                const isRelegating = i === rows.length - 1 && !isBottomTier && rows.length > 1;
+                                const movementMarker = isPromoting ? (
+                                  <span title="Promotion position" style={{ color: "#2ecc71" }}>↑</span>
+                                ) : isRelegating ? (
+                                  <span title="Relegation position" style={{ color: "#e74c3c" }}>↓</span>
+                                ) : null;
                                 return (
                                   <tr key={r.player.id}>
-                                    <td>{medal}</td>
+                                    <td>{medal}{movementMarker && <> {movementMarker}</>}</td>
                                     <td>{r.dropped ? <s>{link}</s> : link}</td>
                                     <td><strong>{r.points}</strong></td>
                                     <td>{r.wins}-{r.draws}-{r.losses}</td>
@@ -126,7 +174,8 @@ export default async function StandingsPage() {
                   })}
                 </div>
               </section>
-            ))}
+              );
+            })}
           </>
         )}
       </main>
