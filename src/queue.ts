@@ -415,7 +415,10 @@ async function bootstrapDivision({ divisionId, guildId }: BootstrapDivisionJob):
     const memberList = div.members
       .map((m, i) => `${i + 1}. <@${m.player.discordId}>`)
       .join("\n");
-    const setsToPlay = (div.members.length * (div.members.length - 1)) / 2;
+    // Each player plays (N-1) sets — one against every other member.
+    // Total sets in the division is N*(N-1)/2 for context.
+    const setsPerPlayer = div.members.length - 1;
+    const totalSetsInDivision = (div.members.length * (div.members.length - 1)) / 2;
     const welcome = [
       `# 🃏 Welcome to ${div.name}`,
       `_${div.season.name} · ${div.tier.name} tier_`,
@@ -426,7 +429,7 @@ async function bootstrapDivision({ divisionId, guildId }: BootstrapDivisionJob):
       memberList,
       ``,
       `**What to do**`,
-      `• Play **every other person** in this list once — best-of-2 (${setsToPlay} sets total per player).`,
+      `• Play **every other person** in this list once — best-of-2 (**${setsPerPlayer} sets per player**, ${totalSetsInDivision} total in this division).`,
       `• Schedule in this channel. DMs work too.`,
       `• Use \`/start-match @opponent\` for the guided ban/pick flow (the bot picks the deck/stake for you), OR just play in Balatro and use \`/report @opponent result:2-0|1-1|0-2\` to log it.`,
       ``,
