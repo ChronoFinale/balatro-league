@@ -254,22 +254,23 @@ async function refreshActiveMmrs(): Promise<void> {
 
 async function snapshotPlayerMmr({ discordId, seasonId }: MmrSnapshotJob): Promise<void> {
   const player = await prisma.player.findUnique({ where: { discordId } });
-  // Resolve the BMP current-season tag from LeagueConfig. Admin updates
-  // when BMP launches a new season (e.g. "season6" → "season7") and this
-  // worker automatically starts capturing under the new label + previous.
+  // Resolve the BMP current-season tag from LeagueConfig. Auto-detected
+  // on bot startup + daily refresh; admin can also override manually.
   const currentBmpSeason = await getConfig(LeagueConfigKey.BmpCurrentSeason);
-  // Capture the current state — labeled with currentBmpSeason if config
-  // is set, otherwise unlabeled (null bmpSeason).
+  // Always capture the current state.
   await fetchAndStore(discordId, player?.id ?? null, seasonId, currentBmpSeason);
-  // Also capture the previous BMP season's historical state so the profile
-  // page can show last-2 trend without us being lucky enough to have an
-  // earlier snapshot already on disk. Past seasons are immutable on BMP's
-  // side, so we only need this once per player per season — but upserting
-  // on every refresh is cheap and self-healing.
+  // Previous-season capture is OPT-IN: past BMP seasons are frozen so
+  // re-fetching them once the data's on disk is wasted CDN budget.
+  // Admin flips BmpCapturePreviousSeason to "true" temporarily when
+  // they want to backfill (e.g. right after season N launches and
+  // want everyone to have a season N-1 row), then flips back off.
   if (currentBmpSeason) {
-    const prev = previousBmpSeason(currentBmpSeason);
-    if (prev) {
-      await fetchAndStore(discordId, player?.id ?? null, seasonId, prev);
+    const capturePrev = await getConfig(LeagueConfigKey.BmpCapturePreviousSeason);
+    if (capturePrev === "true") {
+      const prev = previousBmpSeason(currentBmpSeason);
+      if (prev) {
+        await fetchAndStore(discordId, player?.id ?? null, seasonId, prev);
+      }
     }
   }
 }

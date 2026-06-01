@@ -14,11 +14,19 @@ export const LeagueConfigKey = {
   // staff-only since the JSON includes sensitive league config. Same
   // env → LeagueConfig → auto-create resolution as BotCommandsChannelId.
   BackupChannelId: "backup_channel_id",
-  // Current BMP season tag, e.g. "season6". When BMP launches season7
-  // admin updates this so the snapshot worker captures the right "current"
-  // + previous pair. Null/unset = only the no-season-param current fetch
-  // is captured (we don't know what to label it with).
+  // Current BMP season tag, e.g. "season6". Auto-detected from
+  // balatromp.com/leaderboards on bot startup + daily refresh; admin can
+  // override by setting manually. Null/unset = only the no-season-param
+  // current fetch is captured (we don't know what to label it with).
   BmpCurrentSeason: "bmp_current_season",
+  // Whether to ALSO capture the previous BMP season on every refresh.
+  // Default = unset/"false" — past seasons are frozen on BMP's side so
+  // re-fetching them is wasted budget once the data's already on disk.
+  // Set to "true" temporarily when you want to backfill the previous
+  // season for everyone (e.g., right after season N launches and you
+  // want every player to have a season N-1 row even if they joined
+  // mid-season-N). Toggle off again when the backfill's done.
+  BmpCapturePreviousSeason: "bmp_capture_previous_season",
 } as const;
 
 export type LeagueConfigKey = (typeof LeagueConfigKey)[keyof typeof LeagueConfigKey];
