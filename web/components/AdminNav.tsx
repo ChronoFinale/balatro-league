@@ -15,7 +15,8 @@ const ADMIN_LINKS: AdminLink[] = [
   { href: "/admin/divisions", label: "Divisions" },
   { href: "/admin/deck-bans", label: "Deck Bans" },
   { href: "/admin/disputes", label: "Disputes" },
-  { href: "/admin/settings", label: "Settings" },
+  { href: "/admin/settings", label: "Rules" },
+  { href: "/admin/config", label: "Config" },
 ];
 
 export function AdminNav({ activePath }: { activePath: string }) {

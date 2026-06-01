@@ -1,0 +1,173 @@
+// Admin-only config page. Three sections:
+//   1. Channels & external — the channel-id KV values + webhook URLs
+//   2. League rules — scoring + ban policy + timeouts (tunable in-game)
+//   3. Role bindings — view + add + remove role → tier mappings
+//
+// Everything is admin-friendly form-based instead of requiring SQL. All
+// writes go through scoped server actions in actions.ts.
+
+import { requireAdmin } from "@/lib/admin";
+import { prisma } from "@/lib/prisma";
+import { SiteNav } from "@/components/SiteNav";
+import { AdminNav } from "@/components/AdminNav";
+import {
+  addRoleBinding,
+  clearConfigValue,
+  removeRoleBinding,
+  setConfigValue,
+} from "./actions";
+
+export const dynamic = "force-dynamic";
+
+// One row per LeagueConfig key we want exposed via UI. Order matters —
+// it's the display order on the page. Sections are sub-headed below.
+const CHANNEL_KEYS = [
+  { key: "results_webhook_url", label: "Results webhook URL", help: "Posts match results here. Falls back to env RESULTS_WEBHOOK_URL." },
+  { key: "bot_commands_channel_id", label: "Bot-commands channel ID", help: "Where /challenge/etc. work outside of division channels. Auto-created on bot startup if unset." },
+  { key: "backup_channel_id", label: "Backup channel ID", help: "Daily league backup attachments land here. Should be staff-only." },
+  { key: "challenges_channel_id", label: "Challenges channel ID", help: "Parent channel for /challenge match threads. Optional." },
+  { key: "devops_channel_id", label: "DevOps channel ID", help: "Queue-stall + rate-limit alerts. Tech-only." },
+];
+
+const BMP_KEYS = [
+  { key: "bmp_current_season", label: "Current BMP season", help: "e.g. 'season6'. Auto-detected from balatromp.com daily — override here if needed." },
+  { key: "bmp_capture_previous_season", label: "Capture previous BMP season on refresh", help: "Set to 'true' to backfill the previous BMP season for everyone. Default: unset (only current is captured)." },
+];
+
+// Scoring + match policy + timeouts already have a dedicated UI at
+// /admin/settings (via getLeagueSettings() with typed defaults). This
+// page is for the channels/webhooks/BMP/role-binding stuff that was
+// previously SQL-only.
+
+export default async function AdminConfigPage() {
+  await requireAdmin();
+  const [configRows, roleBindings] = await Promise.all([
+    prisma.leagueConfig.findMany(),
+    prisma.roleBinding.findMany({ orderBy: { tier: "asc" } }),
+  ]);
+  const valueByKey = new Map(configRows.map((r) => [r.key, r.value]));
+
+  return (
+    <>
+      <SiteNav activePath="/admin" />
+      <AdminNav activePath="/admin/config" />
+      <main>
+        <h2>⚙️ Config</h2>
+        <p className="muted">
+          Tunable knobs that used to be SQL-only. Everything here is admin-friendly
+          form-based now. Changes apply immediately (LeagueConfig has a ~30s in-memory
+          cache on the bot side, so rules tweaks take up to that long to propagate).
+        </p>
+
+        <ConfigSection title="Channels & external" keys={CHANNEL_KEYS} valueByKey={valueByKey} />
+        <ConfigSection title="BMP / balatromp.com" keys={BMP_KEYS} valueByKey={valueByKey} />
+        <p className="muted" style={{ fontSize: 12, marginTop: 16 }}>
+          Looking for scoring / match policy / timeouts? Those live on{" "}
+          <a href="/admin/settings">/admin/settings</a>.
+        </p>
+
+        <div className="card" style={{ marginTop: 16 }}>
+          <strong>Role bindings ({roleBindings.length})</strong>
+          <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+            Maps Discord role IDs to permission tiers (OWNER &gt; ADMIN &gt; MOD). Owner
+            is also pinned via the LEAGUE_OWNER_DISCORD_ID env var as a lockout-prevention
+            fallback. Use <code>/league set-role</code> in Discord for the easier path —
+            it accepts an @role mention, this page wants raw IDs.
+          </p>
+          <form action={addRoleBinding} style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+            <input type="text" name="discordRoleId" placeholder="Discord role ID (17-20 digits)" required pattern="\d{17,20}" style={{ flex: "1 1 200px" }} />
+            <select name="tier" required defaultValue="ADMIN">
+              <option value="OWNER">OWNER</option>
+              <option value="ADMIN">ADMIN</option>
+              <option value="MOD">MOD</option>
+            </select>
+            <button type="submit">Add binding</button>
+          </form>
+          <table style={{ marginTop: 12 }}>
+            <thead>
+              <tr><th>Tier</th><th>Discord role ID</th><th>Set by</th><th>Created</th><th></th></tr>
+            </thead>
+            <tbody>
+              {roleBindings.length === 0 ? (
+                <tr><td colSpan={5} className="muted">No bindings yet.</td></tr>
+              ) : roleBindings.map((b) => (
+                <tr key={b.id}>
+                  <td><strong>{b.tier}</strong></td>
+                  <td><code style={{ fontSize: 11 }}>{b.discordRoleId}</code></td>
+                  <td className="muted" style={{ fontSize: 11 }}>{b.createdBy ?? "—"}</td>
+                  <td className="muted" style={{ fontSize: 11 }}>{b.createdAt.toISOString().slice(0, 10)}</td>
+                  <td>
+                    <form action={removeRoleBinding} style={{ display: "inline" }}>
+                      <input type="hidden" name="id" value={b.id} />
+                      <button type="submit" className="muted" style={{ background: "none", border: "none", color: "#e74c3c", cursor: "pointer" }}>
+                        remove
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </main>
+    </>
+  );
+}
+
+function ConfigSection({
+  title,
+  keys,
+  valueByKey,
+}: {
+  title: string;
+  keys: Array<{ key: string; label: string; help: string }>;
+  valueByKey: Map<string, string>;
+}) {
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <strong>{title}</strong>
+      <table style={{ marginTop: 8 }}>
+        <thead>
+          <tr><th style={{ width: "30%" }}>Setting</th><th>Current value</th><th></th></tr>
+        </thead>
+        <tbody>
+          {keys.map(({ key, label, help }) => {
+            const value = valueByKey.get(key) ?? "";
+            return (
+              <tr key={key}>
+                <td>
+                  <strong style={{ fontSize: 13 }}>{label}</strong>
+                  <div className="muted" style={{ fontSize: 11 }}>{help}</div>
+                  <div className="muted" style={{ fontSize: 10, fontFamily: "ui-monospace, monospace" }}>{key}</div>
+                </td>
+                <td>
+                  <form action={setConfigValue} style={{ display: "flex", gap: 6 }}>
+                    <input type="hidden" name="key" value={key} />
+                    <input
+                      type="text"
+                      name="value"
+                      defaultValue={value}
+                      placeholder={value ? "" : "(unset)"}
+                      style={{ flex: 1, fontSize: 12 }}
+                    />
+                    <button type="submit" className="secondary" style={{ fontSize: 11 }}>Save</button>
+                  </form>
+                </td>
+                <td>
+                  {value && (
+                    <form action={clearConfigValue} style={{ display: "inline" }}>
+                      <input type="hidden" name="key" value={key} />
+                      <button type="submit" className="muted" style={{ background: "none", border: "none", color: "#e74c3c", cursor: "pointer", fontSize: 11 }}>
+                        clear
+                      </button>
+                    </form>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
