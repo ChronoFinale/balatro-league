@@ -14,6 +14,11 @@ export const LeagueConfigKey = {
   // staff-only since the JSON includes sensitive league config. Same
   // env → LeagueConfig → auto-create resolution as BotCommandsChannelId.
   BackupChannelId: "backup_channel_id",
+  // Current BMP season tag, e.g. "season6". When BMP launches season7
+  // admin updates this so the snapshot worker captures the right "current"
+  // + previous pair. Null/unset = only the no-season-param current fetch
+  // is captured (we don't know what to label it with).
+  BmpCurrentSeason: "bmp_current_season",
 } as const;
 
 export type LeagueConfigKey = (typeof LeagueConfigKey)[keyof typeof LeagueConfigKey];

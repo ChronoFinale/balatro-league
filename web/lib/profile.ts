@@ -17,6 +17,7 @@ export interface SeasonHistoryEntry {
   seasonId: string;
   seasonName: string;
   isActive: boolean;
+  divisionId: string;
   divisionName: string;
   tierName: string;
   tierPosition: number;
@@ -95,6 +96,7 @@ export async function loadPlayerHistory(playerId: string): Promise<PlayerHistory
       seasonId: m.division.season.id,
       seasonName: m.division.season.name,
       isActive: m.division.season.isActive,
+      divisionId: m.division.id,
       divisionName: m.division.name,
       tierName: m.division.tier.name,
       tierPosition: m.division.tier.position,

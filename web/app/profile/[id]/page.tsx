@@ -52,33 +52,30 @@ export default async function ProfilePage({
     }
   }
 
-  // BMP Ranked MMR snapshots — show current and previous LEAGUE seasons
-  // side by side so players can see trend (improving, slipping). Falls
-  // back to "just the latest" if there's only ever been one. Renders
-  // nothing if zero snapshots — new players see the card appear once
-  // the next refresh cycle catches them.
-  const seasonSnapshots = await prisma.playerMmrSnapshot.findMany({
+  // BMP Ranked MMR snapshots — show latest 2 BMP SEASONS side by side
+  // (e.g. season6 next to season5). Distinct on bmpSeason, ordered by
+  // capturedAt desc, take 2 — gives the most recently-captured row per
+  // BMP season. Worker captures current + previous on every refresh so
+  // the trend view fills in without waiting for the next league cycle.
+  const bmpSeasonSnapshots = await prisma.playerMmrSnapshot.findMany({
     where: {
-      playerId: profile.player.id,
+      OR: [{ playerId: profile.player.id }, { discordId: profile.player.discordId }],
       rankedMmr: { not: null },
-      seasonId: { not: null },
+      bmpSeason: { not: null },
     },
-    orderBy: { capturedAt: "desc" },
-    distinct: ["seasonId"],
-    include: { player: false },
+    orderBy: [{ bmpSeason: "desc" }, { capturedAt: "desc" }],
+    distinct: ["bmpSeason"],
     take: 2,
   });
-  const seasonIds = seasonSnapshots.map((s) => s.seasonId!).filter(Boolean);
-  const seasonNames = seasonIds.length === 0 ? [] : await prisma.season.findMany({
-    where: { id: { in: seasonIds } },
-    select: { id: true, name: true },
-  });
-  const nameById = new Map(seasonNames.map((s) => [s.id, s.name]));
-  // Fallback: if no season-tied snapshots exist yet, show the most recent
-  // un-tied snapshot so the card still renders for ad-hoc captures.
-  const fallbackSnapshot = seasonSnapshots.length === 0
+  // Fallback: a player who's never been captured under an explicit
+  // bmpSeason (legacy data or initial fetch before BmpCurrentSeason was
+  // set) — pull their latest unlabeled snapshot so the card still renders.
+  const fallbackSnapshot = bmpSeasonSnapshots.length === 0
     ? await prisma.playerMmrSnapshot.findFirst({
-        where: { playerId: profile.player.id, rankedMmr: { not: null } },
+        where: {
+          OR: [{ playerId: profile.player.id }, { discordId: profile.player.discordId }],
+          rankedMmr: { not: null },
+        },
         orderBy: { capturedAt: "desc" },
       })
     : null;
@@ -97,10 +94,9 @@ export default async function ProfilePage({
       <main>
         <h2>{profile.player.displayName}</h2>
 
-        <div className="grid grid-3">
+        <div className="grid grid-2">
           <div className="stat"><div className="label">Seasons</div><div className="value">{t.seasons}</div></div>
           <div className="stat"><div className="label">Total points</div><div className="value">{t.points}</div></div>
-          <div className="stat"><div className="label">Best rank</div><div className="value">{t.bestRank ? `#${t.bestRank}` : "—"}</div></div>
         </div>
 
         {isSanji && (
@@ -158,7 +154,7 @@ export default async function ProfilePage({
           </div>
         )}
 
-        {(seasonSnapshots.length > 0 || fallbackSnapshot) && (
+        {(bmpSeasonSnapshots.length > 0 || fallbackSnapshot) && (
           <div className="card" style={{ marginTop: 16 }}>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
               <strong>BMP Ranked MMR</strong>
@@ -166,23 +162,33 @@ export default async function ProfilePage({
                 from <a href={`https://balatromp.com/players/${profile.player.discordId}`} target="_blank" rel="noopener">balatromp.com</a>
               </span>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: seasonSnapshots.length === 2 ? "1fr 1fr" : "1fr", gap: 12 }}>
-              {seasonSnapshots.length > 0 ? (
-                seasonSnapshots.map((snap, i) => (
+            <div style={{ display: "grid", gridTemplateColumns: bmpSeasonSnapshots.length === 2 ? "1fr 1fr" : "1fr", gap: 12 }}>
+              {bmpSeasonSnapshots.length > 0 ? (
+                bmpSeasonSnapshots.map((snap, i) => (
                   <div key={snap.id} style={{ padding: 8, background: "var(--surface-2)", borderRadius: 4 }}>
                     <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>
-                      {i === 0 ? "Current" : "Previous"} · {nameById.get(snap.seasonId!) ?? "Season"}
+                      {i === 0 ? "Current" : "Previous"} · {formatBmpSeason(snap.bmpSeason)}
                     </div>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
                       <span style={{ fontSize: 22, fontWeight: 600 }}>{snap.rankedMmr}</span>
                       <span className="pill" style={{ background: "rgba(118,199,255,0.15)", color: "#76c7ff", fontSize: 11 }}>
                         {snap.rankedTier}
                       </span>
-                      {snap.totalGames != null && (
+                      {snap.leaderboardRank != null && (
                         <span className="muted" style={{ fontSize: 11 }}>
-                          {snap.totalGames}g · {snap.winRatePct}%
+                          #{snap.leaderboardRank}
                         </span>
                       )}
+                    </div>
+                    <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                      {snap.wins != null && snap.losses != null
+                        ? `${snap.wins}W-${snap.losses}L`
+                        : snap.totalGames != null
+                          ? `${snap.totalGames} games`
+                          : null}
+                      {snap.winRatePct != null && ` · ${snap.winRatePct}% WR`}
+                      {snap.peakMmr != null && ` · peak ${snap.peakMmr}`}
+                      {snap.peakStreak != null && snap.peakStreak > 0 && ` · streak ${snap.peakStreak}`}
                     </div>
                   </div>
                 ))
@@ -254,7 +260,7 @@ export default async function ProfilePage({
                   </Link>
                   {h.isActive && <span className="pill" style={{ background: "rgba(46,204,113,0.15)", color: "var(--success)" }}>ACTIVE</span>}
                   <span className="pill" style={{ background: color.bg, color: color.fg }}>{h.tierName}</span>
-                  <span>{h.divisionName}</span>
+                  <Link href={`/divisions/${h.divisionId}`} style={{ color: "var(--text)" }}>{h.divisionName}</Link>
                   {h.status === "DROPPED" && (
                     <span className="pill" style={{ background: "rgba(231,76,60,0.2)", color: "#e74c3c" }}>DROPPED</span>
                   )}
@@ -300,6 +306,14 @@ export default async function ProfilePage({
       </main>
     </>
   );
+}
+
+// "season6" → "Season 6"; anything else returned as-is for forward
+// compatibility with whatever naming BMP rolls out later.
+function formatBmpSeason(s: string | null): string {
+  if (!s) return "";
+  const m = /^season(\d+)$/.exec(s);
+  return m ? `Season ${m[1]}` : s;
 }
 
 interface AdminRecordContext {

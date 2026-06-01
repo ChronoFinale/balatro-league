@@ -81,6 +81,11 @@ model PlayerMmrSnapshot {
   // Source = "balatromp.com" for now; future-proofs adding other rating
   // sources (e.g., a self-reported manual entry).
   source      String   @default("balatromp.com")
+  // BMP-season this snapshot belongs to (e.g. "season6"). Null = captured
+  // without specifying a season (request was for current state). Set when
+  // we explicitly fetch a prior BMP season so we can show last-2-seasons
+  // trend on the profile.
+  bmpSeason   String?
   // Nullable because the player may not have an account on balatromp,
   // or the fetch may have failed — we still want a row recording the
   // attempt rather than silently dropping it (fetchError captures why).
@@ -90,10 +95,19 @@ model PlayerMmrSnapshot {
   // Stored as integer 0-100 (e.g., 52 = 52%). Easier to sort/filter than
   // a float and we don't need sub-percent precision for seeding.
   winRatePct  Int?
+  // Direct from the tRPC response — let players see peak MMR they ever
+  // hit in this season, raw W/L counts (winRatePct is derived), longest
+  // win streak, and leaderboard rank position at capture time.
+  peakMmr     Int?
+  wins        Int?
+  losses      Int?
+  peakStreak  Int?
+  leaderboardRank Int?
   rawHtml     String?
   fetchError  String?
 
   @@index([discordId, capturedAt])
+  @@index([discordId, bmpSeason, capturedAt])
   @@index([playerId, capturedAt])
   @@index([seasonId])
 }
@@ -274,11 +288,12 @@ model MatchSession {
 }
 
 // Binding between a Discord role and a bot permission tier.
-// Multiple Discord roles can map to the same tier (e.g. two separate "Mod" roles).
+// Multiple Discord roles can map to the same tier (e.g. two separate
+// "League Helper" roles).
 enum PermissionTier {
-  OWNER   // full power, including destructive ops
-  ADMIN   // season/division management, force-resolve disputes
-  MOD     // dispute resolution, light moderation
+  OWNER   // full power, including destructive ops + role binding
+  ADMIN   // season/division management, force-resolve disputes, export
+  HELPER  // dispute mediation: join match channels, record verbal results
 }
 
 // Global key-value config for the bot — things like the results-webhook

@@ -29,6 +29,7 @@ import {
   createGuildTextChannel,
   postChannelMessage,
 } from "./discord-helpers.js";
+import { getConfig, LeagueConfigKey } from "./league-config.js";
 import { buildLeagueExport, exportFilename, serializeExport } from "./league-export.js";
 import { ChannelType, AttachmentBuilder } from "discord.js";
 
@@ -241,26 +242,67 @@ async function refreshActiveMmrs(): Promise<void> {
 }
 
 async function snapshotPlayerMmr({ discordId, seasonId }: MmrSnapshotJob): Promise<void> {
-  const { stats, rawJson, error } = await fetchPlayerStats(discordId);
-  // Best-effort link to a Player row if one already exists; null is fine
-  // for snapshots taken at signup-close before build-season has created
-  // the Player. Build-season backfills playerId later.
   const player = await prisma.player.findUnique({ where: { discordId } });
+  // Resolve the BMP current-season tag from LeagueConfig. Admin updates
+  // when BMP launches a new season (e.g. "season6" → "season7") and this
+  // worker automatically starts capturing under the new label + previous.
+  const currentBmpSeason = await getConfig(LeagueConfigKey.BmpCurrentSeason);
+  // Capture the current state — labeled with currentBmpSeason if config
+  // is set, otherwise unlabeled (null bmpSeason).
+  await fetchAndStore(discordId, player?.id ?? null, seasonId, currentBmpSeason);
+  // Also capture the previous BMP season's historical state so the profile
+  // page can show last-2 trend without us being lucky enough to have an
+  // earlier snapshot already on disk. Past seasons are immutable on BMP's
+  // side, so we only need this once per player per season — but upserting
+  // on every refresh is cheap and self-healing.
+  if (currentBmpSeason) {
+    const prev = previousBmpSeason(currentBmpSeason);
+    if (prev) {
+      await fetchAndStore(discordId, player?.id ?? null, seasonId, prev);
+    }
+  }
+}
+
+// Single fetch + insert. Splitting out so snapshotPlayerMmr can call it
+// twice (current + previous BMP season) without duplicating the wiring.
+async function fetchAndStore(
+  discordId: string,
+  playerId: string | null,
+  seasonId: string | null,
+  bmpSeason: string | null,
+): Promise<void> {
+  const { stats, rawJson, error } = await fetchPlayerStats(discordId, bmpSeason);
   await prisma.playerMmrSnapshot.create({
     data: {
       discordId,
-      playerId: player?.id ?? null,
+      playerId,
       seasonId,
+      bmpSeason,
       rankedMmr: stats?.rankedMmr ?? null,
       rankedTier: stats?.rankedTier ?? null,
       totalGames: stats?.totalGames ?? null,
       winRatePct: stats?.winRatePct ?? null,
+      peakMmr: stats?.peakMmr ?? null,
+      wins: stats?.wins ?? null,
+      losses: stats?.losses ?? null,
+      peakStreak: stats?.peakStreak ?? null,
+      leaderboardRank: stats?.leaderboardRank ?? null,
       // Only keep the blob on failures — successful snapshots don't
       // need a JSON body per player taking up space.
       rawHtml: error ? rawJson : null,
       fetchError: error,
     },
   });
+}
+
+// "season6" → "season5". Returns null if input isn't a recognized
+// season pattern or if there's no previous (season1 → null).
+function previousBmpSeason(s: string): string | null {
+  const m = /^season(\d+)$/.exec(s);
+  if (!m) return null;
+  const n = parseInt(m[1]!, 10);
+  if (!Number.isFinite(n) || n <= 1) return null;
+  return `season${n - 1}`;
 }
 
 interface DmJob {
@@ -303,7 +345,7 @@ async function bootstrapDivision({ divisionId, guildId }: BootstrapDivisionJob):
 
   const parentId = div.season.discordCategoryId ?? undefined;
   const staffBindings = await prisma.roleBinding.findMany({
-    where: { tier: { in: ["ADMIN", "MOD"] } },
+    where: { tier: { in: ["ADMIN", "HELPER"] } },
   });
   const staffRoleIds = staffBindings.map((b) => b.discordRoleId);
 

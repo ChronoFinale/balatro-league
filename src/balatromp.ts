@@ -20,6 +20,13 @@ export interface BalatropStats {
   rankedTier: string;
   totalGames: number;
   winRatePct: number;
+  // Direct fields off the tRPC response — surfaced on profile pages so
+  // players can see peak, raw W/L, longest streak, leaderboard rank.
+  peakMmr: number | null;
+  wins: number | null;
+  losses: number | null;
+  peakStreak: number | null;
+  leaderboardRank: number | null;
 }
 
 export interface FetchResult {
@@ -28,10 +35,19 @@ export interface FetchResult {
   error: string | null;
 }
 
-export async function fetchPlayerStats(discordId: string): Promise<FetchResult> {
-  const input = encodeURIComponent(
-    JSON.stringify({ json: { channel_id: RANKED_CHANNEL_ID, user_id: discordId } }),
-  );
+// season: BMP-season tag like "season6" to query historical data. Null/
+// omitted = current state for the active season. Confirmed the tRPC
+// endpoint accepts a `season` field in the input object.
+export async function fetchPlayerStats(
+  discordId: string,
+  season: string | null = null,
+): Promise<FetchResult> {
+  const inputObj: Record<string, unknown> = {
+    channel_id: RANKED_CHANNEL_ID,
+    user_id: discordId,
+  };
+  if (season) inputObj.season = season;
+  const input = encodeURIComponent(JSON.stringify({ json: inputObj }));
   const url = `${TRPC_URL}?input=${input}`;
   let rawJson = "";
   try {
@@ -78,6 +94,11 @@ export function parseRankedResponse(json: string): FetchResult {
       rankedTier: mmrToTier(record.mmr),
       totalGames: record.totalgames,
       winRatePct: Math.round((record.winrate ?? 0) * 100),
+      peakMmr: typeof record.peak_mmr === "number" ? Math.round(record.peak_mmr) : null,
+      wins: typeof record.wins === "number" ? record.wins : null,
+      losses: typeof record.losses === "number" ? record.losses : null,
+      peakStreak: typeof record.peak_streak === "number" ? record.peak_streak : null,
+      leaderboardRank: typeof record.rank === "number" ? record.rank : null,
     },
     rawJson: json,
     error: null,
@@ -92,6 +113,7 @@ interface RankedRecord {
   losses?: number;
   rank?: number;
   peak_mmr?: number;
+  peak_streak?: number;
 }
 
 // Threshold-based Balatro MP tiers. Higher tiers (Foil top-50, Holographic
