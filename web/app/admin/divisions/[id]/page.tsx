@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
-import { computeStandings } from "@/lib/standings";
+import { loadAdminDivisionDetail } from "@/lib/loaders/admin";
 import { tierColors } from "@/lib/tier-colors";
 import { SiteNav } from "@/components/SiteNav";
 import { AdminNav } from "@/components/AdminNav";
@@ -36,53 +35,13 @@ export default async function AdminDivisionDetail({
   // bulk is a URL-encoded query string like "added=5&skipped=1&failed=123,456" or "recorded=8&errors=..."
   const bulkSummary = bulk ? new URLSearchParams(decodeURIComponent(bulk)) : null;
 
-  const division = await prisma.division.findUnique({
-    where: { id },
-    include: {
-      season: true,
-      tier: true,
-      members: { include: { player: true }, orderBy: { joinedAt: "asc" } },
-      pairings: {
-        include: { playerA: true, playerB: true },
-        orderBy: [{ status: "asc" }, { reportedAt: "desc" }],
-      },
-      shootouts: { select: { playerAId: true, playerBId: true, winnerId: true, recordedBy: true, recordedAt: true, notes: true } },
-    },
-  });
-  if (!division) notFound();
-
-  const droppedIds = new Set(division.members.filter((m) => m.status === "DROPPED").map((m) => m.playerId));
-  const confirmedPairings = division.pairings.filter((p) => p.status === "CONFIRMED");
-  const rows = computeStandings(
-    division.members.map((m) => m.player),
-    confirmedPairings.map((p) => ({
-      playerAId: p.playerAId,
-      playerBId: p.playerBId,
-      gamesWonA: p.gamesWonA,
-      gamesWonB: p.gamesWonB,
-    })),
-    division.shootouts,
-  ).map((r) => ({ ...r, dropped: droppedIds.has(r.player.id) }));
-  // Lookup map for player display in the shootouts section.
-  const playerById = new Map(division.members.map((m) => [m.playerId, m.player]));
-
-  // Unplayed matchups: active members with no Pairing row yet
-  const activeMembers = division.members.filter((m) => m.status === "ACTIVE");
-  const playedKey = (a: string, b: string) => {
-    const [x, y] = a < b ? [a, b] : [b, a];
-    return `${x}-${y}`;
-  };
-  const playedSet = new Set(division.pairings.map((p) => playedKey(p.playerAId, p.playerBId)));
-  const unplayed: Array<{ a: typeof activeMembers[number]["player"]; b: typeof activeMembers[number]["player"] }> = [];
-  for (let i = 0; i < activeMembers.length; i++) {
-    for (let j = i + 1; j < activeMembers.length; j++) {
-      const a = activeMembers[i]!.player;
-      const b = activeMembers[j]!.player;
-      if (!playedSet.has(playedKey(a.id, b.id))) unplayed.push({ a, b });
-    }
-  }
-
-  const tierColor = tierColors(division.tier.position);
+  const data = await loadAdminDivisionDetail(id);
+  if (!data) notFound();
+  const { division, members, pairings, shootouts, standings: rows, unplayed, playerById } = data;
+  const tierColor = tierColors(division.tierPosition);
+  // Keep these locals for any later inline references to mirror the
+  // previous shape of `division.X`. The page below was built against
+  // them; loader's shape mirrors except `season`/`tier` are flattened.
 
   return (
     <>
@@ -91,8 +50,8 @@ export default async function AdminDivisionDetail({
       <main>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 8 }}>
           <h2 style={{ margin: 0 }}>{division.name}</h2>
-          <span className="pill" style={{ background: tierColor.bg, color: tierColor.fg }}>{division.tier.name}</span>
-          <span className="muted">· {division.season.name}</span>
+          <span className="pill" style={{ background: tierColor.bg, color: tierColor.fg }}>{division.tierName}</span>
+          <span className="muted">· {division.seasonName}</span>
           <Link href="/admin/divisions" style={{ marginLeft: "auto" }}>← All divisions</Link>
         </div>
         <div className="muted" style={{ marginBottom: 16 }}>
@@ -237,7 +196,7 @@ export default async function AdminDivisionDetail({
         {/* Members */}
         <div className="card">
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-            <strong>Members ({division.members.length}/{division.targetSize ?? division.season.targetGroupSize})</strong>
+            <strong>Members ({members.length}/{division.targetSize ?? division.seasonTargetGroupSize})</strong>
             <form action={setDivisionTargetSize} style={{ display: "flex", gap: 4, alignItems: "center", marginLeft: "auto" }}>
               <input type="hidden" name="divisionId" value={division.id} />
               <label className="muted" style={{ fontSize: 11 }}>Override size:</label>
@@ -247,7 +206,7 @@ export default async function AdminDivisionDetail({
                 min={1}
                 max={50}
                 defaultValue={division.targetSize ?? ""}
-                placeholder={`${division.season.targetGroupSize} (default)`}
+                placeholder={`${division.seasonTargetGroupSize} (default)`}
                 style={{ width: 80, fontSize: 12 }}
               />
               <button type="submit" className="secondary" style={{ fontSize: 11 }}>Save</button>
@@ -258,9 +217,9 @@ export default async function AdminDivisionDetail({
               <tr><th>Player</th><th>Discord ID</th><th></th></tr>
             </thead>
             <tbody>
-              {division.members.length === 0 ? (
+              {members.length === 0 ? (
                 <tr><td colSpan={3} className="muted">No members.</td></tr>
-              ) : division.members.map((m) => {
+              ) : members.map((m) => {
                 const isDropped = m.status === "DROPPED";
                 return (
                   <tr key={m.id}>
@@ -316,15 +275,15 @@ export default async function AdminDivisionDetail({
 
         {/* Recorded matches */}
         <div className="card">
-          <strong>Matches — recorded ({division.pairings.length})</strong>
+          <strong>Matches — recorded ({pairings.length})</strong>
           <table>
             <thead>
               <tr><th>Matchup</th><th>Result</th><th>Status</th><th>Override</th><th></th></tr>
             </thead>
             <tbody>
-              {division.pairings.length === 0 ? (
+              {pairings.length === 0 ? (
                 <tr><td colSpan={5} className="muted">None yet.</td></tr>
-              ) : division.pairings.map((p) => {
+              ) : pairings.map((p) => {
                 const statusBg = p.status === "CONFIRMED" ? "rgba(46,204,113,0.15)" : p.status === "DISPUTED" ? "rgba(231,76,60,0.15)" : "rgba(241,196,15,0.15)";
                 const statusFg = p.status === "CONFIRMED" ? "#2ecc71" : p.status === "DISPUTED" ? "#e74c3c" : "#f1c40f";
                 return (
@@ -358,18 +317,18 @@ export default async function AdminDivisionDetail({
 
         {/* Shootouts */}
         <div className="card">
-          <strong>⚔ Shootouts ({division.shootouts.length})</strong>
+          <strong>⚔ Shootouts ({shootouts.length})</strong>
           <p className="muted" style={{ fontSize: 12 }}>
             Tiebreakers for players tied on points whose regular-season set was a 1-1 draw.
             Sort uses this between head-to-head and wins.
           </p>
-          {division.shootouts.length > 0 && (
+          {shootouts.length > 0 && (
             <table style={{ marginBottom: 12 }}>
               <thead>
                 <tr><th>Players</th><th>Winner</th><th>Source</th><th></th></tr>
               </thead>
               <tbody>
-                {division.shootouts.map((s) => {
+                {shootouts.map((s) => {
                   const pA = playerById.get(s.playerAId);
                   const pB = playerById.get(s.playerBId);
                   const winner = s.winnerId === s.playerAId ? pA : pB;
@@ -399,21 +358,21 @@ export default async function AdminDivisionDetail({
             <input type="hidden" name="divisionId" value={division.id} />
             <select name="p1" required defaultValue="" style={{ minWidth: 140 }}>
               <option value="" disabled>p1…</option>
-              {division.members.map((m) => (
+              {members.map((m) => (
                 <option key={`s1-${m.playerId}`} value={m.playerId}>{m.player.displayName}</option>
               ))}
             </select>
             <span className="muted">vs</span>
             <select name="p2" required defaultValue="" style={{ minWidth: 140 }}>
               <option value="" disabled>p2…</option>
-              {division.members.map((m) => (
+              {members.map((m) => (
                 <option key={`s2-${m.playerId}`} value={m.playerId}>{m.player.displayName}</option>
               ))}
             </select>
             <span className="muted">winner:</span>
             <select name="winnerId" required defaultValue="" style={{ minWidth: 140 }}>
               <option value="" disabled>winner…</option>
-              {division.members.map((m) => (
+              {members.map((m) => (
                 <option key={`sw-${m.playerId}`} value={m.playerId}>{m.player.displayName}</option>
               ))}
             </select>

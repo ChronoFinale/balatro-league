@@ -579,6 +579,158 @@ export async function loadAdminPlayersListView(opts: {
   return result;
 }
 
+// ── /admin/divisions/[id] ────────────────────────────────────────────
+
+export interface AdminDivisionDetailMember {
+  id: string;
+  playerId: string;
+  status: "ACTIVE" | "DROPPED";
+  droppedAt: Date | null;
+  player: { id: string; displayName: string; discordId: string; rating: number | null };
+}
+
+export interface AdminDivisionDetailPairing {
+  id: string;
+  status: "PENDING" | "CONFIRMED" | "DISPUTED" | "CANCELLED";
+  playerAId: string;
+  playerBId: string;
+  gamesWonA: number;
+  gamesWonB: number;
+  reportedAt: Date | null;
+  confirmedAt: Date | null;
+  playerA: { id: string; displayName: string };
+  playerB: { id: string; displayName: string };
+}
+
+export interface AdminDivisionDetailShootout {
+  playerAId: string;
+  playerBId: string;
+  winnerId: string;
+  recordedBy: string;
+  recordedAt: Date;
+  notes: string | null;
+}
+
+export interface AdminDivisionDetailData {
+  division: {
+    id: string;
+    name: string;
+    targetSize: number | null;
+    seasonId: string;
+    seasonName: string;
+    seasonTargetGroupSize: number;
+    tierName: string;
+    tierPosition: number;
+  };
+  members: AdminDivisionDetailMember[];
+  pairings: AdminDivisionDetailPairing[];
+  shootouts: AdminDivisionDetailShootout[];
+  standings: Array<ReturnType<typeof computeStandings>[number] & { dropped: boolean }>;
+  unplayed: Array<{
+    a: { id: string; displayName: string };
+    b: { id: string; displayName: string };
+  }>;
+  playerById: Map<string, { id: string; displayName: string }>;
+}
+
+export async function loadAdminDivisionDetail(
+  divisionId: string,
+): Promise<AdminDivisionDetailData | null> {
+  const division = await prisma.division.findUnique({
+    where: { id: divisionId },
+    include: {
+      season: { select: { id: true, name: true, targetGroupSize: true } },
+      tier: { select: { name: true, position: true } },
+      members: { include: { player: true }, orderBy: { joinedAt: "asc" } },
+      pairings: {
+        include: { playerA: true, playerB: true },
+        orderBy: [{ status: "asc" }, { reportedAt: "desc" }],
+      },
+      shootouts: {
+        select: { playerAId: true, playerBId: true, winnerId: true, recordedBy: true, recordedAt: true, notes: true },
+      },
+    },
+  });
+  if (!division) return null;
+
+  const droppedIds = new Set(
+    division.members.filter((m) => m.status === "DROPPED").map((m) => m.playerId),
+  );
+  const confirmedPairings = division.pairings.filter((p) => p.status === "CONFIRMED");
+  const standings = computeStandings(
+    division.members.map((m) => m.player),
+    confirmedPairings.map((p) => ({
+      playerAId: p.playerAId,
+      playerBId: p.playerBId,
+      gamesWonA: p.gamesWonA,
+      gamesWonB: p.gamesWonB,
+    })),
+    division.shootouts,
+  ).map((r) => ({ ...r, dropped: droppedIds.has(r.player.id) }));
+
+  const playerById = new Map(
+    division.members.map((m) => [m.playerId, { id: m.player.id, displayName: m.player.displayName }]),
+  );
+
+  const activeMembers = division.members.filter((m) => m.status === "ACTIVE");
+  const playedKey = (a: string, b: string) => {
+    const [x, y] = a < b ? [a, b] : [b, a];
+    return `${x}-${y}`;
+  };
+  const playedSet = new Set(division.pairings.map((p) => playedKey(p.playerAId, p.playerBId)));
+  const unplayed: AdminDivisionDetailData["unplayed"] = [];
+  for (let i = 0; i < activeMembers.length; i++) {
+    for (let j = i + 1; j < activeMembers.length; j++) {
+      const a = activeMembers[i]!.player;
+      const b = activeMembers[j]!.player;
+      if (!playedSet.has(playedKey(a.id, b.id))) {
+        unplayed.push({ a, b });
+      }
+    }
+  }
+
+  return {
+    division: {
+      id: division.id,
+      name: division.name,
+      targetSize: division.targetSize,
+      seasonId: division.season.id,
+      seasonName: division.season.name,
+      seasonTargetGroupSize: division.season.targetGroupSize,
+      tierName: division.tier.name,
+      tierPosition: division.tier.position,
+    },
+    members: division.members.map((m): AdminDivisionDetailMember => ({
+      id: m.id,
+      playerId: m.playerId,
+      status: m.status,
+      droppedAt: m.droppedAt,
+      player: {
+        id: m.player.id,
+        displayName: m.player.displayName,
+        discordId: m.player.discordId,
+        rating: m.player.rating,
+      },
+    })),
+    pairings: division.pairings.map((p): AdminDivisionDetailPairing => ({
+      id: p.id,
+      status: p.status,
+      playerAId: p.playerAId,
+      playerBId: p.playerBId,
+      gamesWonA: p.gamesWonA,
+      gamesWonB: p.gamesWonB,
+      reportedAt: p.reportedAt,
+      confirmedAt: p.confirmedAt,
+      playerA: { id: p.playerA.id, displayName: p.playerA.displayName },
+      playerB: { id: p.playerB.id, displayName: p.playerB.displayName },
+    })),
+    shootouts: division.shootouts,
+    standings,
+    unplayed,
+    playerById,
+  };
+}
+
 // ── /admin/rankings ──────────────────────────────────────────────────
 
 export interface AdminRankingRow {
