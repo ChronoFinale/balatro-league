@@ -95,11 +95,19 @@ export default async function BuildSeasonPage({
         <div className="card">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
             <strong>Player ratings ({playerCount} signed up)</strong>
-            <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <form action={autoFillRatingsFromMmr}>
                 <input type="hidden" name="roundId" value={round.id} />
-                <button type="submit" className="secondary" style={{ fontSize: 12 }}>
-                  Auto-fill ratings from BMP MMR
+                <input type="hidden" name="mode" value="missing" />
+                <button type="submit" className="secondary" style={{ fontSize: 12 }} title="Sets rating = BMP MMR only for players who don't already have a rating. Leaves returners' league ratings alone.">
+                  Fill missing ratings from BMP MMR
+                </button>
+              </form>
+              <form action={autoFillRatingsFromMmr}>
+                <input type="hidden" name="roundId" value={round.id} />
+                <input type="hidden" name="mode" value="overwrite" />
+                <button type="submit" className="danger" style={{ fontSize: 12 }} title="DESTRUCTIVE: replaces EVERY player's rating with their BMP MMR — including returners whose rating came from end-of-season.">
+                  Overwrite ALL with BMP MMR
                 </button>
               </form>
               <form action={refreshSignupMmrSnapshots}>
@@ -137,6 +145,7 @@ export default async function BuildSeasonPage({
                       seasonName: prior.seasonName,
                     }
                   : undefined,
+                leagueRating: player?.rating ?? null,
                 bmpMmr: snapshot?.rankedMmr ?? null,
                 bmpTier: snapshot?.rankedTier ?? null,
                 bmpTotalGames: snapshot?.totalGames ?? null,

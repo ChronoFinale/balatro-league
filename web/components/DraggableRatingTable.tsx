@@ -29,6 +29,10 @@ export interface RatingRow {
     totalMembers: number;
     seasonName: string;
   };
+  // Player.rating — comes from end-of-season recompute for returners,
+  // null for brand-new signups. Used by the "Sort by league rating"
+  // button and visible in the rating column.
+  leagueRating: number | null;
   bmpMmr: number | null;
   bmpTier: string | null;
   bmpTotalGames: number | null;
@@ -130,6 +134,32 @@ export function DraggableRatingTable({
 
   const order = useMemo(() => JSON.stringify(rows.map((r) => r.discordId)), [rows]);
 
+  // Sort presets. Each one replaces the local order — the user's manual
+  // drag is discarded (drag state isn't persisted until Save, so there's
+  // nothing to warn about beyond "the visible order changes").
+  const sortSmart = () => {
+    setRows([...rows].sort((a, b) => {
+      const aIsRet = a.leagueRating != null;
+      const bIsRet = b.leagueRating != null;
+      if (aIsRet !== bIsRet) return aIsRet ? -1 : 1;
+      if (aIsRet && bIsRet) {
+        const d = (b.leagueRating ?? -1) - (a.leagueRating ?? -1);
+        if (d !== 0) return d;
+      }
+      return (b.bmpMmr ?? -1) - (a.bmpMmr ?? -1);
+    }));
+  };
+  const sortByBmpMmr = () => {
+    setRows([...rows].sort((a, b) => (b.bmpMmr ?? -1) - (a.bmpMmr ?? -1)));
+  };
+  const sortByLeagueRating = () => {
+    setRows([...rows].sort((a, b) => {
+      const d = (b.leagueRating ?? -1) - (a.leagueRating ?? -1);
+      if (d !== 0) return d;
+      return (b.bmpMmr ?? -1) - (a.bmpMmr ?? -1);
+    }));
+  };
+
   if (rows.length === 0) {
     return <p className="muted">No signups in this round.</p>;
   }
@@ -142,6 +172,21 @@ export function DraggableRatingTable({
         Drag rows to reorder. Save locks in the order — #1 gets the highest rating, #N the lowest.
         Returners show with their prior-season rank; new players show their BMP Ranked MMR.
       </p>
+      <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+        <span className="muted" style={{ fontSize: 11, alignSelf: "center" }}>Sort:</span>
+        <button type="button" className="secondary" style={{ fontSize: 11, padding: "2px 8px" }} onClick={sortSmart}>
+          Smart (returners by league rating, then BMP MMR)
+        </button>
+        <button type="button" className="secondary" style={{ fontSize: 11, padding: "2px 8px" }} onClick={sortByLeagueRating}>
+          League rating only
+        </button>
+        <button type="button" className="secondary" style={{ fontSize: 11, padding: "2px 8px" }} onClick={sortByBmpMmr}>
+          BMP MMR only
+        </button>
+        <span className="muted" style={{ fontSize: 11, alignSelf: "center" }}>
+          (sort overrides manual drag — Save preserves it)
+        </span>
+      </div>
       <table
         style={{ width: "100%" }}
         onPointerMove={onTablePointerMove}
@@ -156,6 +201,7 @@ export function DraggableRatingTable({
             <th>Player</th>
             <th>Status</th>
             <th>Last season</th>
+            <th>League rating</th>
             <th>BMP Ranked MMR</th>
           </tr>
         </thead>
@@ -215,6 +261,13 @@ export function DraggableRatingTable({
                       <br />
                       <span className="muted" style={{ fontSize: 11 }}>{r.prior.seasonName}</span>
                     </span>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
+                <td style={{ fontSize: 12 }}>
+                  {r.leagueRating != null ? (
+                    <strong>{r.leagueRating}</strong>
                   ) : (
                     <span className="muted">—</span>
                   )}

@@ -109,13 +109,17 @@ export async function refreshSignupMmrSnapshots(formData: FormData) {
 }
 
 // Pre-fill league ratings from each signup's latest BMP Ranked MMR snapshot.
-// Only touches players who DON'T already have a saved rating — won't clobber
-// admin overrides. Useful as a first-pass shortcut: click once and the
-// auto-seed has skill data for everyone, then admin nudges individuals.
+// Mode is read from the `mode` form field:
+//   - "missing" (default) — only fills nulls, won't clobber admin overrides
+//   - "overwrite" — blasts over EVERY player with their BMP MMR, including
+//     returners whose Player.rating came from end-season. Use when you
+//     deliberately want to re-baseline from MMR (e.g. mid-season test data
+//     drift made the ratings stale).
 export async function autoFillRatingsFromMmr(formData: FormData) {
   await requireAdmin();
   const roundId = String(formData.get("roundId") ?? "");
   if (!roundId) return;
+  const mode = String(formData.get("mode") ?? "missing") === "overwrite" ? "overwrite" : "missing";
   const round = await prisma.signupRound.findUnique({
     where: { id: roundId },
     include: { signups: { where: { withdrawn: false } } },
@@ -131,20 +135,27 @@ export async function autoFillRatingsFromMmr(formData: FormData) {
   const mmrByDiscordId = new Map(snapshots.map((s) => [s.discordId, s.rankedMmr!]));
   let filled = 0;
   let skipped = 0;
+  let overwritten = 0;
   for (const signup of round.signups) {
     const mmr = mmrByDiscordId.get(signup.discordId);
     if (mmr == null) { skipped++; continue; }
-    // Upsert Player row if missing — first-time signups won't have one yet.
-    // Existing Player rows: only set rating when null. Don't overwrite an
-    // admin's deliberate value.
     const existing = await prisma.player.findUnique({ where: { discordId: signup.discordId } });
+    const note = mode === "overwrite"
+      ? `Overwritten from BMP Ranked MMR snapshot`
+      : `Auto from BMP Ranked MMR snapshot`;
     if (existing) {
       if (existing.rating == null) {
         await prisma.player.update({
           where: { id: existing.id },
-          data: { rating: mmr, ratingNote: `Auto from BMP Ranked MMR snapshot` },
+          data: { rating: mmr, ratingNote: note },
         });
         filled++;
+      } else if (mode === "overwrite") {
+        await prisma.player.update({
+          where: { id: existing.id },
+          data: { rating: mmr, ratingNote: note },
+        });
+        overwritten++;
       } else {
         skipped++;
       }
@@ -154,13 +165,13 @@ export async function autoFillRatingsFromMmr(formData: FormData) {
           discordId: signup.discordId,
           displayName: signup.displayName,
           rating: mmr,
-          ratingNote: `Auto from BMP Ranked MMR snapshot`,
+          ratingNote: note,
         },
       });
       filled++;
     }
   }
-  console.log(`[auto-fill-ratings] filled ${filled}, skipped ${skipped}/${round.signups.length}`);
+  console.log(`[auto-fill-ratings mode=${mode}] filled ${filled}, overwritten ${overwritten}, skipped ${skipped}/${round.signups.length}`);
   revalidatePath(`/admin/signups/${roundId}/build`);
 }
 
