@@ -179,6 +179,17 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
     const signupChan = await ensureChannel("signups", "Signup embeds posted here by the web admin. Players click the button to register.");
     const resultsChan = await ensureChannel("results", "Auto-posted by the bot whenever a set is recorded.");
     const chatChan = await ensureChannel("league-chat", "General league chat. Match scheduling, banter, etc.");
+    const botCmdChan = await ensureChannel("bot-commands", "Use match-flow commands here when you're not in a division channel: /challenge, /report.");
+
+    // Persist the bot-commands channel id in LeagueConfig so command-channels.ts
+    // resolves the right channel without admin needing to set an env var,
+    // and the bot's ensureBotCommandsChannel auto-create on startup no-ops
+    // (it only acts when neither env var nor LeagueConfig has a value).
+    await prisma.leagueConfig.upsert({
+      where: { key: "bot_commands_channel_id" },
+      create: { key: "bot_commands_channel_id", value: botCmdChan.id, updatedBy: interaction.user.id },
+      update: { value: botCmdChan.id, updatedBy: interaction.user.id },
+    });
 
     // Always (re-)seed #league-info with a pinned 'how it works' message.
     // If the bot already pinned one, edit it in place so re-running bootstrap
@@ -251,6 +262,42 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       }),
     ]);
 
+    // Backup channel — admin/helper-only via permission overwrites. Needs
+    // the staff role IDs we just upserted, so it lives after ensureRole.
+    // Find-or-create same as the public channels; if existing, leave its
+    // perms alone (admin may have customized them).
+    async function ensureBackupChannel() {
+      const existing = guild.channels.cache.find(
+        (c) => c.type === ChannelType.GuildText && c.name === "league-backups" && c.parentId === categoryId,
+      );
+      if (existing && existing.type === ChannelType.GuildText) {
+        reused.push(`#league-backups`);
+        return existing;
+      }
+      const ch = await guild.channels.create({
+        name: "league-backups",
+        type: ChannelType.GuildText,
+        parent: categoryId,
+        topic: "📦 Daily JSON snapshots of restorable league state. Staff-only.",
+        permissionOverwrites: [
+          { id: guild.roles.everyone.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+          { id: adminRole.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
+          { id: helperRole.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
+          // Bot itself needs view+send to upload the daily attachment;
+          // @everyone deny applies to it too without this override.
+          { id: interaction.client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
+        ],
+      });
+      created.push(`#league-backups (private, staff-only)`);
+      return ch;
+    }
+    const backupChan = await ensureBackupChannel();
+    await prisma.leagueConfig.upsert({
+      where: { key: "backup_channel_id" },
+      create: { key: "backup_channel_id", value: backupChan.id, updatedBy: interaction.user.id },
+      update: { value: backupChan.id, updatedBy: interaction.user.id },
+    });
+
     const lines = [
       `✅ **${categoryName}** scaffolded.`,
       created.length > 0 ? `  Created: ${created.join(", ")}` : `  (nothing new — everything already existed)`,
@@ -260,6 +307,8 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       `📝 <#${signupChan.id}> — signups`,
       `🏆 <#${resultsChan.id}> — results (auto-announce target)`,
       `💬 <#${chatChan.id}> — league-chat`,
+      `🤖 <#${botCmdChan.id}> — bot-commands (casual /challenge, /report)`,
+      `📦 <#${backupChan.id}> — league-backups (staff-only, daily snapshots)`,
       ``,
       `🎭 Roles:`,
       `• <@&${playerRole.id}> — League Player`,
