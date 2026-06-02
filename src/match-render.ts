@@ -47,10 +47,10 @@ export function renderMatch(
   const game2 = parseGame(session.game2);
 
   if (session.state === "WAITING_ACCEPT") {
-    return renderWaitingAccept(session, playerA, playerB);
+    return withHelperRow(session, renderWaitingAccept(session, playerA, playerB));
   }
   if (session.state === "GAME_2_CHOOSE_FIRST") {
-    return renderChooseFirst(session, playerA, playerB, game1);
+    return withHelperRow(session, renderChooseFirst(session, playerA, playerB, game1));
   }
   if (session.state === "COMPLETE") {
     return renderComplete(session, playerA, playerB, game1, game2);
@@ -65,10 +65,30 @@ export function renderMatch(
   const game = gameNum === 1 ? game1 : gameNum === 2 ? game2 : parseGame(session.game3);
   // GAME_N_CHOOSE_FIRST is rendered by a separate path
   if (session.state === "GAME_3_CHOOSE_FIRST") {
-    return renderChooseFirst(session, playerA, playerB, game2);
+    return withHelperRow(session, renderChooseFirst(session, playerA, playerB, game2));
   }
   if (!game) return renderError(session, playerA, playerB, "Game state missing");
-  return renderGame(session, playerA, playerB, game.pool, game, gameNum, opts);
+  return withHelperRow(session, renderGame(session, playerA, playerB, game.pool, game, gameNum, opts));
+}
+
+// Append the universal "🆘 Call helper" button as the LAST row on any
+// non-terminal match render. Discord caps message components at 5
+// action rows; the busiest phase (ban) currently uses 3, so we have
+// headroom. If a future phase ever pushes past 5, this drops the
+// helper row off — that's an acceptable degradation since /helper is
+// also a slash command.
+function withHelperRow(
+  session: MatchSession,
+  rendered: { embeds: EmbedBuilder[]; components: ComponentRow[] },
+): { embeds: EmbedBuilder[]; components: ComponentRow[] } {
+  if (rendered.components.length >= 5) return rendered;
+  const helperRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`match:callhelper:${session.id}`)
+      .setLabel("🆘 Call helper")
+      .setStyle(ButtonStyle.Secondary),
+  );
+  return { embeds: rendered.embeds, components: [...rendered.components, helperRow] };
 }
 
 // Decode session.customComboProposal (JSON). Match-render only needs the

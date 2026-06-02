@@ -14,12 +14,59 @@ import {
   PermissionFlagsBits,
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
+  type Guild,
+  type GuildTextBasedChannel,
   type Role,
   type ThreadChannel,
+  type User,
 } from "discord.js";
 import { prisma } from "../db.js";
 import { logDiscordError } from "../log-discord-error.js";
 import type { SlashCommand } from "./types.js";
+
+// Shared helper-summon logic. Posts a public ping in the channel and
+// adds helper-role members to private threads (since Discord doesn't
+// allow role-based private thread membership). Returns null on success
+// or an error message string for the caller to surface ephemerally.
+export async function summonHelpers(args: {
+  guild: Guild;
+  channel: GuildTextBasedChannel | null;
+  caller: User;
+  reason: string;
+}): Promise<{ content: string } | { error: string }> {
+  const { guild, channel, caller, reason } = args;
+  const bindings = await prisma.roleBinding.findMany({ where: { tier: "HELPER" } });
+  if (bindings.length === 0) {
+    return {
+      error:
+        "No helper role configured yet. Ask an admin to run `/league set-role tier:HELPER role:@helper-role` first.",
+    };
+  }
+  const pingLines = bindings.map((b) => `<@&${b.discordRoleId}>`).join(" ");
+  const isPrivateThread = channel?.type === ChannelType.PrivateThread;
+  if (isPrivateThread) {
+    const thread = channel as ThreadChannel;
+    let added = 0;
+    for (const binding of bindings) {
+      const role = await guild.roles.fetch(binding.discordRoleId).catch(() => null);
+      if (!role) continue;
+      for (const member of role.members.values()) {
+        if (thread.members.cache.has(member.id)) continue;
+        await thread.members.add(member.id).then(
+          () => { added++; },
+          (err: unknown) => logDiscordError("summon-helpers.thread-add", err, { threadId: thread.id, userId: member.id }),
+        );
+      }
+      void PermissionFlagsBits;
+      void (role satisfies Role);
+    }
+    if (added > 0) console.log(`[helper] added ${added} helper(s) to private thread ${thread.id}`);
+  }
+  const callerMention = `<@${caller.id}>`;
+  const where = isPrivateThread ? "this thread" : "this channel";
+  const reasonLine = reason ? `\n> ${reason}` : "";
+  return { content: `🆘 ${pingLines} — ${callerMention} requested help in ${where}.${reasonLine}` };
+}
 
 export const helper: SlashCommand = {
   data: new SlashCommandBuilder()
@@ -39,51 +86,17 @@ export const helper: SlashCommand = {
       return;
     }
     const reason = interaction.options.getString("reason")?.trim() ?? "";
-
-    const bindings = await prisma.roleBinding.findMany({ where: { tier: "HELPER" } });
-    if (bindings.length === 0) {
-      await interaction.reply({
-        content:
-          "No helper role configured yet. Ask an admin to run `/league set-role tier:HELPER role:@helper-role` first.",
-        ephemeral: true,
-      });
+    const channel = interaction.channel as GuildTextBasedChannel | null;
+    const result = await summonHelpers({
+      guild: interaction.guild,
+      channel,
+      caller: interaction.user,
+      reason,
+    });
+    if ("error" in result) {
+      await interaction.reply({ content: result.error, ephemeral: true });
       return;
     }
-
-    const pingLines = bindings.map((b) => `<@&${b.discordRoleId}>`).join(" ");
-    const channel = interaction.channel;
-    const isPrivateThread = channel?.type === ChannelType.PrivateThread;
-
-    // For private threads, add every member of every bound MOD role
-    // before the ping so they can actually see the message. Threads
-    // don't accept a role-add, only individual user-adds — Discord
-    // never built role-to-thread membership.
-    if (isPrivateThread) {
-      const thread = channel as ThreadChannel;
-      let added = 0;
-      for (const binding of bindings) {
-        const role = await interaction.guild.roles.fetch(binding.discordRoleId).catch(() => null);
-        if (!role) continue;
-        for (const member of role.members.values()) {
-          if (thread.members.cache.has(member.id)) continue;
-          await thread.members.add(member.id).then(
-            () => { added++; },
-            (err: unknown) => logDiscordError("helper.thread-add", err, { threadId: thread.id, userId: member.id }),
-          );
-        }
-        void PermissionFlagsBits;
-        void (role satisfies Role);
-      }
-      if (added > 0) {
-        console.log(`[helper] added ${added} moderator(s) to private thread ${thread.id}`);
-      }
-    }
-
-    const callerMention = `<@${interaction.user.id}>`;
-    const where = isPrivateThread ? "this thread" : "this channel";
-    const reasonLine = reason ? `\n> ${reason}` : "";
-    const content = `🆘 ${pingLines} — ${callerMention} requested help in ${where}.${reasonLine}`;
-
-    await interaction.reply({ content });
+    await interaction.reply({ content: result.content });
   },
 };

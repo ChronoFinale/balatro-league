@@ -4,7 +4,7 @@ import { challenge } from "./challenge.js";
 import { help } from "./help.js";
 import { helper } from "./helper.js";
 import { league } from "./league.js";
-import { matchButtons, matchSelectMenus } from "./match-buttons.js";
+import { callHelperModal, matchButtons, matchSelectMenus } from "./match-buttons.js";
 import { profile } from "./profile.js";
 import { disputeModal, disputeSelect, report, reportButtons } from "./report.js";
 import { reportShootout } from "./report-shootout.js";
@@ -20,4 +20,4 @@ export const buttonHandlers: ButtonHandler[] = [reportButtons, signupHandlers, m
 
 export const selectMenuHandlers: SelectMenuHandler[] = [matchSelectMenus, disputeSelect];
 
-export const modalHandlers: ModalHandler[] = [disputeModal];
+export const modalHandlers: ModalHandler[] = [disputeModal, callHelperModal];

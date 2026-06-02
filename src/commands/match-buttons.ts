@@ -8,11 +8,17 @@
 //   match:winner:{sessionId}:{playerId}
 
 import {
+  ActionRowBuilder,
   ChannelType,
   MessageFlags,
+  ModalBuilder,
   PermissionFlagsBits,
+  TextInputBuilder,
+  TextInputStyle,
   ThreadAutoArchiveDuration,
   type ButtonInteraction,
+  type GuildTextBasedChannel,
+  type ModalSubmitInteraction,
   type StringSelectMenuInteraction,
   type TextChannel,
   type ThreadChannel,
@@ -28,6 +34,7 @@ import { getLeagueSettings, getLeagueSettingsForSeason } from "../league-setting
 import { logDiscordError } from "../log-discord-error.js";
 import { bootstrapPresetsAndPointers, generatePool, presetForCasualMatch, presetForDivision } from "../match-config.js";
 import { renderMatch } from "../match-render.js";
+import { summonHelpers } from "./helper.js";
 import { recomputeDivisionStandings } from "../standings-cache.js";
 import {
   emptyGameState,
@@ -181,6 +188,7 @@ export const matchButtons: ButtonHandler = {
     if (action === "pick") return handlePick(interaction, session, parts[3]);
     if (action === "winner") return handleWinner(interaction, session, parts[3]);
     if (action === "dc") return handleDc(interaction, session);
+    if (action === "callhelper") return handleCallHelper(interaction, session);
     // Combo negotiation buttons. propose-start enters the proposal flow;
     // propose-submit/accept/counter/cancel manage state inside it.
     if (action === "proposestart") return handleProposeStart(interaction, session);
@@ -861,6 +869,52 @@ async function handleWinner(interaction: ButtonInteraction, session: MatchSessio
   // Game 3 (BO3 only): always finalize.
   return finalizeMatch(interaction, session, newGame, "game3");
 }
+
+// "Call helper" button → opens a modal asking for a reason. Modal
+// submit pings the bound HELPER role(s) and (in private threads)
+// adds those role members so they can see the conversation. Same
+// surface as the /helper slash command, just one click away from
+// inside the match flow.
+async function handleCallHelper(interaction: ButtonInteraction, session: MatchSession) {
+  const modal = new ModalBuilder()
+    .setCustomId(`match-helper-modal:${session.id}`)
+    .setTitle("Call a helper");
+  const reasonInput = new TextInputBuilder()
+    .setCustomId("reason")
+    .setLabel("What's going on? (helpers will see this)")
+    .setPlaceholder("e.g. opponent unresponsive for 10 min, rules question on a deck, ...")
+    .setStyle(TextInputStyle.Paragraph)
+    .setMaxLength(500)
+    .setRequired(true);
+  modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(reasonInput));
+  await interaction.showModal(modal);
+}
+
+// Modal submit: actually call summonHelpers with the reason the user
+// typed. Lives in match-buttons.ts because the modal customId is
+// scoped to the match flow (and the registered ModalHandler list).
+export const callHelperModal = {
+  prefix: "match-helper-modal:",
+  async execute(interaction: ModalSubmitInteraction) {
+    if (!interaction.guild) {
+      await interaction.reply({ content: "Run this in a server channel, not DMs.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const reason = interaction.fields.getTextInputValue("reason").trim();
+    const channel = interaction.channel as GuildTextBasedChannel | null;
+    const result = await summonHelpers({
+      guild: interaction.guild,
+      channel,
+      caller: interaction.user,
+      reason,
+    });
+    if ("error" in result) {
+      await interaction.reply({ content: result.error, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.reply({ content: result.content });
+  },
+} as const;
 
 // Opponent-DC report. League match: forfeits the CURRENT game only;
 // the series continues normally (game 2 plays out after a game 1 DC).
