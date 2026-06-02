@@ -2,6 +2,7 @@ import type {
   AutocompleteInteraction,
   ButtonInteraction,
   ChatInputCommandInteraction,
+  ModalSubmitInteraction,
   SlashCommandBuilder,
   SlashCommandOptionsOnlyBuilder,
   SlashCommandSubcommandsOnlyBuilder,
@@ -49,4 +50,11 @@ export interface ButtonHandler {
 export interface SelectMenuHandler {
   prefix: string;
   execute(interaction: StringSelectMenuInteraction): Promise<void>;
+}
+
+// Modal submit handlers — fired when a user submits a Discord modal.
+// Custom id prefix routes to the right handler (e.g. dispute-modal:).
+export interface ModalHandler {
+  prefix: string;
+  execute(interaction: ModalSubmitInteraction): Promise<void>;
 }

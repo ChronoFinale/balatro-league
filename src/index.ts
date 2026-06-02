@@ -5,7 +5,7 @@ import { ensureBotCommandsChannel } from "./bot-commands-channel.js";
 import { ensureChallengesChannel } from "./challenges-channel.js";
 import { ensureDevopsChannel } from "./devops-channel.js";
 import { checkChannelScope } from "./command-channels.js";
-import { buttonHandlers, selectMenuHandlers, slashCommands } from "./commands/index.js";
+import { buttonHandlers, modalHandlers, selectMenuHandlers, slashCommands } from "./commands/index.js";
 import { setDiscordClient } from "./discord.js";
 import { env } from "./env.js";
 import { startHealthCheck } from "./healthcheck.js";
@@ -72,6 +72,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (!handler) {
         await interaction.reply({
           content: "No handler for this menu.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      await handler.execute(interaction);
+      return;
+    }
+
+    if (interaction.isModalSubmit()) {
+      const handler = modalHandlers.find((h) => interaction.customId.startsWith(h.prefix));
+      if (!handler) {
+        await interaction.reply({
+          content: "No handler for this modal.",
           flags: MessageFlags.Ephemeral,
         });
         return;
