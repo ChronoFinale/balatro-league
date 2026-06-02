@@ -531,6 +531,12 @@ model DivisionMember {
   status        DivisionMemberStatus @default(ACTIVE)
   droppedAt     DateTime?
   dropoutReason String?
+  // Snapshot of Player.rating (= global rank) at end-of-season. Written by
+  // endSeason for each ACTIVE member at the same moment Player.rating is
+  // updated. Lets us answer "what was X's global rank when Season 4
+  // ended" without losing the history when Season 5 rewrites the same
+  // Player.rating field. Null until that season's endSeason runs.
+  finalGlobalRank Int?
 
   division      Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   player        Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)

@@ -15,6 +15,7 @@ import {
   setSeasonPreset,
   setSeasonVisibility,
   unarchiveSeason,
+  unendSeason,
 } from "./actions";
 import { bootstrapSeasonDiscord, setSeasonDiscordCategory } from "./bootstrap-actions";
 import { SeasonDeckPresetPicker } from "@/components/SeasonDeckPresetPicker";
@@ -27,10 +28,10 @@ export const dynamic = "force-dynamic";
 export default async function AdminSeasonsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ archived?: string }>;
+  searchParams: Promise<{ archived?: string; err?: string }>;
 }) {
   await requireAdmin();
-  const { archived: showArchivedFlag } = await searchParams;
+  const { archived: showArchivedFlag, err } = await searchParams;
   const showArchived = showArchivedFlag === "1";
 
   const {
@@ -49,6 +50,20 @@ export default async function AdminSeasonsPage({
   });
   const nextNumber = await nextSeasonNumber(prisma);
 
+  // Timeline ordering: ACTIVE first, then ended descending by endedAt
+  // (most-recently-ended is the one whose final standings drive next
+  // season's build, so it gets the badge). Pre-active drafts (not yet
+  // started) and archived show last. We sort a copy so the existing
+  // grid below keeps the loader's order.
+  const timelineSeasons = [...seasons].sort((a, b) => {
+    if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+    const aEnd = a.endedAt?.getTime() ?? 0;
+    const bEnd = b.endedAt?.getTime() ?? 0;
+    if (aEnd !== bEnd) return bEnd - aEnd;
+    return b.startedAt.getTime() - a.startedAt.getTime();
+  });
+  const mostRecentlyEndedId = timelineSeasons.find((s) => s.endedAt && !s.isActive)?.id ?? null;
+
   return (
     <>
       <SiteNav activePath="/admin" />
@@ -62,6 +77,68 @@ export default async function AdminSeasonsPage({
             </Link>
           )}
         </div>
+
+        {err && (
+          <div className="card" style={{ borderColor: "#e74c3c", color: "#e74c3c" }}>
+            {err}
+          </div>
+        )}
+
+        {timelineSeasons.length > 0 && (
+          <div className="card">
+            <strong>Season timeline</strong>
+            <p className="muted" style={{ marginTop: 4, fontSize: 12, marginBottom: 8 }}>
+              Newest first. The season marked "ratings sourced from here" is
+              what next season's build flow reads <code>Player.rating</code>{" "}
+              from — every player's global rank was last written when that
+              season ended.
+            </p>
+            <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 4 }}>
+              {timelineSeasons.map((s) => {
+                const label = formatSeasonLabel(s);
+                const isRatingSource = s.id === mostRecentlyEndedId;
+                const status = s.isActive
+                  ? { label: "ACTIVE", bg: "rgba(46,204,113,0.2)", fg: "#2ecc71" }
+                  : s.endedAt
+                  ? { label: `ended ${s.endedAt.toISOString().slice(0, 10)}`, bg: "rgba(149,165,166,0.2)", fg: "#c0c8cb" }
+                  : { label: "draft", bg: "rgba(241,196,15,0.2)", fg: "#f1c40f" };
+                return (
+                  <li
+                    key={s.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "4px 0",
+                      borderBottom: "1px solid var(--border, rgba(255,255,255,0.05))",
+                    }}
+                  >
+                    <Link href={`/admin/seasons/${s.id}`} style={{ textDecoration: "none", fontWeight: 600 }}>
+                      {label}
+                    </Link>
+                    <span className="pill" style={{ background: status.bg, color: status.fg, fontSize: 10 }}>
+                      {status.label}
+                    </span>
+                    {isRatingSource && (
+                      <span
+                        className="pill"
+                        style={{ background: "rgba(118,199,255,0.2)", color: "#76c7ff", fontSize: 10 }}
+                        title="Player.rating values were last written by this season's endSeason."
+                      >
+                        ratings sourced from here
+                      </span>
+                    )}
+                    {s.archivedAt && (
+                      <span className="muted" style={{ fontSize: 10 }}>
+                        · 📦 archived {s.archivedAt.toISOString().slice(0, 10)}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        )}
 
         <div className="card">
           <strong>Create new season</strong>
@@ -285,11 +362,29 @@ function LifecycleActions({
   channels: LifecycleChannel[];
   playerCount: number;
 }) {
-  // Step 1: ended → just show date
+  // Step 1: ended → show date + escape hatch to reopen. Unend doesn't
+  // touch ratings; it just clears endedAt so endSeason can re-run if a
+  // result was corrected post-end.
   if (season.endedAt) {
     return (
-      <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-        ✓ Ended {season.endedAt.toISOString().slice(0, 10)}
+      <div style={{ marginTop: 8 }}>
+        <div className="muted" style={{ fontSize: 12 }}>
+          ✓ Ended {season.endedAt.toISOString().slice(0, 10)}
+        </div>
+        <details style={{ marginTop: 4 }}>
+          <summary className="muted" style={{ cursor: "pointer", fontSize: 11 }}>
+            Unend this season (clears endedAt, ratings untouched)
+          </summary>
+          <form action={unendSeason} style={{ marginTop: 6 }}>
+            <input type="hidden" name="id" value={season.id} />
+            <button type="submit" className="secondary" style={{ fontSize: 11 }}>
+              Unend
+            </button>
+            <span className="muted" style={{ fontSize: 10, marginLeft: 6 }}>
+              Re-running End season afterwards will rewrite Player.rating from this season's standings.
+            </span>
+          </form>
+        </details>
       </div>
     );
   }

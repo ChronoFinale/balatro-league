@@ -245,10 +245,15 @@ export async function deleteTemplate(formData: FormData) {
   revalidatePath("/admin/seasons/templates");
 }
 
-// End a season: compute new ratings from final standings, write them back to
-// Players, mark Season inactive + endedAt now. Idempotent on the inactive
-// flag — clicking on an already-inactive season is a no-op for the season
-// state but still recomputes ratings.
+// End a season: compute new ratings from final standings, write them back
+// to Players, snapshot each member's final global rank onto their
+// DivisionMember row, mark Season inactive + endedAt now.
+//
+// Refuses to run if endedAt is already set — re-running endSeason on an
+// old season would rewrite every player's Player.rating from that older
+// snapshot, which is almost never what the admin wants. Use
+// unendSeason() to clear endedAt explicitly first if you really need to
+// recompute (e.g., a result was corrected post-end and you want to redo).
 export async function endSeason(formData: FormData) {
   const { user } = await requireAdmin();
   const id = String(formData.get("id") ?? "");
@@ -272,6 +277,17 @@ export async function endSeason(formData: FormData) {
   });
   if (!season) return;
 
+  // Double-end guard. If you genuinely need to recompute, hit unend
+  // first — that gives you an explicit audit trail of the intent.
+  if (season.endedAt) {
+    const dateStr = season.endedAt.toISOString().slice(0, 10);
+    redirect(
+      `/admin/seasons?err=${encodeURIComponent(
+        `${formatSeasonLabel(season)} already ended on ${dateStr}. Unend it first if you really mean to recompute ratings.`,
+      )}`,
+    );
+  }
+
   const divisionsForRating: DivisionForRating[] = season.divisions.map((d) => {
     const players = d.members.map((m) => m.player);
     return {
@@ -289,6 +305,13 @@ export async function endSeason(formData: FormData) {
   const numTiers = season.tiers.length;
   const deltas = computeRatingDeltas(numTiers, divisionsForRating);
 
+  // Build a lookup from playerId → newRating so we can snapshot each
+  // ACTIVE member's finalGlobalRank in the same transaction as the
+  // Player.rating updates. DROPPED members are not in the deltas list
+  // (computeRatingDeltas skips them), so they get null finalGlobalRank
+  // — accurate, since they didn't actually finish the season.
+  const newRatingByPlayer = new Map(deltas.map((d) => [d.playerId, d.newRating]));
+
   // Apply rating updates in a single transaction so partial failure doesn't
   // leave the league half-rated.
   await prisma.$transaction([
@@ -296,6 +319,12 @@ export async function endSeason(formData: FormData) {
       prisma.player.update({
         where: { id: d.playerId },
         data: { rating: d.newRating },
+      }),
+    ),
+    ...Array.from(newRatingByPlayer.entries()).map(([playerId, rank]) =>
+      prisma.divisionMember.updateMany({
+        where: { seasonId: season.id, playerId, status: "ACTIVE" },
+        data: { finalGlobalRank: rank },
       }),
     ),
     prisma.season.update({
@@ -315,6 +344,28 @@ export async function endSeason(formData: FormData) {
   revalidatePath("/admin/seasons");
   revalidatePath("/admin/rankings");
   redirect("/admin/seasons");
+}
+
+// Clear endedAt on a season so endSeason can be re-run. Does NOT touch
+// Player.rating or DivisionMember.finalGlobalRank — those stay until
+// the next endSeason rewrites them. Audit-logged so you can always
+// trace why a season got reopened.
+export async function unendSeason(formData: FormData) {
+  const { user } = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const season = await prisma.season.findUnique({ where: { id } });
+  if (!season || !season.endedAt) return;
+  await prisma.season.update({ where: { id }, data: { endedAt: null } });
+  recordAudit({
+    actor: actorFromAdminUser(user),
+    action: "season.unend",
+    targetType: "Season",
+    targetId: id,
+    summary: `Unended season "${formatSeasonLabel(season)}" (cleared endedAt; ratings/finalGlobalRank untouched)`,
+    metadata: { previousEndedAt: season.endedAt.toISOString() },
+  });
+  revalidatePath("/admin/seasons");
 }
 
 function buildSignupPayload(round: { id: string; name: string }): {
