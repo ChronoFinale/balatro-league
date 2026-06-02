@@ -117,7 +117,9 @@ export default async function StandingsPage() {
                                 <th title="League-wide rank (1 = best player in the league). Updated at end of season.">Overall</th>
                                 <th>Pts</th>
                                 <th>W-D-L</th>
+                                <th title="Match win rate: % of confirmed matches won 2-0. Excludes draws and losses from the numerator.">Match W%</th>
                                 <th>Games</th>
+                                <th title="Game win rate: gamesWon / (gamesWon + gamesLost). Finer than the match rate — a 2-0/0-2/1-1 player has match W% 33 but game W% 50.">Game W%</th>
                                 {showBmpMmr && (
                                   <th title="Each player's current Ranked MMR from balatromp.com — separate from your league ranking. Click a player to see their full BMP history.">BMP MMR</th>
                                 )}
@@ -126,7 +128,7 @@ export default async function StandingsPage() {
                             <tbody>
                               {rows.length === 0 ? (
                                 <tr>
-                                  <td colSpan={showBmpMmr ? 7 : 6} className="muted">No matches played yet.</td>
+                                  <td colSpan={showBmpMmr ? 9 : 8} className="muted">No matches played yet.</td>
                                 </tr>
                               ) : (
                                 rows.map((r, i) => {
@@ -163,7 +165,17 @@ export default async function StandingsPage() {
                                       <td className="muted">{r.player.rating != null ? `#${r.player.rating}` : "—"}</td>
                                       <td><strong>{r.points}</strong></td>
                                       <td title={standingRateTooltip(r)}>{r.wins}-{r.draws}-{r.losses}</td>
+                                      <td>
+                                        {r.played > 0
+                                          ? `${Math.round((r.wins / r.played) * 100)}%`
+                                          : <span className="muted">—</span>}
+                                      </td>
                                       <td title={gameRateTooltip(r)}>{r.gamesWon}-{r.gamesLost}</td>
+                                      <td>
+                                        {r.gamesWon + r.gamesLost > 0
+                                          ? `${Math.round((r.gamesWon / (r.gamesWon + r.gamesLost)) * 100)}%`
+                                          : <span className="muted">—</span>}
+                                      </td>
                                       {showBmpMmr && (
                                         <td>{mmr != null ? mmr : <span className="muted">—</span>}</td>
                                       )}
