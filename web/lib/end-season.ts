@@ -1,27 +1,22 @@
-// Compute new player ratings from final season standings.
+// End-of-season rank computation. Replaces the previous tier-baseline
+// math with a simple global rank: the strongest player league-wide
+// gets rank 1, the weakest gets rank N. Next season's build sorts
+// by rank ASC so rank 1 lands in the top tier, etc — produces the
+// same tier movement as the old algorithm without the baseline magic.
 //
-// Goal: a player's new rating reflects where they finished, in a way that
-// naturally drives next-season's auto-seed to do the right thing:
-//   - Top finisher of tier T's rating ≈ baseline of tier T-1 → gets promoted
-//   - Bottom finisher of tier T's rating ≈ baseline of tier T+1 → gets relegated
-//   - Mid-pack ≈ tier baseline → stays
+// Sort key (best → worst):
+//   1. Tier position (lower = better tier — Legendary first)
+//   2. Within tier: finishing position in division (1 first)
 //
-// Algorithm:
-//   tier baseline:  linear from TOP_BASELINE (tier 1) to BOTTOM_BASELINE (tier N)
-//   in-tier adjust: linear from +TIER_GAP/2 (1st place) to -TIER_GAP/2 (last place)
-//   new_rating = round(baseline + adjustment)
-//
-// Dropped players keep their current rating (no penalty for quitting mid-season).
+// DROPPED players keep their existing rank (no penalty). Ranks are
+// integers 1..N over ACTIVE players only.
 
 import type { StandingRow } from "./standings";
 
-const TOP_BASELINE = 1000;
-const BOTTOM_BASELINE = 200;
-
 export interface DivisionForRating {
-  tierPosition: number; // 1 = top
+  tierPosition: number; // 1 = top tier
   members: Array<{ playerId: string; status: "ACTIVE" | "DROPPED"; currentRating: number | null }>;
-  standings: StandingRow[]; // already sorted; same Player ids as members
+  standings: StandingRow[];
 }
 
 export interface RatingDelta {
@@ -31,57 +26,63 @@ export interface RatingDelta {
   newRating: number;
   delta: number;
   tierPosition: number;
-  finishPosition: number; // 1-indexed within division
+  finishPosition: number;
   divisionSize: number;
 }
 
+// numTiers retained on the signature for endSeason caller compat; the
+// new algorithm doesn't need it (the global rank is derived purely
+// from tier position + within-division finish).
 export function computeRatingDeltas(
   numTiers: number,
   divisions: DivisionForRating[],
 ): RatingDelta[] {
-  if (numTiers < 1) return [];
-  const tierGap = numTiers > 1 ? (TOP_BASELINE - BOTTOM_BASELINE) / (numTiers - 1) : 0;
-
-  function baselineFor(tierPosition: number): number {
-    if (numTiers === 1) return TOP_BASELINE;
-    return TOP_BASELINE - ((tierPosition - 1) / (numTiers - 1)) * (TOP_BASELINE - BOTTOM_BASELINE);
+  void numTiers;
+  // Flatten: every (player, tierPosition, finishPosition, divisionSize)
+  // pair across all divisions, ACTIVE only. Then sort by tier asc,
+  // finish asc → that's the global rank.
+  interface FlatEntry {
+    playerId: string;
+    displayName: string;
+    oldRating: number | null;
+    tierPosition: number;
+    finishPosition: number; // 1-indexed within division
+    divisionSize: number;
   }
-
-  const out: RatingDelta[] = [];
-
+  const entries: FlatEntry[] = [];
   for (const div of divisions) {
-    const baseline = baselineFor(div.tierPosition);
     const droppedSet = new Set(
       div.members.filter((m) => m.status === "DROPPED").map((m) => m.playerId),
     );
-    const oldRatingByPlayer = new Map(div.members.map((m) => [m.playerId, m.currentRating]));
-
-    // Only ACTIVE players factor into the in-tier ranking. Their finish
-    // position is their index in the standings.
-    const activeStandings = div.standings.filter((row) => !droppedSet.has(row.player.id));
-    const M = activeStandings.length;
-
-    activeStandings.forEach((row, idx) => {
-      // i=0 (top): +tierGap/2 ; i=M-1 (bottom): -tierGap/2
-      let adjustment: number;
-      if (M === 1) {
-        adjustment = 0;
-      } else {
-        adjustment = (tierGap / 2) * (1 - (2 * idx) / (M - 1));
-      }
-      const newRating = Math.max(0, Math.round(baseline + adjustment));
-      const oldRating = oldRatingByPlayer.get(row.player.id) ?? null;
-      out.push({
+    const oldByPlayer = new Map(div.members.map((m) => [m.playerId, m.currentRating]));
+    const active = div.standings.filter((row) => !droppedSet.has(row.player.id));
+    active.forEach((row, idx) => {
+      entries.push({
         playerId: row.player.id,
         displayName: row.player.displayName,
-        oldRating,
-        newRating,
-        delta: newRating - (oldRating ?? 0),
+        oldRating: oldByPlayer.get(row.player.id) ?? null,
         tierPosition: div.tierPosition,
         finishPosition: idx + 1,
-        divisionSize: M,
+        divisionSize: active.length,
       });
     });
   }
-  return out;
+  // Global rank ordering: top tier first, then by finish within tier.
+  entries.sort((a, b) => {
+    if (a.tierPosition !== b.tierPosition) return a.tierPosition - b.tierPosition;
+    return a.finishPosition - b.finishPosition;
+  });
+  return entries.map((e, i) => {
+    const newRating = i + 1;
+    return {
+      playerId: e.playerId,
+      displayName: e.displayName,
+      oldRating: e.oldRating,
+      newRating,
+      delta: newRating - (e.oldRating ?? 0),
+      tierPosition: e.tierPosition,
+      finishPosition: e.finishPosition,
+      divisionSize: e.divisionSize,
+    };
+  });
 }

@@ -775,21 +775,27 @@ export async function loadBuildSeasonPage(roundId: string): Promise<BuildSeasonR
     skippedByPlayerId.set(pid, skipped);
   }
 
-  // Initial sort: pure Player.rating desc, falling back to BMP MMR
-  // when rating is null. Returners naturally rank above new players
-  // because end-season recompute leaves rating in the 200-1000 range
-  // while new players have no rating yet → they slot in by their
-  // BMP MMR. After admin runs "Overwrite ALL with BMP MMR" the
-  // ratings + this sort agree and the order reflects the override.
-  // (Previously we hard-segregated returners-first, which hid the
-  // effect of overwrite — admin's deliberate choice was being
-  // ignored by the renderer.)
+  // Initial sort: Player.rating ASC (rating = rank, 1 = best).
+  // Returners with a league rank come first by their rank value.
+  // New players (no rank) fall to the bottom, where they're ordered
+  // among themselves by BMP MMR DESC (higher MMR = stronger player
+  // = lower position in the unranked tail).
   const sortedSignups = [...round.signups].sort((a, b) => {
     const playerA = playerByDiscordId.get(a.discordId);
     const playerB = playerByDiscordId.get(b.discordId);
-    const aKey = playerA?.rating ?? snapshotByDiscordId.get(a.discordId)?.rankedMmr ?? -1;
-    const bKey = playerB?.rating ?? snapshotByDiscordId.get(b.discordId)?.rankedMmr ?? -1;
-    if (aKey !== bKey) return bKey - aKey;
+    const aRank = playerA?.rating ?? null;
+    const bRank = playerB?.rating ?? null;
+    // Ranked players always sort above unranked.
+    if (aRank !== null && bRank === null) return -1;
+    if (aRank === null && bRank !== null) return 1;
+    if (aRank !== null && bRank !== null) {
+      if (aRank !== bRank) return aRank - bRank;
+    }
+    // Both unranked (or tied on rank): order by BMP MMR desc as the
+    // best available proxy for skill.
+    const aMmr = snapshotByDiscordId.get(a.discordId)?.rankedMmr ?? -1;
+    const bMmr = snapshotByDiscordId.get(b.discordId)?.rankedMmr ?? -1;
+    if (aMmr !== bMmr) return bMmr - aMmr;
     return a.signedUpAt.getTime() - b.signedUpAt.getTime();
   });
 

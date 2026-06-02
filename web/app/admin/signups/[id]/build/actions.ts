@@ -43,11 +43,12 @@ function planByRating(
   targetGroupSize: number,
 ): Array<{ tier: TierConfig; position: number; divisions: string[][] /* signup discordIds per division */ }> {
   void targetGroupSize; // kept on signature for caller compat; new alg derives sizes dynamically
-  // Sort by rating DESC (null = lowest, displayName as tiebreaker)
+  // Sort by rating ASC (rating = rank, 1 = best player). null
+  // (unrated) sorts AFTER ranked players via Infinity sentinel.
   const sorted = [...ranked].sort((a, b) => {
-    const ra = a.rating ?? -1;
-    const rb = b.rating ?? -1;
-    if (ra !== rb) return rb - ra;
+    const ra = a.rating ?? Number.POSITIVE_INFINITY;
+    const rb = b.rating ?? Number.POSITIVE_INFINITY;
+    if (ra !== rb) return ra - rb;
     return a.displayName.localeCompare(b.displayName);
   });
 
@@ -135,13 +136,16 @@ export async function refreshSignupMmrSnapshots(formData: FormData) {
   revalidatePath(`/admin/signups/${roundId}/build`);
 }
 
-// Pre-fill league ratings from each signup's latest BMP Ranked MMR snapshot.
-// Mode is read from the `mode` form field:
-//   - "missing" (default) — only fills nulls, won't clobber admin overrides
-//   - "overwrite" — blasts over EVERY player with their BMP MMR, including
-//     returners whose Player.rating came from end-season. Use when you
-//     deliberately want to re-baseline from MMR (e.g. mid-season test data
-//     drift made the ratings stale).
+// Pre-fill league ranks from each signup's latest BMP Ranked MMR
+// snapshot. Rating is now a rank (1 = best), so we sort signups by
+// BMP MMR DESC and write the resulting position as the rank.
+// Modes:
+//   - "missing" — only fills players who don't already have a rank.
+//     Existing returners are untouched. New players get ranks
+//     starting AFTER the highest existing rank.
+//   - "overwrite" — re-ranks EVERY signup by BMP MMR, starting at 1.
+//     Use when you want to re-baseline from MMR (e.g. mid-season test
+//     drift, or first season with no league history).
 export async function autoFillRatingsFromMmr(formData: FormData) {
   await requireAdmin();
   const roundId = String(formData.get("roundId") ?? "");
@@ -153,52 +157,66 @@ export async function autoFillRatingsFromMmr(formData: FormData) {
   });
   if (!round) return;
   const discordIds = round.signups.map((s) => s.discordId);
-  // Latest snapshot per signup (freshest capture wins).
   const snapshots = await prisma.playerMmrSnapshot.findMany({
     where: { discordId: { in: discordIds }, rankedMmr: { not: null } },
     orderBy: { capturedAt: "desc" },
     distinct: ["discordId"],
   });
   const mmrByDiscordId = new Map(snapshots.map((s) => [s.discordId, s.rankedMmr!]));
-  let filled = 0;
-  let skipped = 0;
-  let overwritten = 0;
-  for (const signup of round.signups) {
-    const mmr = mmrByDiscordId.get(signup.discordId);
-    if (mmr == null) { skipped++; continue; }
-    const existing = await prisma.player.findUnique({ where: { discordId: signup.discordId } });
-    const note = mode === "overwrite"
-      ? `Overwritten from BMP Ranked MMR snapshot`
-      : `Auto from BMP Ranked MMR snapshot`;
-    if (existing) {
-      if (existing.rating == null) {
-        await prisma.player.update({
-          where: { id: existing.id },
-          data: { rating: mmr, ratingNote: note },
-        });
-        filled++;
-      } else if (mode === "overwrite") {
-        await prisma.player.update({
-          where: { id: existing.id },
-          data: { rating: mmr, ratingNote: note },
-        });
-        overwritten++;
-      } else {
-        skipped++;
-      }
-    } else {
-      await prisma.player.create({
-        data: {
-          discordId: signup.discordId,
-          displayName: signup.displayName,
-          rating: mmr,
-          ratingNote: note,
-        },
+  const existingPlayers = await prisma.player.findMany({
+    where: { discordId: { in: discordIds } },
+  });
+  const playerByDiscordId = new Map(existingPlayers.map((p) => [p.discordId, p]));
+
+  if (mode === "overwrite") {
+    // Sort ALL signups by BMP MMR DESC, write rank 1..N. Unrated
+    // signups (no MMR snapshot) sort to the bottom.
+    const sorted = [...round.signups].sort((a, b) => {
+      const am = mmrByDiscordId.get(a.discordId) ?? -1;
+      const bm = mmrByDiscordId.get(b.discordId) ?? -1;
+      if (am !== bm) return bm - am;
+      return a.signedUpAt.getTime() - b.signedUpAt.getTime();
+    });
+    for (let i = 0; i < sorted.length; i++) {
+      const signup = sorted[i]!;
+      const rank = i + 1;
+      await prisma.player.upsert({
+        where: { discordId: signup.discordId },
+        create: { discordId: signup.discordId, displayName: signup.displayName, rating: rank, ratingNote: "Overwritten: ranked by BMP MMR" },
+        update: { rating: rank, displayName: signup.displayName, ratingNote: "Overwritten: ranked by BMP MMR" },
       });
-      filled++;
     }
+    console.log(`[auto-fill-ratings mode=overwrite] re-ranked all ${sorted.length} signups`);
+    revalidatePath(`/admin/signups/${roundId}/build`);
+    return;
   }
-  console.log(`[auto-fill-ratings mode=${mode}] filled ${filled}, overwritten ${overwritten}, skipped ${skipped}/${round.signups.length}`);
+
+  // missing mode: returners keep their existing rank, unranked players
+  // get ranks appended at the bottom, sorted among themselves by BMP MMR.
+  const maxExistingRank = existingPlayers.reduce((max, p) => (p.rating != null && p.rating > max ? p.rating : max), 0);
+  const unranked = round.signups.filter((s) => {
+    const p = playerByDiscordId.get(s.discordId);
+    return !p || p.rating == null;
+  });
+  // Sort unranked by BMP MMR DESC for relative ordering.
+  unranked.sort((a, b) => {
+    const am = mmrByDiscordId.get(a.discordId) ?? -1;
+    const bm = mmrByDiscordId.get(b.discordId) ?? -1;
+    if (am !== bm) return bm - am;
+    return a.signedUpAt.getTime() - b.signedUpAt.getTime();
+  });
+  let filled = 0;
+  for (let i = 0; i < unranked.length; i++) {
+    const signup = unranked[i]!;
+    const rank = maxExistingRank + i + 1;
+    await prisma.player.upsert({
+      where: { discordId: signup.discordId },
+      create: { discordId: signup.discordId, displayName: signup.displayName, rating: rank, ratingNote: "Auto-ranked from BMP MMR (appended after returners)" },
+      update: { rating: rank, displayName: signup.displayName, ratingNote: "Auto-ranked from BMP MMR (appended after returners)" },
+    });
+    filled++;
+  }
+  console.log(`[auto-fill-ratings mode=missing] ranked ${filled} unrated signups`);
   revalidatePath(`/admin/signups/${roundId}/build`);
 }
 
@@ -233,16 +251,16 @@ export async function saveRatings(formData: FormData) {
     }
     if (orderIds.length > 0) {
       const signupByDiscordId = new Map(round.signups.map((s) => [s.discordId, s]));
-      const N = orderIds.length;
+      // Rating = rank (1 = best). Position 0 in the drag list → rank 1.
       for (let i = 0; i < orderIds.length; i++) {
         const discordId = orderIds[i]!;
         const signup = signupByDiscordId.get(discordId);
         if (!signup) continue;
-        const rating = (N - i) * 10;
+        const rating = i + 1;
         await prisma.player.upsert({
           where: { discordId: signup.discordId },
-          create: { discordId: signup.discordId, displayName: signup.displayName, rating, ratingNote: "Set from build-page drag order" },
-          update: { rating, displayName: signup.displayName, ratingNote: "Set from build-page drag order" },
+          create: { discordId: signup.discordId, displayName: signup.displayName, rating, ratingNote: "Rank set from build-page drag order" },
+          update: { rating, displayName: signup.displayName, ratingNote: "Rank set from build-page drag order" },
         });
       }
       revalidatePath(`/admin/signups/${roundId}/build`);

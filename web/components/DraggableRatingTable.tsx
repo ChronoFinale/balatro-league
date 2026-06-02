@@ -137,14 +137,17 @@ export function DraggableRatingTable({
   // Sort presets. Each one replaces the local order — the user's manual
   // drag is discarded (drag state isn't persisted until Save, so there's
   // nothing to warn about beyond "the visible order changes").
-  // Smart sort = single key: Player.rating, falling back to BMP MMR
-  // when null. Matches the server-side initial render so smart sort
-  // restores it after a manual reorder.
+  // Rating = rank (1 = best), so league rating sorts ASC. BMP MMR
+  // still sorts DESC (higher MMR = stronger).
   const sortSmart = () => {
     setRows([...rows].sort((a, b) => {
-      const aKey = a.leagueRating ?? a.bmpMmr ?? -1;
-      const bKey = b.leagueRating ?? b.bmpMmr ?? -1;
-      return bKey - aKey;
+      // Ranked players first (asc by rank), unranked at bottom by MMR desc.
+      if (a.leagueRating != null && b.leagueRating == null) return -1;
+      if (a.leagueRating == null && b.leagueRating != null) return 1;
+      if (a.leagueRating != null && b.leagueRating != null) {
+        if (a.leagueRating !== b.leagueRating) return a.leagueRating - b.leagueRating;
+      }
+      return (b.bmpMmr ?? -1) - (a.bmpMmr ?? -1);
     }));
   };
   const sortByBmpMmr = () => {
@@ -152,8 +155,12 @@ export function DraggableRatingTable({
   };
   const sortByLeagueRating = () => {
     setRows([...rows].sort((a, b) => {
-      const d = (b.leagueRating ?? -1) - (a.leagueRating ?? -1);
-      if (d !== 0) return d;
+      // Rank ASC. Unranked sort to the bottom.
+      if (a.leagueRating != null && b.leagueRating == null) return -1;
+      if (a.leagueRating == null && b.leagueRating != null) return 1;
+      if (a.leagueRating != null && b.leagueRating != null) {
+        if (a.leagueRating !== b.leagueRating) return a.leagueRating - b.leagueRating;
+      }
       return (b.bmpMmr ?? -1) - (a.bmpMmr ?? -1);
     }));
   };
@@ -167,8 +174,10 @@ export function DraggableRatingTable({
       <input type="hidden" name="roundId" value={roundId} />
       <input type="hidden" name="order" value={order} />
       <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-        Drag rows to reorder. Save locks in the order — #1 gets the highest rating, #N the lowest.
-        Returners show with their prior-season rank; new players show their BMP Ranked MMR.
+        Drag rows to reorder. Save locks in the rank — position #1 becomes rank 1 (best player),
+        position #N becomes rank N (weakest). Returners show their saved rank from end-of-last-season;
+        new players show BMP Ranked MMR. A ⚠ next to a rank means the player has both a rank and an MMR
+        — sometimes worth manually verifying before locking in.
       </p>
       <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
         <span className="muted" style={{ fontSize: 11, alignSelf: "center" }}>Sort:</span>
@@ -199,7 +208,7 @@ export function DraggableRatingTable({
             <th>Player</th>
             <th>Status</th>
             <th>Last season</th>
-            <th>League rating</th>
+            <th title="Saved rank from end-of-season (1 = best)">League rank</th>
             <th>BMP Ranked MMR</th>
           </tr>
         </thead>
@@ -265,7 +274,18 @@ export function DraggableRatingTable({
                 </td>
                 <td style={{ fontSize: 12 }}>
                   {r.leagueRating != null ? (
-                    <strong>{r.leagueRating}</strong>
+                    <span>
+                      <strong>#{r.leagueRating}</strong>
+                      {r.bmpMmr != null && (
+                        <span
+                          className="muted"
+                          style={{ marginLeft: 6, fontSize: 11, color: "#f1c40f" }}
+                          title="Has both a league rank AND BMP MMR — verify whether the rank still reflects current skill."
+                        >
+                          ⚠
+                        </span>
+                      )}
+                    </span>
                   ) : (
                     <span className="muted">—</span>
                   )}
