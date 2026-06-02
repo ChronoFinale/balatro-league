@@ -327,6 +327,10 @@ model MatchSession {
   threadArchivedAt DateTime?
 
   @@index([state])
+  // match-sweep's idle-session pass scans `state NOT IN terminal AND
+  // updatedAt < cutoff`. Composite index keeps that fast as the table
+  // grows past a few thousand sessions.
+  @@index([state, updatedAt])
   @@index([threadId])
   @@index([state, expiresAt])
   // Cron predicate: sweep COMPLETE/CANCELLED sessions whose thread
@@ -593,6 +597,10 @@ model Pairing {
 
   @@unique([divisionId, playerAId, playerBId])
   @@index([divisionId, status])
+  // The unique constraint above covers playerAId lookups (leading column)
+  // but not playerBId. Profile-history loads do `OR: [{playerAId}, {playerBId}]`
+  // across many divisions; without this the playerBId arm full-scans.
+  @@index([playerBId])
 }
 
 // Named bundle of league rules: scoring + ban policy + timeouts.
