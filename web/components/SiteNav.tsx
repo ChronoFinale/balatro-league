@@ -9,6 +9,7 @@ import { toggleShowBmpMmr } from "@/app/preferences/actions";
 const PUBLIC_LINKS = [
   { href: "/standings", label: "Standings" },
   { href: "/players", label: "Players" },
+  { href: "/stats", label: "Stats" },
   { href: "/seasons", label: "Past seasons" },
   { href: "/join", label: "Join" },
 ] as const;
