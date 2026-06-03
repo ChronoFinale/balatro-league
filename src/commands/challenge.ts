@@ -156,11 +156,16 @@ export const challenge: SlashCommand = {
     try {
       const thread = await interaction.client.channels.fetch(threadId);
       if (thread && thread.type === ChannelType.PrivateThread) {
-        await thread.send({
+        const sent = await thread.send({
           content: `<@${opp.discordId}> — <@${me.discordId}> wants to play. Invite expires in ${settings.matchInviteExpiryMinutes} min.`,
           embeds,
           components,
         });
+        // Persist for ephemeral ban-menu cross-interaction edits.
+        await prisma.matchSession.update({
+          where: { id: session.id },
+          data: { matchMessageId: sent.id },
+        }).catch((err) => console.warn(`[challenge] persist messageId failed:`, err));
       }
     } catch (err) {
       console.warn("[challenge] failed to post invite into thread:", err);

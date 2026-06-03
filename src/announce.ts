@@ -69,7 +69,7 @@ export async function announceResult(pairingId: string): Promise<void> {
         `Division: **${pairing.division.name}**`,
     )
     .setColor(color)
-    .setFooter({ text: `Set ${pairing.id}` })
+    .setFooter({ text: `Match ${pairing.id}` })
     .setTimestamp(new Date());
 
   // Dispute button — visible inline so a player who sees their result

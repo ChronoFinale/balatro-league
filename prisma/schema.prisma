@@ -295,6 +295,11 @@ model MatchSession {
   isShootout    Boolean           @default(false)
   threadId      String?           // Discord thread id (set once accepted)
   channelId     String?           // parent channel of the thread
+  // Discord message id of the public match embed. Stored so the
+  // private ban-menu (ephemeral) flow can edit the public message
+  // cross-interaction via REST when bans are confirmed. Set once
+  // when the message is first posted; survives state changes.
+  matchMessageId String?
 
   // JSON blobs so we can evolve state shape without migrations.
   pool          String?           // [{deck, stake}, ...] generated at accept

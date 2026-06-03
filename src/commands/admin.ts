@@ -46,8 +46,8 @@ export const admin: SlashCommand = {
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator.toString())
     .addSubcommand((sub) =>
       sub
-        .setName("record-set")
-        .setDescription("Manually record a CONFIRMED set (e.g. agreed verbally, never reported).")
+        .setName("record-match")
+        .setDescription("Manually record a match result (e.g. agreed verbally, never reported).")
         .addUserOption((opt) => opt.setName("p1").setDescription("Player 1").setRequired(true))
         .addUserOption((opt) => opt.setName("p2").setDescription("Player 2").setRequired(true))
         .addStringOption((opt) =>
@@ -67,9 +67,9 @@ export const admin: SlashCommand = {
     .addSubcommand((sub) =>
       sub
         .setName("override-result")
-        .setDescription("Force-resolve a disputed set with the correct result.")
+        .setDescription("Force-resolve a disputed match with the correct result.")
         .addStringOption((opt) =>
-          opt.setName("set-id").setDescription("ID of the disputed set (from the dispute embed)").setRequired(true),
+          opt.setName("match-id").setDescription("ID of the disputed match (from the dispute embed)").setRequired(true),
         )
         .addStringOption((opt) =>
           opt
@@ -154,10 +154,10 @@ export const admin: SlashCommand = {
     // Helper+ subcommands: dispute mediation work. League Helpers can
     // join match channels and record verbally-agreed results so they
     // can resolve a dispute end-to-end without escalating to an Admin.
-    if (sub === "join-match" || sub === "record-set" || sub === "undo-report" || sub === "record-shootout") {
+    if (sub === "join-match" || sub === "record-match" || sub === "undo-report" || sub === "record-shootout") {
       if (!(await requireHelper(interaction))) return;
       if (sub === "join-match") return joinMatch(interaction);
-      if (sub === "record-set") return recordPairing(interaction);
+      if (sub === "record-match") return recordPairing(interaction);
       if (sub === "undo-report") return undoReport(interaction);
       if (sub === "record-shootout") return recordShootout(interaction);
     }
@@ -611,7 +611,7 @@ async function recordPairing(interaction: ChatInputCommandInteraction) {
 }
 
 async function forceResult(interaction: ChatInputCommandInteraction) {
-  const pairingId = interaction.options.getString("set-id", true);
+  const pairingId = interaction.options.getString("match-id", true);
   const resultStr = interaction.options.getString("result", true);
   const reason = interaction.options.getString("reason", true);
   const result = parsePairingResult(resultStr);

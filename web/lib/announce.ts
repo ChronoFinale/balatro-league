@@ -62,7 +62,7 @@ export async function announceResult(pairingId: string): Promise<void> {
       `<@${pairing.playerA.discordId}> **${pairing.gamesWonA}–${pairing.gamesWonB}** <@${pairing.playerB.discordId}>\n` +
       `Division: **${pairing.division.name}**`,
     color,
-    footer: { text: `Set ${pairing.id}` },
+    footer: { text: `Match ${pairing.id}` },
     timestamp: new Date().toISOString(),
   };
 

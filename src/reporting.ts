@@ -58,13 +58,13 @@ export async function reportSet(input: ReportInput): Promise<ReportResult> {
   if (existing && existing.status === "CONFIRMED") {
     return {
       ok: false,
-      reason: `This set is already confirmed (${existing.gamesWonA}-${existing.gamesWonB}). Ask an admin if it needs to change.`,
+      reason: `This match is already recorded (${existing.gamesWonA}-${existing.gamesWonB}). Ask an admin if it needs to change.`,
     };
   }
   if (existing && existing.status === "PENDING") {
     return {
       ok: false,
-      reason: "There's already a pending report for this set. The opponent needs to confirm or dispute it first.",
+      reason: "There's already a pending report for this match. The opponent needs to confirm or dispute it first.",
     };
   }
 
@@ -119,7 +119,7 @@ export async function confirmSet(pairingId: string, actorPlayerId: string): Prom
     return { ok: false, reason: "Only the opponent can confirm a match." };
   }
   if (pairing.playerAId !== actorPlayerId && pairing.playerBId !== actorPlayerId) {
-    return { ok: false, reason: "You're not part of this set." };
+    return { ok: false, reason: "You're not part of this match." };
   }
   await prisma.pairing.update({
     where: { id: pairingId },

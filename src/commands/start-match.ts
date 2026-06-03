@@ -163,6 +163,12 @@ export const startMatch: SlashCommand = {
 
     const { embeds, components, content } = renderMatch(session, me, opp);
     const message = await (interaction.channel as TextChannel).send({ content, embeds, components });
+    // Persist the message id so the ephemeral ban-menu flow can edit
+    // the public embed cross-interaction via REST.
+    await prisma.matchSession.update({
+      where: { id: session.id },
+      data: { matchMessageId: message.id },
+    }).catch((err) => console.warn(`[start-match] persist messageId failed:`, err));
     recordAudit({
       actor: actorFromInteractionUser(interaction.user),
       action: "match.create",

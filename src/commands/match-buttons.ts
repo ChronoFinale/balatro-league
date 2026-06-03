@@ -10,6 +10,7 @@
 import {
   ActionRowBuilder,
   ChannelType,
+  EmbedBuilder,
   MessageFlags,
   ModalBuilder,
   PermissionFlagsBits,
@@ -33,7 +34,7 @@ import { env } from "../env.js";
 import { getLeagueSettings, getLeagueSettingsForSeason } from "../league-settings.js";
 import { logDiscordError } from "../log-discord-error.js";
 import { bootstrapPresetsAndPointers, generatePool, presetForCasualMatch, presetForDivision } from "../match-config.js";
-import { renderMatch } from "../match-render.js";
+import { renderBanMenuEphemeral, renderMatch } from "../match-render.js";
 import { summonHelpers } from "./helper.js";
 import { recomputeDivisionStandings } from "../standings-cache.js";
 import {
@@ -187,6 +188,7 @@ export const matchButtons: ButtonHandler = {
     if (action === "accept") return handleAccept(interaction, session);
     if (action === "decline") return handleDecline(interaction, session);
     if (action === "choosefirst") return handleChooseFirst(interaction, session, parts[3]);
+    if (action === "openban") return handleOpenBanMenu(interaction, session);
     if (action === "banconfirm") return handleBanConfirm(interaction, session);
     if (action === "reroll") return handleReroll(interaction, session);
     if (action === "pick") return handlePick(interaction, session, parts[3]);
@@ -280,12 +282,110 @@ async function loadBanContext(
   return { gameNum: gameNum as 1 | 2 | 3, gameField, game, expected: phase.remainingForThem };
 }
 
-// Selection-only handler: writes the chosen indices to game.pendingBans
-// without actually banning them. Player can re-select before clicking
-// Confirm. The render reflects the pending state by default-selecting
-// those options in the menu + enabling the Confirm button.
-async function handleBanSelect(interaction: StringSelectMenuInteraction, session: MatchSession) {
+// Ephemeral-context variant of loadBanContext used by handleBanSelect
+// and handleBanConfirm. The differences vs the public-context loader:
+//   - On stale state we update the EPHEMERAL with a "match moved on"
+//     notice instead of refreshing the public message (which lives
+//     elsewhere). Caller can still kick off a public refresh after if
+//     needed.
+//   - The interaction's user is by construction the actor (only they
+//     can see the ephemeral), but we still defensively validate.
+async function loadBanContextEphemeral(
+  interaction: ButtonInteraction | StringSelectMenuInteraction,
+  session: MatchSession,
+): Promise<{
+  gameNum: 1 | 2 | 3;
+  gameField: "game1" | "game2" | "game3";
+  game: GameState;
+  expected: number;
+} | null> {
+  const gameNum =
+    session.state === "GAME_1_BAN" ? 1 :
+    session.state === "GAME_2_BAN" ? 2 :
+    session.state === "GAME_3_BAN" ? 3 : 0;
+  const staleNotice = async () => {
+    const embed = new EmbedBuilder()
+      .setTitle("Match has moved on")
+      .setColor(0x95a5a6)
+      .setDescription("The ban phase is over. Close this menu and check the match for the latest state.");
+    await interaction.update({ embeds: [embed], components: [] });
+  };
+  if (gameNum === 0) {
+    await staleNotice();
+    return null;
+  }
+  const gameField: "game1" | "game2" | "game3" = `game${gameNum}` as const;
+  const game = parseGame(session[gameField]);
+  if (!game) {
+    await reply(interaction, "Game state missing.");
+    return null;
+  }
+  const phase = phaseFor(game, session.playerAId, session.playerBId, parsePolicy(session.policy));
+  if (phase.kind !== "BAN") {
+    await staleNotice();
+    return null;
+  }
+  // Defensive: the ephemeral should only be visible to the actor, but
+  // the interaction.user.id is the source of truth.
+  const actor = await prisma.player.findUniqueOrThrow({ where: { id: phase.whoseBanId } });
+  if (interaction.user.id !== actor.discordId) {
+    await reply(interaction, "Not your turn anymore — close this menu.");
+    return null;
+  }
+  return { gameNum: gameNum as 1 | 2 | 3, gameField, game, expected: phase.remainingForThem };
+}
+
+// Cross-interaction edit of the canonical public match message. Used
+// by ephemeral handlers (e.g. ban confirm) to push the updated state
+// to the public embed everyone sees. No-op if matchMessageId or the
+// thread channel is missing (shouldn't normally happen — start-match
+// + challenge + match-thread-init all persist it).
+async function refreshPublicMatchMessage(interaction: AnyInteraction, session: MatchSession) {
+  if (!session.matchMessageId) return;
+  const channelId = session.threadId ?? session.channelId;
+  if (!channelId) return;
+  try {
+    const channel = await interaction.client.channels.fetch(channelId);
+    if (!channel || !("messages" in channel)) return;
+    const message = await channel.messages.fetch(session.matchMessageId);
+    const { playerA, playerB } = await loadPlayers(session);
+    const isBanPhase =
+      session.state === "GAME_1_BAN" ||
+      session.state === "GAME_2_BAN" ||
+      session.state === "GAME_3_BAN";
+    const allowedStakes = isBanPhase ? await loadAllowedStakes(session) : [];
+    const { embeds, components, content } = renderMatch(session, playerA, playerB, { allowedStakes });
+    await message.edit({ content, embeds, components });
+  } catch (err) {
+    console.warn(`[refreshPublicMatchMessage] failed for ${session.id}:`, err);
+  }
+}
+
+// Open the ephemeral ban menu — the active banner's private select +
+// confirm UI. Non-actors get an ephemeral "not your turn" reply.
+// The opponent sees only the public embed progress, never the
+// tentative selections.
+async function handleOpenBanMenu(interaction: ButtonInteraction, session: MatchSession) {
   const ctx = await loadBanContext(interaction, session);
+  if (!ctx) return;
+  const { embeds, components } = renderBanMenuEphemeral({
+    sessionId: session.id,
+    gameNumber: ctx.gameNum,
+    pool: ctx.game.pool,
+    bans: ctx.game.bans,
+    pendingBans: ctx.game.pendingBans ?? [],
+    expected: ctx.expected,
+  });
+  await interaction.reply({ embeds, components, flags: MessageFlags.Ephemeral });
+}
+
+// Selection-only handler: runs inside the active banner's ephemeral.
+// Writes the chosen indices to game.pendingBans without actually
+// banning them. Player can re-select before clicking Confirm. We
+// update the EPHEMERAL — the public embed deliberately hides
+// pending state so the opponent can't peek.
+async function handleBanSelect(interaction: StringSelectMenuInteraction, session: MatchSession) {
+  const ctx = await loadBanContextEphemeral(interaction, session);
   if (!ctx) return;
   const selected = interaction.values.map((v) => parseInt(v, 10)).filter((n) => !Number.isNaN(n));
   if (selected.length !== ctx.expected) {
@@ -299,7 +399,16 @@ async function handleBanSelect(interaction: StringSelectMenuInteraction, session
     [ctx.gameField]: JSON.stringify(newGame),
   } as Prisma.MatchSessionUpdateManyMutationInput);
   if (!updated) return raceLost(interaction);
-  await refreshMessage(interaction, updated);
+  const refreshedGame = parseGame(updated[ctx.gameField]) ?? newGame;
+  const { embeds, components } = renderBanMenuEphemeral({
+    sessionId: session.id,
+    gameNumber: ctx.gameNum,
+    pool: ctx.game.pool,
+    bans: refreshedGame.bans,
+    pendingBans: refreshedGame.pendingBans ?? [],
+    expected: ctx.expected,
+  });
+  await interaction.update({ embeds, components });
 }
 
 // Both players consent → regenerate this game's pool. Excludes deck
@@ -368,11 +477,13 @@ async function handleReroll(interaction: ButtonInteraction, session: MatchSessio
   await refreshMessage(interaction, updated);
 }
 
-// Commit-the-pending-bans handler: takes the pendingBans on the game,
-// folds them into the actual bans array, advances phase. Disabled in
-// the UI until pendingBans count matches the expected ban count.
+// Commit-the-pending-bans handler: runs inside the active banner's
+// ephemeral. Folds pendingBans into bans, advances phase if all
+// player rounds are done, closes the ephemeral with a success
+// message, then refreshes the PUBLIC match embed via REST so
+// everyone sees the new state.
 async function handleBanConfirm(interaction: ButtonInteraction, session: MatchSession) {
-  const ctx = await loadBanContext(interaction, session);
+  const ctx = await loadBanContextEphemeral(interaction, session);
   if (!ctx) return;
   const pending = ctx.game.pendingBans ?? [];
   if (pending.length !== ctx.expected) {
@@ -398,7 +509,24 @@ async function handleBanConfirm(interaction: ButtonInteraction, session: MatchSe
     state: newState,
   } as Prisma.MatchSessionUpdateManyMutationInput);
   if (!updated) return raceLost(interaction);
-  await refreshMessage(interaction, updated);
+  // Close the ephemeral with a success state. We can't delete an
+  // ephemeral message; clearing components + showing a confirmation
+  // is the cleanest dismissal.
+  const summary = pending
+    .map((idx) => {
+      const combo = ctx.game.pool[idx];
+      return combo ? `${combo.deck} / ${combo.stake}` : null;
+    })
+    .filter((s): s is string => !!s);
+  const successEmbed = new EmbedBuilder()
+    .setTitle("✅ Bans locked in")
+    .setColor(0x2ecc71)
+    .setDescription(
+      `You banned: ${summary.join(", ")}\n\n_The match has moved on — check the main embed._`,
+    );
+  await interaction.update({ embeds: [successEmbed], components: [] });
+  // Refresh the public match message so everyone sees the new state.
+  await refreshPublicMatchMessage(interaction, updated);
 }
 
 // Close the match thread when the match completes. For private/public
@@ -610,11 +738,18 @@ async function handleAccept(interaction: ButtonInteraction, session: MatchSessio
       const thread = await interaction.client.channels.fetch(matchChannelId);
       if (thread && thread.type === ChannelType.PrivateThread) {
         const { embeds, components, content } = renderMatch(updated, playerA, playerB);
-        await thread.send({
+        const sent = await thread.send({
           content: content || `<@${playerA.discordId}> <@${playerB.discordId}> — your match thread.`,
           embeds,
           components,
         });
+        // Re-stamp matchMessageId — when the match relocates from
+        // the league channel into a private thread on accept, the
+        // canonical public message is now the in-thread send.
+        await prisma.matchSession.update({
+          where: { id: updated.id },
+          data: { matchMessageId: sent.id, threadId: matchChannelId },
+        }).catch((err) => console.warn(`[match] persist thread messageId failed:`, err));
       }
     } catch (err) {
       console.warn(`[match] failed to post into match thread ${matchChannelId}:`, err);
