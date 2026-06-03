@@ -21,7 +21,7 @@
 import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { moveDivisionMember, moveDivisionMemberToPosition } from "@/app/admin/seasons/actions";
-import { addLatePlayerToDivision } from "@/app/admin/seasons/actions";
+import { addLatePlayerToDivision, deleteDivision } from "@/app/admin/seasons/actions";
 import { addDivisionToTier } from "@/app/admin/seasons/actions";
 
 export interface EditorMember {
@@ -327,6 +327,29 @@ export function DraggableDivisionsEditor({
                       <span className="muted" style={{ fontSize: 11, marginLeft: "auto" }}>
                         {divMembers.length} member{divMembers.length === 1 ? "" : "s"}
                       </span>
+                      {divMembers.length === 0 && (
+                        <form
+                          action={deleteDivision}
+                          onPointerDown={(e) => e.stopPropagation()}
+                        >
+                          <input type="hidden" name="divisionId" value={d.id} />
+                          <button
+                            type="submit"
+                            className="muted"
+                            style={{
+                              background: "none",
+                              border: "none",
+                              color: "#e74c3c",
+                              cursor: "pointer",
+                              fontSize: 11,
+                              padding: 0,
+                            }}
+                            title="Delete this empty division (draft mode only)"
+                          >
+                            delete
+                          </button>
+                        </form>
+                      )}
                     </div>
                     {divMembers.length === 0 ? (
                       <div className="muted" style={{ fontSize: 11, marginTop: 4, padding: 12, border: "1px dashed var(--border)", borderRadius: 4, textAlign: "center" }}>

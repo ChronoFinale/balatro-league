@@ -156,6 +156,61 @@ export async function addDivisionToTier(formData: FormData) {
   revalidatePath(`/admin/seasons/${seasonId}`);
 }
 
+// Remove an empty division. Draft-mode only (matches addDivisionToTier
+// constraint) and refuses if the division still has members — admin
+// must move them out via the drag editor first. Same audit shape as
+// the add action, action="division.remove".
+export async function deleteDivision(formData: FormData) {
+  const { user } = await requireAdmin();
+  const divisionId = String(formData.get("divisionId") ?? "");
+  if (!divisionId) return;
+  const division = await prisma.division.findUnique({
+    where: { id: divisionId },
+    include: {
+      season: { select: { id: true, isActive: true, endedAt: true } },
+      tier: { select: { name: true } },
+      _count: { select: { members: true, pairings: true } },
+    },
+  });
+  if (!division) {
+    redirect(`/admin/seasons?err=${encodeURIComponent("Division not found.")}`);
+  }
+  if (division!.season.isActive || division!.season.endedAt) {
+    redirect(
+      `/admin/seasons/${division!.season.id}?err=${encodeURIComponent(
+        "Can't delete a division from an active or ended season — only during draft.",
+      )}`,
+    );
+  }
+  if (division!._count.members > 0) {
+    redirect(
+      `/admin/seasons/${division!.season.id}?err=${encodeURIComponent(
+        `"${division!.name}" still has ${division!._count.members} member(s). Move them to other divisions first, then delete.`,
+      )}`,
+    );
+  }
+  // _count.pairings should be 0 in draft mode (no matches played yet),
+  // but guard anyway — if somehow a pairing exists for this division
+  // we refuse rather than orphan match history.
+  if (division!._count.pairings > 0) {
+    redirect(
+      `/admin/seasons/${division!.season.id}?err=${encodeURIComponent(
+        `"${division!.name}" has match history attached. Refusing to delete.`,
+      )}`,
+    );
+  }
+  await prisma.division.delete({ where: { id: divisionId } });
+  recordAudit({
+    actor: actorFromAdminUser(user),
+    action: "division.remove",
+    targetType: "Division",
+    targetId: divisionId,
+    summary: `Removed empty division "${division!.name}" from "${division!.tier.name}" in draft season`,
+    metadata: { seasonId: division!.season.id, name: division!.name },
+  });
+  revalidatePath(`/admin/seasons/${division!.season.id}`);
+}
+
 export async function configureTiers(formData: FormData) {
   const { user } = await requireAdmin();
   const seasonId = String(formData.get("seasonId") ?? "");
