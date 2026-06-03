@@ -6,7 +6,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { hasTier } from "@/lib/admin";
-import { loadDivisionPageData } from "@/lib/loaders/division";
+import { loadDivisionPageData, type DivisionRecentPairing, type DivisionUnplayed } from "@/lib/loaders/division";
 import { loadAdminDivisionDetail } from "@/lib/loaders/admin";
 import { prisma } from "@/lib/prisma";
 import { tierColors } from "@/lib/tier-colors";
@@ -153,97 +153,14 @@ export default async function PublicDivisionPage({
           </div>
         </div>
 
-        {unplayed.length > 0 && (
-          <div className="card">
-            <strong>Remaining ({unplayed.length})</strong>
-            <p className="muted" style={{ fontSize: 11, marginTop: 4, marginBottom: 8 }}>
-              {viewerPlayerId
-                ? "You can report your own matches inline. Admins can record anyone's."
-                : "Players in this division can report their matches by signing in."}
-            </p>
-            <ul style={{ marginTop: 4, listStyle: "none", padding: 0 }}>
-              {unplayed.map((m) => {
-                const viewerIsA = viewerPlayerId === m.a.id;
-                const viewerIsB = viewerPlayerId === m.b.id;
-                const viewerIsPlayer = viewerIsA || viewerIsB;
-                const opponent = viewerIsA ? m.b : viewerIsB ? m.a : null;
-                return (
-                  <li
-                    key={`${m.a.id}-${m.b.id}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "6px 0",
-                      borderBottom: "1px solid rgba(255,255,255,0.05)",
-                      fontSize: 12,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <span style={{ flex: "1 1 220px" }}>
-                      <Link href={`/profile/${m.a.id}`} style={{ color: "var(--text)" }}>{m.a.displayName}</Link>
-                      <span className="muted"> vs </span>
-                      <Link href={`/profile/${m.b.id}`} style={{ color: "var(--text)" }}>{m.b.displayName}</Link>
-                    </span>
-                    {viewerIsPlayer && opponent && (
-                      <form action={reportFromDivisionAction} style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                        <input type="hidden" name="divisionId" value={id} />
-                        <input type="hidden" name="opponentId" value={opponent.id} />
-                        <select name="result" defaultValue="2-0" style={{ fontSize: 11, padding: "1px 4px" }}>
-                          <option value="2-0">I won 2-0</option>
-                          <option value="1-1">Draw 1-1</option>
-                          <option value="0-2">I lost 0-2</option>
-                        </select>
-                        <button type="submit" style={{ fontSize: 11, padding: "1px 8px" }}>Report</button>
-                      </form>
-                    )}
-                    {!viewerIsPlayer && isAdmin && (
-                      <form action={recordFromDivisionAction} style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                        <input type="hidden" name="divisionId" value={id} />
-                        <input type="hidden" name="playerAId" value={m.a.id} />
-                        <input type="hidden" name="playerBId" value={m.b.id} />
-                        <select name="result" defaultValue="2-0" style={{ fontSize: 11, padding: "1px 4px" }} title="Result from playerA's POV">
-                          <option value="2-0">{m.a.displayName} 2-0</option>
-                          <option value="1-1">Draw 1-1</option>
-                          <option value="0-2">{m.b.displayName} 2-0</option>
-                        </select>
-                        <button type="submit" className="secondary" style={{ fontSize: 11, padding: "1px 8px" }}>Record</button>
-                      </form>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-
-        <details className="card">
-          <summary style={{ cursor: "pointer" }}>
-            <strong>Recent matches ({division.confirmedPairingCount})</strong>
-          </summary>
-          {recentPairings.length === 0 ? (
-            <p className="muted" style={{ marginTop: 8 }}>No matches played yet.</p>
-          ) : (
-            <table style={{ marginTop: 8 }}>
-              <thead><tr><th>Date</th><th>Result</th></tr></thead>
-              <tbody>
-                {recentPairings.map((p) => {
-                  const date = p.date ? p.date.toISOString().slice(0, 10) : "—";
-                  return (
-                    <tr key={p.id}>
-                      <td className="muted">{date}</td>
-                      <td>
-                        <Link href={`/profile/${p.playerA.id}`} style={{ color: "var(--text)" }}>{p.playerA.displayName}</Link>
-                        {" "}<strong>{p.gamesWonA}-{p.gamesWonB}</strong>{" "}
-                        <Link href={`/profile/${p.playerB.id}`} style={{ color: "var(--text)" }}>{p.playerB.displayName}</Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </details>
+        <MatchesSections
+          divisionId={id}
+          viewerPlayerId={viewerPlayerId}
+          isAdmin={isAdmin}
+          unplayed={unplayed}
+          recentPairings={recentPairings}
+          confirmedPairingCount={division.confirmedPairingCount}
+        />
 
         {shootouts.length > 0 && (
           <div className="card">
@@ -285,6 +202,269 @@ export default async function PublicDivisionPage({
         )}
       </main>
     </>
+  );
+}
+
+// Split the Remaining + Played lists into "Your matches" (top, visible,
+// actionable) vs "Division matches" (collapsed, everyone else). When the
+// viewer isn't a member of this division we fall back to a single visible
+// Remaining list + collapsed Played list — same as before the split.
+function MatchesSections({
+  divisionId,
+  viewerPlayerId,
+  isAdmin,
+  unplayed,
+  recentPairings,
+  confirmedPairingCount,
+}: {
+  divisionId: string;
+  viewerPlayerId: string | null;
+  isAdmin: boolean;
+  unplayed: DivisionUnplayed[];
+  recentPairings: DivisionRecentPairing[];
+  confirmedPairingCount: number;
+}) {
+  const involvesViewer = (aId: string, bId: string) =>
+    viewerPlayerId !== null && (aId === viewerPlayerId || bId === viewerPlayerId);
+  const myUnplayed = unplayed.filter((m) => involvesViewer(m.a.id, m.b.id));
+  const otherUnplayed = unplayed.filter((m) => !involvesViewer(m.a.id, m.b.id));
+  const myPlayed = recentPairings.filter((p) => involvesViewer(p.playerA.id, p.playerB.id));
+  const otherPlayed = recentPairings.filter((p) => !involvesViewer(p.playerA.id, p.playerB.id));
+  // "Member" proxy: viewer shows up in either list. A brand-new member
+  // with zero history still has unplayed against every other active
+  // member, so this catches them.
+  const viewerIsMember = myUnplayed.length > 0 || myPlayed.length > 0;
+
+  if (!viewerIsMember) {
+    return (
+      <>
+        {unplayed.length > 0 && (
+          <div className="card">
+            <strong>Remaining ({unplayed.length})</strong>
+            <p className="muted" style={{ fontSize: 11, marginTop: 4, marginBottom: 8 }}>
+              {viewerPlayerId
+                ? "Admins can record any match below. Sign-in won't help unless you're a member."
+                : "Players in this division can report their matches by signing in."}
+            </p>
+            <UnplayedList
+              divisionId={divisionId}
+              rows={unplayed}
+              viewerPlayerId={viewerPlayerId}
+              isAdmin={isAdmin}
+            />
+          </div>
+        )}
+        <details className="card">
+          <summary style={{ cursor: "pointer" }}>
+            <strong>Recent matches ({confirmedPairingCount})</strong>
+          </summary>
+          <PlayedTable rows={recentPairings} />
+        </details>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <h3 style={{ marginTop: 16, marginBottom: 8 }}>🎯 Your matches</h3>
+
+      <div className="card">
+        <strong>Your unplayed ({myUnplayed.length})</strong>
+        {myUnplayed.length === 0 ? (
+          <p className="muted" style={{ marginTop: 6 }}>
+            You've played everyone in your division.
+          </p>
+        ) : (
+          <UnplayedList
+            divisionId={divisionId}
+            rows={myUnplayed}
+            viewerPlayerId={viewerPlayerId}
+            isAdmin={isAdmin}
+          />
+        )}
+      </div>
+
+      {myPlayed.length > 0 && (
+        <div className="card">
+          <strong>Your played ({myPlayed.length})</strong>
+          <YourPlayedTable rows={myPlayed} viewerPlayerId={viewerPlayerId!} />
+        </div>
+      )}
+
+      <h3 style={{ marginTop: 24, marginBottom: 8 }}>Division matches</h3>
+
+      {otherUnplayed.length > 0 && (
+        <details className="card">
+          <summary style={{ cursor: "pointer" }}>
+            <strong>Remaining ({otherUnplayed.length})</strong>
+            <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
+              other players' upcoming
+            </span>
+          </summary>
+          <UnplayedList
+            divisionId={divisionId}
+            rows={otherUnplayed}
+            viewerPlayerId={viewerPlayerId}
+            isAdmin={isAdmin}
+          />
+        </details>
+      )}
+
+      <details className="card">
+        <summary style={{ cursor: "pointer" }}>
+          <strong>Played ({otherPlayed.length})</strong>
+          <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
+            other matches in this division
+          </span>
+        </summary>
+        <PlayedTable rows={otherPlayed} />
+      </details>
+    </>
+  );
+}
+
+// Per-row Report / admin Record controls for an unplayed matchup. Same
+// shape regardless of which section it lives in (yours/others/no-viewer).
+function UnplayedList({
+  divisionId,
+  rows,
+  viewerPlayerId,
+  isAdmin,
+}: {
+  divisionId: string;
+  rows: DivisionUnplayed[];
+  viewerPlayerId: string | null;
+  isAdmin: boolean;
+}) {
+  return (
+    <ul style={{ marginTop: 4, listStyle: "none", padding: 0 }}>
+      {rows.map((m) => {
+        const viewerIsA = viewerPlayerId === m.a.id;
+        const viewerIsB = viewerPlayerId === m.b.id;
+        const viewerIsPlayer = viewerIsA || viewerIsB;
+        const opponent = viewerIsA ? m.b : viewerIsB ? m.a : null;
+        return (
+          <li
+            key={`${m.a.id}-${m.b.id}`}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "6px 0",
+              borderBottom: "1px solid rgba(255,255,255,0.05)",
+              fontSize: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <span style={{ flex: "1 1 220px" }}>
+              <Link href={`/profile/${m.a.id}`} style={{ color: "var(--text)" }}>{m.a.displayName}</Link>
+              <span className="muted"> vs </span>
+              <Link href={`/profile/${m.b.id}`} style={{ color: "var(--text)" }}>{m.b.displayName}</Link>
+            </span>
+            {viewerIsPlayer && opponent && (
+              <form action={reportFromDivisionAction} style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <input type="hidden" name="divisionId" value={divisionId} />
+                <input type="hidden" name="opponentId" value={opponent.id} />
+                <select name="result" defaultValue="2-0" style={{ fontSize: 11, padding: "1px 4px" }}>
+                  <option value="2-0">I won 2-0</option>
+                  <option value="1-1">Draw 1-1</option>
+                  <option value="0-2">I lost 0-2</option>
+                </select>
+                <button type="submit" style={{ fontSize: 11, padding: "1px 8px" }}>Report</button>
+              </form>
+            )}
+            {!viewerIsPlayer && isAdmin && (
+              <form action={recordFromDivisionAction} style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <input type="hidden" name="divisionId" value={divisionId} />
+                <input type="hidden" name="playerAId" value={m.a.id} />
+                <input type="hidden" name="playerBId" value={m.b.id} />
+                <select name="result" defaultValue="2-0" style={{ fontSize: 11, padding: "1px 4px" }} title="Result from playerA's POV">
+                  <option value="2-0">{m.a.displayName} 2-0</option>
+                  <option value="1-1">Draw 1-1</option>
+                  <option value="0-2">{m.b.displayName} 2-0</option>
+                </select>
+                <button type="submit" className="secondary" style={{ fontSize: 11, padding: "1px 8px" }}>Record</button>
+              </form>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// All-pairings table — date + raw A vs B result. Used for the
+// non-member view and the "other matches" collapsible.
+function PlayedTable({ rows }: { rows: DivisionRecentPairing[] }) {
+  if (rows.length === 0) {
+    return <p className="muted" style={{ marginTop: 8 }}>No matches played yet.</p>;
+  }
+  return (
+    <table style={{ marginTop: 8 }}>
+      <thead><tr><th>Date</th><th>Result</th></tr></thead>
+      <tbody>
+        {rows.map((p) => {
+          const date = p.date ? p.date.toISOString().slice(0, 10) : "—";
+          return (
+            <tr key={p.id}>
+              <td className="muted">{date}</td>
+              <td>
+                <Link href={`/profile/${p.playerA.id}`} style={{ color: "var(--text)" }}>{p.playerA.displayName}</Link>
+                {" "}<strong>{p.gamesWonA}-{p.gamesWonB}</strong>{" "}
+                <Link href={`/profile/${p.playerB.id}`} style={{ color: "var(--text)" }}>{p.playerB.displayName}</Link>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+// Viewer-centric played table — opponent + score from viewer's POV +
+// W/D/L pill. More glanceable than the raw A-vs-B layout when you only
+// care about your own results.
+function YourPlayedTable({ rows, viewerPlayerId }: { rows: DivisionRecentPairing[]; viewerPlayerId: string }) {
+  return (
+    <table style={{ marginTop: 8 }}>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Opponent</th>
+          <th>Score</th>
+          <th>Result</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((p) => {
+          const date = p.date ? p.date.toISOString().slice(0, 10) : "—";
+          const isA = p.playerA.id === viewerPlayerId;
+          const opponent = isA ? p.playerB : p.playerA;
+          const myG = isA ? p.gamesWonA : p.gamesWonB;
+          const oppG = isA ? p.gamesWonB : p.gamesWonA;
+          const outcome =
+            myG > oppG ? { bg: "rgba(46,204,113,0.15)", fg: "#2ecc71", label: "W" }
+            : myG < oppG ? { bg: "rgba(231,76,60,0.15)", fg: "#e74c3c", label: "L" }
+            : { bg: "rgba(241,196,15,0.15)", fg: "#f1c40f", label: "D" };
+          return (
+            <tr key={p.id}>
+              <td className="muted">{date}</td>
+              <td>
+                <Link href={`/profile/${opponent.id}`} style={{ color: "var(--text)" }}>
+                  {opponent.displayName}
+                </Link>
+              </td>
+              <td><strong>{myG}–{oppG}</strong></td>
+              <td>
+                <span className="pill" style={{ background: outcome.bg, color: outcome.fg }}>
+                  {outcome.label}
+                </span>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
