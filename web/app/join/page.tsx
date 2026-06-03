@@ -9,6 +9,7 @@
 
 import Link from "next/link";
 import { auth } from "@/auth";
+import { isAdminUser } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 import { SiteNav } from "@/components/SiteNav";
 import {
@@ -31,6 +32,10 @@ interface JoinPageData {
   viewerDiscordId: string | null;
   viewerIsSubscribed: boolean;
   viewerIsSignedUp: boolean;
+  // Only true for ADMIN+ tier viewers. Drives the inline "set the
+  // invite URL" nudge that shows up when the LeagueConfig key is
+  // empty — public visitors never see that message.
+  viewerIsAdmin: boolean;
 }
 
 async function loadJoinPageData(): Promise<JoinPageData> {
@@ -82,6 +87,10 @@ async function loadJoinPageData(): Promise<JoinPageData> {
   }
   void mySignup;
 
+  // Admin check only runs if we know the viewer is logged in — saves
+  // a roundtrip for anonymous public visitors.
+  const viewerIsAdmin = viewerDiscordId ? await isAdminUser() : false;
+
   return {
     discordInviteUrl: inviteRow?.value ?? null,
     openRound: round
@@ -90,6 +99,7 @@ async function loadJoinPageData(): Promise<JoinPageData> {
     viewerDiscordId,
     viewerIsSubscribed: !!interest,
     viewerIsSignedUp,
+    viewerIsAdmin,
   };
 }
 
@@ -128,16 +138,18 @@ export default async function JoinPage({
           </div>
         )}
 
-        {/* Step 1: Discord server invite. Always shown so people know
-            where the league actually runs even if they haven't logged in. */}
-        <div className="card">
-          <strong>Step 1 — Join the Discord server</strong>
-          <p className="muted" style={{ marginTop: 4 }}>
-            Everything happens in Discord — match scheduling, ban/pick, results.
-            You need to be in the server before signups so the bot can DM you
-            and assign your division role.
-          </p>
-          {data.discordInviteUrl ? (
+        {/* Step 1: Discord server invite. Hidden entirely when no URL
+            is configured — surfacing a "no link set" warning to public
+            visitors looks broken. Admin gets an inline nudge instead so
+            they know to set the config. */}
+        {data.discordInviteUrl && (
+          <div className="card">
+            <strong>Step 1 — Join the Discord server</strong>
+            <p className="muted" style={{ marginTop: 4 }}>
+              Everything happens in Discord — match scheduling, ban/pick, results.
+              You need to be in the server before signups so the bot can DM you
+              and assign your division role.
+            </p>
             <a
               href={data.discordInviteUrl}
               target="_blank"
@@ -155,13 +167,19 @@ export default async function JoinPage({
             >
               🃏 Open Discord invite
             </a>
-          ) : (
-            <p className="muted">
-              No public invite link configured yet. Ask the league admin to set{" "}
-              <code>discord_server_invite_url</code> on <code>/admin/config</code>.
-            </p>
-          )}
-        </div>
+          </div>
+        )}
+        {!data.discordInviteUrl && data.viewerIsAdmin && (
+          <div className="card" style={{ borderColor: "#f1c40f" }}>
+            <strong style={{ color: "#f1c40f" }}>⚠ Admin nudge:</strong>{" "}
+            <span className="muted">
+              No public invite link configured. Set{" "}
+              <code>discord_server_invite_url</code> on{" "}
+              <Link href="/admin/config">/admin/config</Link> so the Step 1 card
+              appears for visitors.
+            </span>
+          </div>
+        )}
 
         {/* Step 2: depends on auth state + whether a round is open. */}
         {!isLoggedIn ? (
