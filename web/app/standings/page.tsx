@@ -106,19 +106,35 @@ export default async function StandingsPage() {
                         }
                         if (current.length > 0) chains.push(current);
                       }
-                      // Shootout marker is TIER-INDEPENDENT — even a top-tier #1
-                      // tie needs resolving (someone has to be champion), and
-                      // even a bottom-tier last-place tie matters for "who
-                      // finished dead last". Arrows still respect tier below.
+                      // Effective promote/relegate count for THIS division —
+                      // clamped so we don't mark everyone in tiny divisions.
+                      // Leave at least 1 row that's neither promoting nor
+                      // relegating.
+                      const _prc = tier.promoteRelegateCount;
+                      const _maxMovers = Math.max(0, Math.floor((rows.length - 1) / 2));
+                      const effective = Math.min(_prc, _maxMovers);
+
+                      // Shootout marker is TIER-INDEPENDENT — chains crossing
+                      // either boundary (promo or relegation) need resolving.
+                      // For N=1 this collapses to the old "ties at rank 1" /
+                      // "ties at last rank" behavior; for N>1 it catches the
+                      // promo/reli edge wherever it sits.
                       const promoTieRowSet = new Set<number>();
                       const relegationTieRowSet = new Set<number>();
                       for (const chain of chains) {
                         if (chain.length < 2) continue; // not a tie chain
-                        if (chain.includes(0)) {
-                          for (const idx of chain) promoTieRowSet.add(idx);
-                        }
-                        if (chain.includes(rows.length - 1)) {
-                          for (const idx of chain) relegationTieRowSet.add(idx);
+                        if (effective > 0) {
+                          const crossesPromoEdge =
+                            chain.some((i) => i < effective) && chain.some((i) => i >= effective);
+                          if (crossesPromoEdge) {
+                            for (const idx of chain) promoTieRowSet.add(idx);
+                          }
+                          const reliEdge = rows.length - effective;
+                          const crossesReliEdge =
+                            chain.some((i) => i < reliEdge) && chain.some((i) => i >= reliEdge);
+                          if (crossesReliEdge) {
+                            for (const idx of chain) relegationTieRowSet.add(idx);
+                          }
                         }
                       }
                       void tierColors;
@@ -171,10 +187,11 @@ export default async function StandingsPage() {
                                     </Link>
                                   );
                                   const mmr = data.mmrByPlayerId.get(r.player.id);
-                                  const isPromoting = complete && i === 0 && !isTopTier && !promoTieRowSet.has(0);
+                                  // `effective` was computed above for the same division.
+                                  const isPromoting =
+                                    complete && i < effective && !isTopTier && !promoTieRowSet.has(i);
                                   const isRelegating =
-                                    complete && i === rows.length - 1 && !isBottomTier && rows.length > 1 &&
-                                    !relegationTieRowSet.has(rows.length - 1);
+                                    complete && i >= rows.length - effective && !isBottomTier && !relegationTieRowSet.has(i);
                                   const movementMarker = isPromoting ? (
                                     <span title="Promotion position" style={{ color: "#2ecc71" }}>↑</span>
                                   ) : isRelegating ? (

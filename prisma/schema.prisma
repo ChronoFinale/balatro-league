@@ -404,6 +404,13 @@ model Tier {
   seasonId  String
   position  Int        // 1 = top. Determines promo/relegation order.
   name      String     // Display name: "Legendary", "Champions", etc.
+  // How many players promote up from THIS tier (top N) and relegate
+  // down (bottom N) at end-of-season. Symmetric — one field for both
+  // directions. Defaults to 1 to match the original hardcoded
+  // behavior. Drives the ↑/↓ markers on /standings; end-season
+  // recompute doesn't care since next-season build seeds by global
+  // rank and handles the rebalance naturally.
+  promoteRelegateCount Int @default(1)
 
   season    Season     @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   divisions Division[]

@@ -26,6 +26,7 @@ import {
   renameSeason,
   setSeasonPreset,
   setSeasonScheduledStart,
+  setTierPromoteRelegateCount,
 } from "@/app/admin/seasons/actions";
 import { setSeasonRulesTemplate } from "@/app/admin/settings/actions";
 import {
@@ -143,7 +144,27 @@ function PublicSummary({
 
       {season.tiers.filter((t) => t.divisions.length > 0).map((tier) => (
         <section key={tier.id} style={{ marginTop: 24 }}>
-          <h3>{tier.name}</h3>
+          <h3 style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span>{tier.name}</span>
+            <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>
+              top {tier.promoteRelegateCount} ↑ promote · bottom {tier.promoteRelegateCount} ↓ relegate
+            </span>
+            {isAdmin && (
+              <form action={setTierPromoteRelegateCount} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 400 }}>
+                <input type="hidden" name="tierId" value={tier.id} />
+                <span className="muted">Edit:</span>
+                <input
+                  type="number"
+                  name="count"
+                  min={0}
+                  max={10}
+                  defaultValue={tier.promoteRelegateCount}
+                  style={{ width: 48, fontSize: 11, padding: "1px 4px" }}
+                />
+                <button type="submit" className="secondary" style={{ fontSize: 11, padding: "1px 6px" }}>Save</button>
+              </form>
+            )}
+          </h3>
           <div className="grid grid-2">
             {tier.divisions.map((div) => (
               <div key={div.id} className="card">

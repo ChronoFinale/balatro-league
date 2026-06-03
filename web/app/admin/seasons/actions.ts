@@ -1050,3 +1050,30 @@ export async function setSeasonPreset(formData: FormData) {
   }
   revalidatePath("/admin/seasons");
 }
+
+// Set the symmetric promote/relegate count for a single tier. Drives
+// the ↑/↓ markers on /standings only — end-season recompute is
+// unaffected. Clamps the value to [0, 10] as a sanity guard.
+export async function setTierPromoteRelegateCount(formData: FormData) {
+  const { user } = await requireAdmin();
+  const tierId = String(formData.get("tierId") ?? "");
+  const raw = parseInt(String(formData.get("count") ?? ""), 10);
+  if (!tierId || !Number.isFinite(raw)) return;
+  const count = Math.min(10, Math.max(0, raw));
+  const tier = await prisma.tier.findUnique({
+    where: { id: tierId },
+    select: { id: true, name: true, promoteRelegateCount: true, seasonId: true },
+  });
+  if (!tier) return;
+  await prisma.tier.update({ where: { id: tierId }, data: { promoteRelegateCount: count } });
+  recordAudit({
+    actor: actorFromAdminUser(user),
+    action: "tier.set-promote-relegate-count",
+    targetType: "Tier",
+    targetId: tierId,
+    summary: `Set ${tier.name} promote/relegate count: ${tier.promoteRelegateCount} → ${count}`,
+    metadata: { previous: tier.promoteRelegateCount, next: count },
+  });
+  revalidatePath(`/seasons/${tier.seasonId}`);
+  revalidatePath("/standings");
+}

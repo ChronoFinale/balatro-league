@@ -42,6 +42,10 @@ export interface StandingsTierSummary {
   id: string;
   name: string;
   position: number;
+  // How many top finishers promote / bottom finishers relegate from
+  // this tier. Used by the UI to render the right number of ↑/↓
+  // markers on the standings table.
+  promoteRelegateCount: number;
   divisions: StandingsDivisionSummary[];
 }
 
@@ -81,6 +85,7 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
           id: true,
           name: true,
           position: true,
+          promoteRelegateCount: true,
           divisions: {
             orderBy: { groupNumber: "asc" },
             select: {
@@ -215,6 +220,7 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
     id: t.id,
     name: t.name,
     position: t.position,
+    promoteRelegateCount: t.promoteRelegateCount,
     divisions: t.divisions.map((d): StandingsDivisionSummary => ({
       id: d.id,
       name: d.name,

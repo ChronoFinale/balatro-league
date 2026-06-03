@@ -78,6 +78,7 @@ export interface SeasonDetailTier {
   id: string;
   name: string;
   position: number;
+  promoteRelegateCount: number;
   divisions: SeasonDetailDivision[];
 }
 
@@ -107,6 +108,7 @@ export async function loadSeasonDetail(seasonId: string): Promise<SeasonDetailDa
           id: true,
           name: true,
           position: true,
+          promoteRelegateCount: true,
           divisions: {
             orderBy: { groupNumber: "asc" },
             select: {
@@ -133,6 +135,7 @@ export async function loadSeasonDetail(seasonId: string): Promise<SeasonDetailDa
     id: t.id,
     name: t.name,
     position: t.position,
+    promoteRelegateCount: t.promoteRelegateCount,
     divisions: t.divisions.map((d) => {
       const droppedIds = new Set(
         d.members.filter((m) => m.status === "DROPPED").map((m) => m.playerId),
