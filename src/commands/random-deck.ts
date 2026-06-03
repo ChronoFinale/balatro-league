@@ -11,6 +11,7 @@ import {
 } from "discord.js";
 import { resolveDefaultSeasonPreset } from "../match-config.js";
 import { deckDescription, stakeDescription } from "../balatro-info.js";
+import { deckEmoji, stakeEmoji } from "../balatro-emojis.js";
 import type { SlashCommand } from "./types.js";
 
 export const randomDeck: SlashCommand = {
@@ -33,21 +34,25 @@ export const randomDeck: SlashCommand = {
     const stake = preset.stakes[Math.floor(Math.random() * preset.stakes.length)]!;
     const deckDesc = deckDescription(deck);
     const stakeDesc = stakeDescription(stake);
+    // Same custom-emoji styling the match-render uses for the
+    // ban/pick pool — falls back to empty string when the emoji
+    // isn't registered (e.g. fresh server before ensureBalatroEmojis).
+    const deckIcon = deckEmoji(deck) ?? "";
+    const stakeIcon = stakeEmoji(stake) ?? "";
 
     const embed = new EmbedBuilder()
       .setTitle("🎲 Random roll")
       .setColor(0x9b59b6)
+      .setDescription(
+        `${deckIcon} **${deck}** / ${stakeIcon} **${stake}**`.trim(),
+      )
       .addFields(
-        {
-          name: "Deck",
-          value: deckDesc ? `**${deck}** — ${deckDesc}` : `**${deck}**`,
-          inline: false,
-        },
-        {
-          name: "Stake",
-          value: stakeDesc ? `**${stake}** — ${stakeDesc}` : `**${stake}**`,
-          inline: false,
-        },
+        ...(deckDesc
+          ? [{ name: `${deckIcon} ${deck}`.trim(), value: deckDesc, inline: false }]
+          : []),
+        ...(stakeDesc
+          ? [{ name: `${stakeIcon} ${stake}`.trim(), value: stakeDesc, inline: false }]
+          : []),
       )
       .setFooter({ text: `Rolled from "${preset.name}" preset` });
 
