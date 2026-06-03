@@ -11,8 +11,7 @@
 //
 // Tries webhook first (cheaper, no bot rate limit), falls back to a
 // bot-REST channel post via web/lib/discord's postChannelMessage if
-// a channel id resolves. Skips INTERNAL/test seasons so they don't
-// flood the real results channel.
+// a channel id resolves.
 
 import { prisma } from "@/lib/prisma";
 import { postChannelMessage } from "@/lib/discord";
@@ -26,7 +25,6 @@ export async function announceResult(pairingId: string): Promise<void> {
     include: { playerA: true, playerB: true, division: { include: { season: true } } },
   });
   if (!pairing || pairing.status !== "CONFIRMED") return;
-  if (pairing.division.season.visibility !== "PUBLIC") return;
 
   const season = pairing.division.season;
   // Both global keys in one round trip.

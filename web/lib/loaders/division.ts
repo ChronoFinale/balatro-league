@@ -72,7 +72,7 @@ const RECENT_PAIRINGS_LIMIT = 30;
 
 export async function loadDivisionPageData(divisionId: string): Promise<DivisionPageData | null> {
   const division = await prisma.division.findFirst({
-    where: { id: divisionId, season: { visibility: "PUBLIC" } },
+    where: { id: divisionId },
     select: {
       id: true,
       name: true,

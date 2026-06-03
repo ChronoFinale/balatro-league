@@ -45,7 +45,13 @@ export async function loadPlayerHistory(playerId: string): Promise<PlayerHistory
   if (!player) return null;
 
   const memberships = await prisma.divisionMember.findMany({
-    where: { playerId, division: { season: { visibility: "PUBLIC" } } },
+    where: {
+      playerId,
+      // Hide DRAFT seasons (not yet activated AND never ended) so players
+      // don't see prep-mode placements in their career history. Active +
+      // ended seasons both surface.
+      division: { season: { OR: [{ isActive: true }, { endedAt: { not: null } }] } },
+    },
     include: {
       division: {
         include: {

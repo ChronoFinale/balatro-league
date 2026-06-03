@@ -61,7 +61,7 @@ export async function loadReportPageData(discordId: string): Promise<ReportPageD
     where: {
       playerId: player.id,
       status: "ACTIVE",
-      division: { season: { isActive: true, visibility: "PUBLIC" } },
+      division: { season: { isActive: true } },
     },
     select: {
       division: {

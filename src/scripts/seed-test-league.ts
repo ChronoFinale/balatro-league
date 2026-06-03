@@ -10,9 +10,9 @@
 //             rank is from 2 seasons ago). Stress-tests the "where do
 //             gap returners go" question.
 //
-// All data tagged with a `tl-` discordId prefix and INTERNAL visibility
-// on seasons so it's safe to nuke with --reset. Prints the round id at
-// the end so you can navigate straight to /admin/signups/<id>/build.
+// All data tagged with a `tl-` discordId prefix and a marker subtitle on
+// seasons so it's safe to nuke with --reset. Prints the round id at the
+// end so you can navigate straight to /admin/signups/<id>/build.
 //
 // Usage:
 //   npm run seed:test-league -- --scenario fresh
@@ -160,7 +160,6 @@ async function createPriorSeasonAndMembership(
         subtitle: `${TEST_LEAGUE_SUBTITLE_PREFIX}S${10 - ps.seasonsAgo} (prior)`,
         isActive: false,
         archivedAt: new Date(),
-        visibility: "INTERNAL",
         endedAt: new Date(Date.now() - ps.seasonsAgo * 14 * 24 * 60 * 60 * 1000),
       },
     });

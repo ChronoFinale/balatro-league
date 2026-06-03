@@ -22,7 +22,6 @@ import {
   openSignupsForSeason,
   renameSeason,
   setSeasonPreset,
-  setSeasonVisibility,
 } from "../actions";
 import { setSeasonRulesTemplate } from "../../settings/actions";
 import { archiveSeasonChannels, awardSeasonChampionRoles, bootstrapSeasonDiscord, setSeasonDiscordCategory, setSeasonResultsChannel, setSeasonResultsWebhook, stripSeasonDivisionRoles } from "../bootstrap-actions";
@@ -95,25 +94,6 @@ export default async function SeasonDetailPage({
           {season.endedAt && (
             <span className="pill" style={{ background: "rgba(231,76,60,0.2)", color: "#e74c3c" }}>Ended</span>
           )}
-          <form action={setSeasonVisibility} style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
-            <input type="hidden" name="id" value={season.id} />
-            <select
-              name="visibility"
-              defaultValue={season.visibility}
-              style={{
-                fontSize: 12,
-                padding: "2px 6px",
-                background: season.visibility === "INTERNAL" ? "rgba(241,196,15,0.2)" : "rgba(52,152,219,0.2)",
-                color: season.visibility === "INTERNAL" ? "#f1c40f" : "#76c7ff",
-                border: "1px solid var(--border)",
-                borderRadius: 4,
-              }}
-            >
-              <option value="PUBLIC">PUBLIC</option>
-              <option value="INTERNAL">INTERNAL</option>
-            </select>
-            <button type="submit" className="secondary" style={{ fontSize: 11 }}>Save</button>
-          </form>
         </div>
         <div className="muted" style={{ marginTop: 4 }}>
           {season.tiers.length} tier(s) · {season.divisions.length} division(s) · {totalMembers} player(s) · {totalConfirmed}/{totalExpected} set(s)
@@ -122,7 +102,7 @@ export default async function SeasonDetailPage({
 
         {imported && (
           <div className="card" style={{ borderColor: "#2ecc71" }}>
-            ✓ Bulk import succeeded. Review the divisions below, then flip to PUBLIC and Start the season when ready.
+            ✓ Bulk import succeeded. Review the divisions below, then Start the season when ready.
           </div>
         )}
 

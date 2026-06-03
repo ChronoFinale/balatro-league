@@ -35,7 +35,7 @@ export async function reportSetFromWeb(
   }
 
   const activeSeason = await prisma.season.findFirst({
-    where: { isActive: true, visibility: "PUBLIC" },
+    where: { isActive: true },
   });
   if (!activeSeason) return { ok: false, reason: "No active season right now." };
 

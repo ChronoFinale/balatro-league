@@ -70,7 +70,7 @@ export interface StandingsPageData {
 
 export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Promise<StandingsPageData> {
   const season = await prisma.season.findFirst({
-    where: { isActive: true, visibility: "PUBLIC" },
+    where: { isActive: true },
     select: {
       id: true,
       number: true,

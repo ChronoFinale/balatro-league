@@ -86,7 +86,7 @@ async function loadActiveDivisionContext(
     where: {
       playerId,
       status: "ACTIVE",
-      division: { season: { isActive: true, visibility: "PUBLIC" } },
+      division: { season: { isActive: true } },
     },
     select: {
       division: {

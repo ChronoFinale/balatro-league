@@ -37,8 +37,6 @@ export async function announceResult(pairingId: string): Promise<void> {
     include: { playerA: true, playerB: true, division: { include: { season: true } } },
   });
   if (!pairing || pairing.status !== "CONFIRMED") return;
-  // Skip announcements for INTERNAL/test seasons — they'd flood the real results channel
-  if (pairing.division.season.visibility !== "PUBLIC") return;
 
   const season = pairing.division.season;
   const webhookUrl =

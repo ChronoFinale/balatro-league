@@ -200,13 +200,6 @@ export default async function BuildSeasonPage({
                 <input name="minGroupSize" type="number" min={2} max={20} defaultValue={3} style={{ width: "100%" }} />
               </label>
               <label>
-                Visibility
-                <select name="visibility" defaultValue="PUBLIC" style={{ width: "100%" }}>
-                  <option value="PUBLIC">PUBLIC (visible to players)</option>
-                  <option value="INTERNAL">INTERNAL (admin-only test)</option>
-                </select>
-              </label>
-              <label>
                 Deck preset
                 <select name="matchConfigPresetId" defaultValue="" style={{ width: "100%" }}>
                   <option value="">— Use Default —</option>

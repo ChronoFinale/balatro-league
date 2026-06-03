@@ -401,7 +401,6 @@ export async function buildSeason(formData: FormData) {
 
     const targetGroupSize = Math.max(2, parseInt(String(formData.get("targetGroupSize")), 10) || 5);
     const minGroupSize = Math.max(2, parseInt(String(formData.get("minGroupSize")), 10) || 3);
-    const visibility = formData.get("visibility") === "INTERNAL" ? "INTERNAL" : "PUBLIC";
     const matchConfigPresetIdRaw = String(formData.get("matchConfigPresetId") ?? "");
     const matchConfigPresetId = matchConfigPresetIdRaw === "" ? null : matchConfigPresetIdRaw;
 
@@ -427,7 +426,6 @@ export async function buildSeason(formData: FormData) {
         isActive: false,
         targetGroupSize,
         minGroupSize,
-        visibility,
         matchConfigPresetId,
       },
     });

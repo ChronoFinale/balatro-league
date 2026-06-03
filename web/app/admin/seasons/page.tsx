@@ -13,7 +13,6 @@ import {
   finalizeSignupsForSeason,
   openSignupsForSeason,
   setSeasonPreset,
-  setSeasonVisibility,
   unarchiveSeason,
   unendSeason,
 } from "./actions";
@@ -154,13 +153,6 @@ export default async function AdminSeasonsPage({
             <label>Deadline (UTC) <input name="deadline" type="datetime-local" /></label>
             <label>Group size <input name="targetGroupSize" type="number" min={2} max={20} defaultValue={5} /></label>
             <label>Min group <input name="minGroupSize" type="number" min={2} max={20} defaultValue={3} /></label>
-            <label>
-              Visibility
-              <select name="visibility" defaultValue="PUBLIC">
-                <option value="PUBLIC">PUBLIC (visible to players)</option>
-                <option value="INTERNAL">INTERNAL (admin-only test)</option>
-              </select>
-            </label>
 
             <details style={{ flex: "1 1 100%", marginTop: 12 }}>
               <summary style={{ cursor: "pointer" }}>
@@ -203,25 +195,6 @@ export default async function AdminSeasonsPage({
                   ) : (
                     <span className="pill" style={{ background: "rgba(149,165,166,0.2)", color: "#c0c8cb" }}>Inactive</span>
                   )}
-                  <form action={setSeasonVisibility} style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
-                    <input type="hidden" name="id" value={s.id} />
-                    <select
-                      name="visibility"
-                      defaultValue={s.visibility}
-                      style={{
-                        fontSize: 11,
-                        padding: "2px 4px",
-                        background: s.visibility === "INTERNAL" ? "rgba(241,196,15,0.2)" : "rgba(52,152,219,0.2)",
-                        color: s.visibility === "INTERNAL" ? "#f1c40f" : "#76c7ff",
-                        border: "1px solid var(--border)",
-                        borderRadius: 4,
-                      }}
-                    >
-                      <option value="PUBLIC">PUBLIC</option>
-                      <option value="INTERNAL">INTERNAL</option>
-                    </select>
-                    <button type="submit" className="secondary" style={{ fontSize: 11, padding: "2px 6px" }}>Save</button>
-                  </form>
                 </div>
                 <div className="muted" style={{ marginTop: 4 }}>{tierLine}</div>
                 <div className="muted">

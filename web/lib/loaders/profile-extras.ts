@@ -205,14 +205,13 @@ export async function loadProfileExtras(opts: {
 
 // Same shape as /me's loadActiveDivisionContext but returns the
 // OwnActiveDivision interface so the profile page can render the
-// 'report a match' dropdown. Only PUBLIC active seasons — INTERNAL
-// test seasons don't surface to player-facing UI.
+// 'report a match' dropdown.
 async function loadOwnActiveDivision(playerId: string): Promise<OwnActiveDivision | null> {
   const membership = await prisma.divisionMember.findFirst({
     where: {
       playerId,
       status: "ACTIVE",
-      division: { season: { isActive: true, visibility: "PUBLIC" } },
+      division: { season: { isActive: true } },
     },
     select: {
       division: {

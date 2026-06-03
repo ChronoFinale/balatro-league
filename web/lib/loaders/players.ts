@@ -26,7 +26,7 @@ export async function loadPlayersList(): Promise<PlayersListEntry[]> {
       discordId: true,
       displayName: true,
       memberships: {
-        where: { division: { season: { isActive: true, visibility: "PUBLIC" } } },
+        where: { division: { season: { isActive: true } } },
         select: {
           status: true,
           division: {

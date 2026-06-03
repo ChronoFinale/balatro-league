@@ -26,7 +26,6 @@ interface ExportSeason {
   endedAt: string | null;
   archivedAt: string | null;
   isActive: boolean;
-  visibility: string;
   targetGroupSize: number;
   minGroupSize: number;
   matchConfigPresetId: string | null;
@@ -131,7 +130,6 @@ export async function buildLeagueExport(): Promise<LeagueExport> {
       endedAt: s.endedAt ? s.endedAt.toISOString() : null,
       archivedAt: s.archivedAt ? s.archivedAt.toISOString() : null,
       isActive: s.isActive,
-      visibility: s.visibility,
       targetGroupSize: s.targetGroupSize,
       minGroupSize: s.minGroupSize,
       matchConfigPresetId: s.matchConfigPresetId,

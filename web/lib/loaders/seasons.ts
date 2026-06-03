@@ -1,7 +1,12 @@
 // Loaders for the public seasons surfaces:
-//   loadSeasonsIndex()   — /seasons (list of non-archived public seasons)
+//   loadSeasonsIndex()   — /seasons (list of non-archived ended seasons)
 //   loadSeasonDetail(id) — /seasons/[id] (detail with tiers + divisions +
 //                          cached standings rows per division)
+//
+// "Public visibility" filtering used to live here as a per-row flag; with
+// a dedicated dev stack that's gone. Players see seasons that are either
+// active OR have ended. Pre-start drafts stay hidden because they have
+// neither isActive nor endedAt set.
 
 import { prisma } from "@/lib/prisma";
 import { loadDivisionStandings } from "@/lib/standings-cache";
@@ -19,8 +24,11 @@ export interface SeasonIndexEntry {
 }
 
 export async function loadSeasonsIndex(): Promise<SeasonIndexEntry[]> {
+  // Past-seasons listing: only ended, non-archived seasons. The active
+  // season has its own /standings page so listing it again here is
+  // redundant — drafts must be hidden because they're not "real" yet.
   const seasons = await prisma.season.findMany({
-    where: { visibility: "PUBLIC", archivedAt: null },
+    where: { endedAt: { not: null }, archivedAt: null },
     select: {
       id: true,
       number: true,
@@ -83,8 +91,9 @@ export interface SeasonDetailData {
 }
 
 export async function loadSeasonDetail(seasonId: string): Promise<SeasonDetailData | null> {
+  // 404 drafts publicly — only active + ended seasons are addressable.
   const season = await prisma.season.findFirst({
-    where: { id: seasonId, visibility: "PUBLIC" },
+    where: { id: seasonId, OR: [{ isActive: true }, { endedAt: { not: null } }] },
     select: {
       id: true,
       number: true,

@@ -113,8 +113,13 @@ export async function loadPlayerHistory(playerId: string): Promise<PlayerHistory
   if (!player) return null;
 
   // 1) Lightweight memberships — no deep includes.
+  // Hide DRAFT seasons (never activated AND not yet ended) from the
+  // career timeline; active and ended seasons both show.
   const memberships = await prisma.divisionMember.findMany({
-    where: { playerId, division: { season: { visibility: "PUBLIC" } } },
+    where: {
+      playerId,
+      division: { season: { OR: [{ isActive: true }, { endedAt: { not: null } }] } },
+    },
     select: {
       status: true,
       divisionId: true,
