@@ -89,6 +89,13 @@ export const LeagueConfigKey = {
   // invites have their own lifecycle (admin may want a never-expiring
   // vanity URL or a limited-uses promo invite, etc.).
   DiscordServerInviteUrl: "discord_server_invite_url",
+
+  // Channel for league-wide announcements: scheduled season start
+  // notifications, season-end recap, anything that goes to everyone
+  // rather than a specific division. Same env → LeagueConfig →
+  // auto-create resolution as BotCommandsChannelId. Public channel —
+  // every server member can see and read but only the bot posts.
+  AnnouncementsChannelId: "announcements_channel_id",
 } as const;
 
 export type LeagueConfigKey = (typeof LeagueConfigKey)[keyof typeof LeagueConfigKey];

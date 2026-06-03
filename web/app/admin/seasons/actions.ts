@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
-import { actorFromAdminUser, recordAudit } from "@/lib/audit";
+import { actorFromAdminUser, recordAudit, type AuditActor } from "@/lib/audit";
 import { formatSeasonLabel, nextSeasonNumber } from "@/lib/format-season";
 import {
   createChannelInvite,
@@ -246,10 +246,26 @@ export async function activateSeason(formData: FormData) {
   const { user } = await requireAdmin();
   const id = String(formData.get("id") ?? "");
   if (!id) return;
-  const target = await prisma.season.findUnique({ where: { id } });
+  await performSeasonActivation(id, actorFromAdminUser(user), "manual");
+  revalidatePath("/admin/seasons");
+}
+
+// Shared core of season activation, callable from:
+//   - activateSeason (admin clicked the button — manual source)
+//   - the match-sweep scheduledStartAt cron (scheduled source)
+// Flips isActive, deactivates any prior active season, clears
+// scheduledStartAt on the target (so the cron doesn't re-fire), posts
+// to the announcements channel if configured, audits the action.
+export async function performSeasonActivation(
+  seasonId: string,
+  actor: AuditActor,
+  source: "manual" | "scheduled",
+): Promise<void> {
+  const target = await prisma.season.findUnique({ where: { id: seasonId } });
   if (!target) return;
+  if (target.isActive) return; // idempotent — scheduled cron may race the manual button
   const prior = await prisma.season.findFirst({
-    where: { isActive: true, NOT: { id } },
+    where: { isActive: true, NOT: { id: seasonId } },
   });
   if (prior) {
     await prisma.season.update({
@@ -257,15 +273,92 @@ export async function activateSeason(formData: FormData) {
       data: { isActive: false, endedAt: new Date() },
     });
   }
-  await prisma.season.update({ where: { id }, data: { isActive: true, endedAt: null } });
+  await prisma.season.update({
+    where: { id: seasonId },
+    data: { isActive: true, endedAt: null, scheduledStartAt: null },
+  });
+  recordAudit({
+    actor,
+    action: source === "scheduled" ? "season.activate-scheduled" : "season.activate",
+    targetType: "Season",
+    targetId: seasonId,
+    summary: `Activated season "${formatSeasonLabel(target)}"${prior ? ` (deactivated "${formatSeasonLabel(prior)}")` : ""}${source === "scheduled" ? " — auto-triggered by scheduledStartAt" : ""}`,
+    metadata: { previousActiveSeasonId: prior?.id ?? null, source },
+  });
+  // Best-effort announcement. Fire even when no channel is configured —
+  // the call short-circuits cleanly without failing activation.
+  await postSeasonStartAnnouncement(target.id, formatSeasonLabel(target)).catch((err) =>
+    console.warn("[season.activate] announcement post failed:", err),
+  );
+}
+
+// Post a "season is now live" message to the configured announcements
+// channel. No-op when the LeagueConfig key isn't set — the admin can
+// post manually in that case.
+async function postSeasonStartAnnouncement(seasonId: string, seasonLabel: string): Promise<void> {
+  void seasonId;
+  const row = await prisma.leagueConfig.findUnique({
+    where: { key: "announcements_channel_id" },
+    select: { value: true },
+  });
+  const channelId = row?.value ?? null;
+  if (!channelId) return;
+  const content = `🃏 **${seasonLabel}** is now live! Standings, /start-match, and /report are all active. Good luck.`;
+  await postChannelMessage(channelId, { content });
+}
+
+// Schedule an automatic activation at the given timestamp. Admin can
+// edit or clear this any time before it fires (the worker just polls
+// scheduledStartAt). Refuses on already-active or already-ended
+// seasons since the field is meaningless once activation has happened.
+export async function setSeasonScheduledStart(formData: FormData) {
+  const { user } = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  const whenStr = String(formData.get("scheduledStartAt") ?? "").trim();
+  if (!id || !whenStr) return;
+  const target = await prisma.season.findUnique({ where: { id } });
+  if (!target) return;
+  if (target.isActive || target.endedAt) {
+    redirect(
+      `/admin/seasons/${id}?err=${encodeURIComponent(
+        "Can't schedule a start for an already-active or ended season.",
+      )}`,
+    );
+  }
+  // datetime-local input — parse as local time (no Z suffix).
+  const when = new Date(whenStr);
+  if (Number.isNaN(when.getTime())) {
+    redirect(`/admin/seasons/${id}?err=${encodeURIComponent("Invalid date/time.")}`);
+  }
+  await prisma.season.update({ where: { id }, data: { scheduledStartAt: when } });
   recordAudit({
     actor: actorFromAdminUser(user),
-    action: "season.activate",
+    action: "season.schedule-start",
     targetType: "Season",
     targetId: id,
-    summary: `Activated season "${formatSeasonLabel(target)}"${prior ? ` (deactivated "${formatSeasonLabel(prior)}")` : ""}`,
-    metadata: { previousActiveSeasonId: prior?.id ?? null },
+    summary: `Scheduled "${formatSeasonLabel(target)}" to auto-start ${when.toISOString()}`,
+    metadata: { scheduledStartAt: when.toISOString() },
   });
+  revalidatePath(`/admin/seasons/${id}`);
+  revalidatePath("/admin/seasons");
+}
+
+export async function clearSeasonScheduledStart(formData: FormData) {
+  const { user } = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const target = await prisma.season.findUnique({ where: { id } });
+  if (!target || !target.scheduledStartAt) return;
+  await prisma.season.update({ where: { id }, data: { scheduledStartAt: null } });
+  recordAudit({
+    actor: actorFromAdminUser(user),
+    action: "season.clear-scheduled-start",
+    targetType: "Season",
+    targetId: id,
+    summary: `Cleared scheduled start for "${formatSeasonLabel(target)}"`,
+    metadata: { previousScheduledStartAt: target.scheduledStartAt.toISOString() },
+  });
+  revalidatePath(`/admin/seasons/${id}`);
   revalidatePath("/admin/seasons");
 }
 

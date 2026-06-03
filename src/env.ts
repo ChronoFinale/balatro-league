@@ -32,6 +32,11 @@ const schema = z.object({
   // alerts go to the people who can debug them. If unset, bot auto-creates
   // a '🔧 devops' channel restricted to the DEVOPS role on startup.
   DEVOPS_CHANNEL_ID: z.string().optional(),
+  // Channel ID for league-wide announcements (scheduled season starts,
+  // season recaps, league news). Public — every member sees and reads,
+  // only the bot posts. Auto-created as '#announcements' under the league
+  // category on startup if unset.
+  ANNOUNCEMENTS_CHANNEL_ID: z.string().optional(),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 });
 

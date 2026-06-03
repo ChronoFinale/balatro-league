@@ -16,6 +16,7 @@ import { formatSeasonLabel } from "@/lib/format-season";
 import {
   activateSeason,
   addLatePlayerToDivision,
+  clearSeasonScheduledStart,
   configureTiers,
   deleteSeason,
   finalizeSignupsForSeason,
@@ -23,6 +24,7 @@ import {
   openSignupsForSeason,
   renameSeason,
   setSeasonPreset,
+  setSeasonScheduledStart,
 } from "../actions";
 import { setSeasonRulesTemplate } from "../../settings/actions";
 import { archiveSeasonChannels, awardSeasonChampionRoles, bootstrapSeasonDiscord, setSeasonDiscordCategory, setSeasonResultsChannel, setSeasonResultsWebhook, stripSeasonDivisionRoles } from "../bootstrap-actions";
@@ -493,9 +495,28 @@ export default async function SeasonDetailPage({
   );
 }
 
+// Format a Date as a `datetime-local` input value in UTC. The input
+// expects "YYYY-MM-DDTHH:mm" with no timezone — the browser interprets
+// it in the user's local TZ when submitting, which matches how
+// setSeasonScheduledStart parses it back (no Z suffix).
+// Server-rendered, so we use UTC to get a stable string; the resulting
+// input will display as UTC wall-clock until the user edits it, at
+// which point the browser handles their local TZ correctly. Good enough
+// — the displayed scheduled time uses LocalDateTime above which IS
+// timezone-correct.
+function toLocalDatetimeInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+
 // ---- Inline components (duplicated from seasons list for now; will dedupe later) ----
 
-interface LifecycleSeason { id: string; isActive: boolean; endedAt: Date | null }
+interface LifecycleSeason {
+  id: string;
+  isActive: boolean;
+  endedAt: Date | null;
+  scheduledStartAt: Date | null;
+}
 interface LifecycleRound { id: string; status: string; channelId: string; _count: { signups: number } }
 interface LifecycleChannel { id: string; name: string }
 
@@ -517,12 +538,53 @@ function LifecycleActions({
   if (playerCount > 0) {
     return (
       <div className="card">
-        <form action={activateSeason}>
+        <form action={activateSeason} style={{ display: "inline-flex" }}>
           <input type="hidden" name="id" value={season.id} />
           <button type="submit"><strong>Start season →</strong></button>
         </form>
         <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
           {playerCount} player(s) placed. Starting flips this to the active season for /standings + /report.
+        </div>
+
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border, rgba(255,255,255,0.08))" }}>
+          <strong style={{ fontSize: 13 }}>Or schedule the start</strong>
+          {season.scheduledStartAt ? (
+            <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span className="muted" style={{ fontSize: 12 }}>
+                Scheduled for <LocalDateTime iso={season.scheduledStartAt.toISOString()} />
+              </span>
+              <form action={setSeasonScheduledStart} style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+                <input type="hidden" name="id" value={season.id} />
+                <input
+                  type="datetime-local"
+                  name="scheduledStartAt"
+                  defaultValue={toLocalDatetimeInput(season.scheduledStartAt)}
+                  style={{ fontSize: 12 }}
+                />
+                <button type="submit" className="secondary" style={{ fontSize: 11 }}>Update</button>
+              </form>
+              <form action={clearSeasonScheduledStart}>
+                <input type="hidden" name="id" value={season.id} />
+                <button type="submit" className="secondary" style={{ fontSize: 11, color: "#e74c3c" }}>Cancel schedule</button>
+              </form>
+            </div>
+          ) : (
+            <form
+              action={setSeasonScheduledStart}
+              style={{ marginTop: 6, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}
+            >
+              <input type="hidden" name="id" value={season.id} />
+              <label className="muted" style={{ fontSize: 12 }}>
+                Auto-start at (your local time):
+              </label>
+              <input type="datetime-local" name="scheduledStartAt" required style={{ fontSize: 12 }} />
+              <button type="submit" className="secondary" style={{ fontSize: 11 }}>Schedule</button>
+            </form>
+          )}
+          <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+            The bot auto-activates this season at the scheduled time and posts to the announcements channel.
+            You can edit, cancel, or just click <strong>Start season →</strong> above any time before it fires.
+          </div>
         </div>
       </div>
     );

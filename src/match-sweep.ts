@@ -1,7 +1,7 @@
 // Periodic sweep for stale match sessions. Runs on bot boot (to catch
 // expirations that happened during a redeploy) and every minute thereafter.
 //
-// Three passes:
+// Four passes:
 //   1. WAITING_ACCEPT past expiresAt → cancel (5 min default expiry,
 //      handleAccept also checks but the sweep is the safety net when
 //      nobody clicks at all).
@@ -14,15 +14,22 @@
 //      5xx, perms briefly revoked). Tries the delete again. Marks
 //      threadArchivedAt regardless of outcome so we don't hammer a
 //      broken thread forever.
+//   4. Seasons with scheduledStartAt <= now() and not yet active →
+//      auto-activate. Mirrors the web's performSeasonActivation flow:
+//      deactivate any prior active season, flip target to isActive,
+//      clear scheduledStartAt, post to announcements channel.
 //
 // All three passes delete threads via REST so the sweep works even
 // without a connected gateway client.
 
 import { REST } from "@discordjs/rest";
 import { Routes } from "discord-api-types/v10";
+import { resolveAnnouncementsChannelId } from "./announcements-channel.js";
 import { prisma } from "./db.js";
 import { env } from "./env.js";
+import { formatSeasonLabel } from "./format-season.js";
 import { logDiscordError } from "./log-discord-error.js";
+import { recordAudit, SYSTEM_ACTOR } from "./audit.js";
 
 const SWEEP_INTERVAL_MS = 60 * 1000;
 const IDLE_CANCEL_HOURS = 24;
@@ -173,14 +180,83 @@ export async function sweepLeakedThreads(): Promise<number> {
   return leaked.length;
 }
 
+// Auto-activate seasons whose scheduledStartAt has passed. Mirrors
+// web's performSeasonActivation closely so manual vs auto produces
+// the same DB state.
+export async function sweepScheduledStarts(): Promise<number> {
+  const due = await prisma.season.findMany({
+    where: {
+      isActive: false,
+      endedAt: null,
+      scheduledStartAt: { lte: new Date(), not: null },
+    },
+    select: { id: true, number: true, subtitle: true, scheduledStartAt: true },
+    orderBy: { scheduledStartAt: "asc" },
+    take: 5, // tiny cap — concurrent multi-season activations would be a real surprise
+  });
+  if (due.length === 0) return 0;
+
+  for (const season of due) {
+    const label = formatSeasonLabel({ number: season.number, subtitle: season.subtitle });
+    try {
+      // Deactivate any prior active season first.
+      const prior = await prisma.season.findFirst({
+        where: { isActive: true, NOT: { id: season.id } },
+        select: { id: true, number: true, subtitle: true },
+      });
+      if (prior) {
+        await prisma.season.update({
+          where: { id: prior.id },
+          data: { isActive: false, endedAt: new Date() },
+        });
+      }
+      await prisma.season.update({
+        where: { id: season.id },
+        data: { isActive: true, endedAt: null, scheduledStartAt: null },
+      });
+      recordAudit({
+        actor: SYSTEM_ACTOR,
+        action: "season.activate-scheduled",
+        targetType: "Season",
+        targetId: season.id,
+        summary: `Auto-activated "${label}" via scheduledStartAt${prior ? ` (deactivated "${formatSeasonLabel(prior)}")` : ""}`,
+        metadata: {
+          source: "scheduled",
+          scheduledStartAt: season.scheduledStartAt?.toISOString() ?? null,
+          previousActiveSeasonId: prior?.id ?? null,
+        },
+      });
+      // Best-effort announcement post.
+      const channelId = await resolveAnnouncementsChannelId().catch(() => null);
+      if (channelId) {
+        const content = `🃏 **${label}** is now live! Standings, /start-match, and /report are all active. Good luck.`;
+        try {
+          await rest().post(Routes.channelMessages(channelId), { body: { content } });
+        } catch (err) {
+          logDiscordError("match-sweep.scheduled-start.announce", err, {
+            channelId,
+            sessionId: season.id, // re-using sessionId field for season id; same ID-correlation purpose
+          });
+        }
+      }
+      console.log(`[match-sweep scheduled-start] activated season ${season.id} (${label})`);
+    } catch (err) {
+      console.warn(`[match-sweep scheduled-start] failed for ${season.id}:`, err);
+    }
+  }
+  return due.length;
+}
+
 export function startMatchSweep(): void {
   // Run all passes once immediately on boot.
   sweepExpiredInvites().catch((err) => console.warn("[match-sweep] boot expiry sweep failed:", err));
   sweepIdleSessions().catch((err) => console.warn("[match-sweep] boot idle sweep failed:", err));
   sweepLeakedThreads().catch((err) => console.warn("[match-sweep] boot leaked sweep failed:", err));
+  sweepScheduledStarts().catch((err) => console.warn("[match-sweep] boot scheduled-start sweep failed:", err));
   setInterval(() => {
     sweepExpiredInvites().catch((err) => console.warn("[match-sweep] expiry tick failed:", err));
     sweepIdleSessions().catch((err) => console.warn("[match-sweep] idle tick failed:", err));
     sweepLeakedThreads().catch((err) => console.warn("[match-sweep] leaked tick failed:", err));
+    sweepScheduledStarts().catch((err) => console.warn("[match-sweep] scheduled-start tick failed:", err));
   }, SWEEP_INTERVAL_MS);
 }

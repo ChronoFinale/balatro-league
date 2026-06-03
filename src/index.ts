@@ -1,4 +1,5 @@
 import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
+import { ensureAnnouncementsChannel } from "./announcements-channel.js";
 import { ensureBalatroEmojis } from "./balatro-emojis.js";
 import { ensureCommandsRegistered } from "./commands/register.js";
 import { ensureBotCommandsChannel } from "./bot-commands-channel.js";
@@ -172,3 +173,4 @@ ensureChallengesChannel().catch((err) => console.warn("[challenges-channel] init
 // DevOps alert channel — infra-only, distinct from league admin. Used
 // by the queue-stall alarm; null is fine (alerts log to console).
 ensureDevopsChannel().catch((err) => console.warn("[devops-channel] init failed:", err));
+ensureAnnouncementsChannel().catch((err) => console.warn("[announcements-channel] init failed:", err));
