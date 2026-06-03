@@ -132,7 +132,9 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
   }
   const categoryName = interaction.options.getString("category-name") ?? "🃏 Balatro League";
 
-  await interaction.deferReply();
+  // Defer ephemeral so the running summary doesn't dump into a public
+  // channel — the final long output goes to the runner's DMs.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const me = interaction.guild.members.me;
   if (!me) {
@@ -458,11 +460,32 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       ``,
       `Assign Admin/Helper to staff in **Server Settings → Members** and they immediately get the matching permissions on www.balatroleague.com.`,
       ``,
+      `**One-time per-server setup** — \`/admin\` and \`/league\` are hidden from non-server-admins in the slash-command picker. To let \`@League Admin\` see them without granting Discord Administrator:`,
+      `  1. **Server Settings → Integrations → [bot] → Command Permissions**`,
+      `  2. Click \`/admin\` → Roles → add **${adminRole.name}** → Allow`,
+      `  3. Repeat for \`/league\``,
+      `Skip this step if all your league admins are already Discord server admins.`,
+      ``,
       `**Next**: set this env var on your bot host so result announcements land in the right channel:`,
       `\`RESULTS_CHANNEL_ID=${resultsChan.id}\``,
     ].filter((l): l is string => l !== null);
 
-    await interaction.editReply(lines.join("\n"));
+    const fullOutput = lines.join("\n");
+    // Try to DM the runner so the wall-of-text summary doesn't dump
+    // into a channel. Fall back to the ephemeral reply if DMs are
+    // disabled. Either way the public channel stays clean.
+    let dmSent = false;
+    try {
+      await interaction.user.send(fullOutput);
+      dmSent = true;
+    } catch {
+      dmSent = false;
+    }
+    await interaction.editReply(
+      dmSent
+        ? `✅ Bootstrap complete — full summary + next steps sent to your DMs.`
+        : fullOutput,
+    );
   } catch (err) {
     await interaction.editReply(
       `Bootstrap failed: ${(err as Error).message}. The bot may need additional permissions.`,
