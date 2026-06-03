@@ -315,69 +315,27 @@ function renderGame(s: MatchSession, a: Player, b: Player, pool: DeckEntry[], ga
 
   if (phase.kind === "BAN") {
     const whose = phase.whoseBanId === a.id ? a : b;
-    const expected = phase.remainingForThem;
-    // Banned-already line — committed bans are public knowledge.
-    // pendingBans intentionally NOT surfaced here; they live only in
-    // the ephemeral private ban menu so the opponent can't peek at
-    // what you're leaning toward.
-    const bannedLabels = game.bans
-      .map((idx) => {
-        const combo = pool[idx];
-        return combo ? `${combo.deck} / ${combo.stake}` : null;
-      })
-      .filter((s): s is string => !!s);
-    const bannedLine =
-      bannedLabels.length > 0
-        ? `\n\n🚫 **Banned**: ${bannedLabels.join(", ")}`
-        : "";
-    // Single-player reroll request reminder (other player needs to agree).
+    // Minimal public render — the user explicitly doesn't want
+    // progress/pool/committed-bans visible to the off-turn player.
+    // Everything strategic (pool, committed bans, your tentative
+    // picks) lives in the ephemeral private ban menu instead.
+    // Reroll/cancel-vote nudges stay public since they require the
+    // OTHER player's click to apply.
     const rerollLine =
       game.rerollVoteByA && !game.rerollVoteByB
         ? `\n\n🔄 **${a.displayName}** wants to reroll the pool. **${b.displayName}** click "Confirm reroll" to apply.`
         : !game.rerollVoteByA && game.rerollVoteByB
         ? `\n\n🔄 **${b.displayName}** wants to reroll the pool. **${a.displayName}** click "Confirm reroll" to apply.`
         : "";
-    // Single-player cancel-match vote reminder (mirrors reroll).
     const cancelLine =
       game.cancelVoteByA && !game.cancelVoteByB
         ? `\n\n🛑 **${a.displayName}** wants to cancel this match. **${b.displayName}** click "Confirm cancel" to drop it.`
         : !game.cancelVoteByA && game.cancelVoteByB
         ? `\n\n🛑 **${b.displayName}** wants to cancel this match. **${a.displayName}** click "Confirm cancel" to drop it.`
         : "";
-    // Game 1's first-ban player is genuinely a coin flip; games 2+ were
-    // chosen by the loser of the previous game, so the "(coin toss)" tag
-    // is wrong there. Naming the picker would need a lookup into the
-    // previous game's winner — keep it simple, just say how it was decided.
-    const firstAttribution =
-      gameNumber === 1
-        ? `**${first.displayName}** bans first (coin toss).`
-        : `**${first.displayName}** bans first (chosen by the loser of game ${gameNumber - 1}).`;
-    // Sort remaining combos by canonical order (deck A-Z, stake difficulty)
-    // Sort by stake difficulty first (White → Gold), then deck A-Z
-    // within each stake. Matches BMP's grouping so players don't have
-    // to context-switch between this UI and balatromp.com. Underlying
-    // pool index stays in `idx` so ban/select logic isn't affected —
-    // display order only.
-    const sortedRemaining = [...remaining].sort((x, y) => {
-      const s = canonicalStakeIndex(x.combo.stake) - canonicalStakeIndex(y.combo.stake);
-      if (s !== 0) return s;
-      return canonicalDeckIndex(x.combo.deck) - canonicalDeckIndex(y.combo.deck);
-    });
-    // BMP-style numbered list with deck + stake emojis inline so players see
-    // every option visually without expanding the dropdown.
-    const banOptionLines = sortedRemaining.map(({ combo }, i) => {
-      const deckIcon = deckEmoji(combo.deck) ?? "";
-      const stakeIcon = stakeEmoji(combo.stake) ?? "";
-      const icons = [deckIcon, stakeIcon].filter(Boolean).join(" ");
-      return `${i + 1}. ${icons ? `${icons} ` : ""}${combo.deck} / ${combo.stake}`;
-    });
     embed.setDescription(
-      `${firstAttribution}\n\n` +
-        `🎯 **${whose.displayName}** is banning — **${expected}** more to lock in. ` +
-        `Their picks stay private until they confirm.\n` +
-        `Pool: ${remaining.length} combo(s) remaining.\n\n` +
-        banOptionLines.join("\n") +
-        bannedLine +
+      `🎯 **${whose.displayName}** is banning.\n` +
+        `_You'll be pinged when it's your turn._` +
         rerollLine +
         cancelLine,
     );
@@ -396,7 +354,7 @@ function renderGame(s: MatchSession, a: Player, b: Player, pool: DeckEntry[], ga
     const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`match:openban:${s.id}`)
-        .setLabel(`🎯 Open ban menu (${expected} to pick)`)
+        .setLabel(`🎯 Open ban menu`)
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId(`match:reroll:${s.id}`)
@@ -569,15 +527,42 @@ export function renderBanMenuEphemeral(args: {
     })
     .filter((s): s is string => !!s);
 
+  // Committed bans surface here too — strategically important to know
+  // what's already gone before you pick your own. Hidden from the
+  // public embed so the opponent can't peek.
+  const bannedLabels = bans
+    .map((idx) => {
+      const combo = pool[idx];
+      return combo ? `${combo.deck} / ${combo.stake}` : null;
+    })
+    .filter((s): s is string => !!s);
+  const bannedLine =
+    bannedLabels.length > 0
+      ? `\n\n🚫 **Already banned**: ${bannedLabels.join(", ")}`
+      : "";
+
+  // Full pool listing for context — same BMP-style numbered display
+  // the public embed used to carry. Remaining-only here so it lines
+  // up with the select menu options.
+  const poolLines = sortedRemaining.map(({ combo }, i) => {
+    const deckIcon = deckEmoji(combo.deck) ?? "";
+    const stakeIcon = stakeEmoji(combo.stake) ?? "";
+    const icons = [deckIcon, stakeIcon].filter(Boolean).join(" ");
+    return `${i + 1}. ${icons ? `${icons} ` : ""}${combo.deck} / ${combo.stake}`;
+  });
+
   const embed = new EmbedBuilder()
     .setTitle(`🎯 Your bans — Game ${gameNumber}`)
     .setColor(0xe74c3c)
     .setDescription(
       `Pick **${expected}** combo(s) below, then click Confirm. ` +
         `Your selections are private until you confirm.\n\n` +
+        `**Pool (${remaining.length} remaining):**\n` +
+        poolLines.join("\n") +
+        bannedLine +
         (pendingLabels.length > 0
-          ? `**Currently picked**: ${pendingLabels.join(", ")}`
-          : "_Nothing picked yet._"),
+          ? `\n\n**Currently picked**: ${pendingLabels.join(", ")}`
+          : "\n\n_Nothing picked yet._"),
     )
     .setFooter({ text: `Match ${sessionId}` });
 
