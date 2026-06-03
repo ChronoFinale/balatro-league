@@ -1,9 +1,41 @@
 import Link from "next/link";
-import { loadStandingsPageData } from "@/lib/loaders/standings";
+import { loadStandingsPageData, type StandingsMmrEntry } from "@/lib/loaders/standings";
 import { getShowBmpMmr } from "@/lib/preferences";
 import { tierColors } from "@/lib/tier-colors";
 import { SiteNav } from "@/components/SiteNav";
 import type { StandingRow } from "@/lib/standings";
+
+// Pretty-print a BMP season tag like "season6" → "S6". Falls back to
+// raw tag for anything that doesn't match (defensive: shouldn't happen
+// but the field is technically free-form).
+function formatBmpSeason(tag: string | null): string {
+  if (!tag) return "—";
+  const m = /^season(\d+)$/.exec(tag);
+  return m ? `S${m[1]}` : tag;
+}
+
+// Render the MMR cell. When the snapshot is from the current BMP
+// season, just show the number. When it's from an older season (e.g.
+// player hasn't played the current BMP season but we have prior data),
+// annotate inline + add a hover so the reader knows it's stale.
+function renderMmrCell(entry: StandingsMmrEntry | undefined, currentBmpSeason: string | null) {
+  if (!entry) return <span className="muted">—</span>;
+  const isStale = currentBmpSeason != null && entry.bmpSeason !== currentBmpSeason;
+  if (!isStale) {
+    return <span title={`From BMP ${formatBmpSeason(entry.bmpSeason)}`}>{entry.mmr}</span>;
+  }
+  return (
+    <span
+      title={`From BMP ${formatBmpSeason(entry.bmpSeason)} — player hasn't played the current BMP season (${formatBmpSeason(currentBmpSeason)}). Their MMR may have shifted.`}
+      style={{ color: "#f1c40f" }}
+    >
+      {entry.mmr}
+      <span className="muted" style={{ fontSize: 10, marginLeft: 4 }}>
+        {formatBmpSeason(entry.bmpSeason)}
+      </span>
+    </span>
+  );
+}
 
 export const dynamic = "force-dynamic"; // Always fresh — DB writes happen out-of-band via the bot
 
@@ -176,7 +208,7 @@ export default async function StandingsPage() {
                                       </td>
                                       <td title={gameRateTooltip(r)}>{r.gamesWon}-{r.gamesLost}</td>
                                       {showBmpMmr && (
-                                        <td>{mmr != null ? mmr : <span className="muted">—</span>}</td>
+                                        <td>{renderMmrCell(mmr, data.bmpCurrentSeason)}</td>
                                       )}
                                     </tr>
                                   );

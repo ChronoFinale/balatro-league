@@ -45,14 +45,27 @@ export interface StandingsTierSummary {
   divisions: StandingsDivisionSummary[];
 }
 
+export interface StandingsMmrEntry {
+  mmr: number;
+  // The BMP-season tag this MMR came from (e.g. "season6"). Null for
+  // ad-hoc captures that weren't tied to a specific season. The UI
+  // annotates the cell when this isn't the current BMP season so
+  // readers know they're looking at stale-but-still-useful data.
+  bmpSeason: string | null;
+}
+
 export interface StandingsPageData {
   season: { id: string; name: string } | null;
   tiers: StandingsTierSummary[];
   minTierPosition: number;
   maxTierPosition: number;
-  // Map of playerId → ranked MMR for the BMP column. Empty when the
+  // Map of playerId → BMP MMR for the standings column. Empty when the
   // viewer has the toggle off — no DB roundtrip wasted on hidden data.
-  mmrByPlayerId: Map<string, number>;
+  mmrByPlayerId: Map<string, StandingsMmrEntry>;
+  // What the bot currently believes is the active BMP season tag (e.g.
+  // "season6"). Auto-detected from balatromp.com daily. Null when not
+  // detected yet — UI falls back to never annotating in that case.
+  bmpCurrentSeason: string | null;
 }
 
 export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Promise<StandingsPageData> {
@@ -91,6 +104,7 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
       minTierPosition: 0,
       maxTierPosition: 0,
       mmrByPlayerId: new Map(),
+      bmpCurrentSeason: null,
     };
   }
 
@@ -146,7 +160,16 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
   //      then most recent capturedAt as the tiebreaker. A player who
   //      skipped the current BMP season but played last one still gets
   //      their last-season MMR shown.
-  let mmrByPlayerId = new Map<string, number>();
+  // Pull the current BMP season tag once so the UI knows which MMRs to
+  // annotate as "stale". Null = not yet detected; UI falls back to
+  // showing every cell without annotation.
+  const bmpCurrentSeasonRow = await prisma.leagueConfig.findUnique({
+    where: { key: "bmp_current_season" },
+    select: { value: true },
+  });
+  const bmpCurrentSeason = bmpCurrentSeasonRow?.value ?? null;
+
+  let mmrByPlayerId = new Map<string, StandingsMmrEntry>();
   if (opts.showBmpMmr) {
     const allPlayerIds = season.tiers.flatMap((t) =>
       t.divisions.flatMap((d) => d.members.map((m) => m.playerId)),
@@ -181,7 +204,9 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
           return b.capturedAt.getTime() - a.capturedAt.getTime();
         });
         const best = arr[0];
-        if (best?.rankedMmr != null) mmrByPlayerId.set(pid, best.rankedMmr);
+        if (best?.rankedMmr != null) {
+          mmrByPlayerId.set(pid, { mmr: best.rankedMmr, bmpSeason: best.bmpSeason });
+        }
       }
     }
   }
@@ -208,5 +233,6 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
     minTierPosition,
     maxTierPosition,
     mmrByPlayerId,
+    bmpCurrentSeason,
   };
 }
