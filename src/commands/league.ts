@@ -179,7 +179,7 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
     }
     const infoChan = await ensureChannel("league-info", "League rules, schedule, announcements. Read-only for most.");
     const signupChan = await ensureChannel("signups", "Signup embeds posted here by the web admin. Players click the button to register.");
-    const resultsChan = await ensureChannel("results", "Auto-posted by the bot whenever a set is recorded.");
+    const resultsChan = await ensureChannel("results", "Auto-posted by the bot whenever a match is recorded.");
     const chatChan = await ensureChannel("league-chat", "General league chat. Match scheduling, banter, etc.");
     const botCmdChan = await ensureChannel("bot-commands", "Use match-flow commands here when you're not in a division channel: /challenge, /report.");
     const announcementsChan = await ensureChannel(
@@ -259,9 +259,9 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       "**Slash commands**",
       "• `/standings` — current division table",
       "• `/profile` — your match history & ranks",
-      "• `/schedule` — sets you still need to play",
+      "• `/schedule` — matches you still need to play",
       "• `/start-match @opponent` — bot walks you and your opponent through ban/pick for each game",
-      "• `/report @opponent result:2-0` — log a played set (auto-confirmed)",
+      "• `/report @opponent result:2-0` — log a played match (auto-confirmed)",
       "• `/help` — full command list",
       "",
       "**Website:** <https://www.balatroleague.com> — standings, profiles, signup, settings.",

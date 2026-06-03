@@ -698,7 +698,7 @@ export async function finalizeSignupsForSeason(formData: FormData) {
       `🃏 **${seasonLabel}** signups are now closed — you're locked in!\n\n` +
       `Next up: the league admin will sort everyone into divisions based on rating + signup count. ` +
       `You'll get a Discord role + a private channel for your division once that's done.\n\n` +
-      `Match the players in the channel best-of-2 sets at your own pace. ` +
+      `Play each of the other players in your division in best-of-2 matches at your own pace. ` +
       `_Withdraw later_? Talk to a league helper in your division channel after divisions are built.`;
     await Promise.all(
       round.signups.map((s) =>

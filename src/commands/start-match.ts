@@ -24,7 +24,7 @@ export const startMatch: SlashCommand = {
   channelScope: "division-only",
   data: new SlashCommandBuilder()
     .setName("start-match")
-    .setDescription("Start a guided set against your opponent (ban/pick + auto-record).")
+    .setDescription("Start a guided match against your opponent (ban/pick + auto-record).")
     .addUserOption((opt) =>
       opt.setName("opponent").setDescription("The player you're facing").setRequired(true),
     )

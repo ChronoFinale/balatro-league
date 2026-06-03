@@ -79,7 +79,7 @@ export default async function PublicDivisionPage({
           <Link href="/standings" style={{ marginLeft: "auto" }}>← all standings</Link>
         </div>
         <div className="muted" style={{ marginTop: 4 }}>
-          {division.activeCount} active player(s) · {division.confirmedPairingCount} set(s) played · {unplayed.length} remaining
+          {division.activeCount} active player(s) · {division.confirmedPairingCount} match(es) played · {unplayed.length} remaining
         </div>
 
         {isAdmin && err && (

@@ -288,7 +288,7 @@ async function AdminSeasonPanel({
         )}
       </div>
       <div className="muted" style={{ marginTop: 4 }}>
-        {season.tiers.length} tier(s) · {season.divisions.length} division(s) · {totalMembers} player(s) · {totalConfirmed}/{totalExpected} set(s)
+        {season.tiers.length} tier(s) · {season.divisions.length} division(s) · {totalMembers} player(s) · {totalConfirmed}/{totalExpected} match(es)
         {season.deadline && (
           <>
             {" "}·{" "}

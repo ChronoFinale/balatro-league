@@ -19,7 +19,7 @@ export type ReportResult =
 
 export async function reportSet(input: ReportInput): Promise<ReportResult> {
   if (input.reporterPlayerId === input.opponentPlayerId) {
-    return { ok: false, reason: "You can't report a set against yourself." };
+    return { ok: false, reason: "You can't report a match against yourself." };
   }
 
   const activeSeason = await activePublicSeason();

@@ -119,7 +119,7 @@ export default async function JoinPage({
         <h2>Join the league</h2>
         <p className="muted">
           A round-robin Balatro multiplayer league with promotion/relegation
-          divisions. Best-of-2 sets, weekly play, run by humans, all on Discord.
+          divisions. Best-of-2 matches, weekly play, run by humans, all on Discord.
         </p>
 
         {ok === "signed-up" && (
@@ -296,7 +296,7 @@ export default async function JoinPage({
           <strong>How it works</strong>
           <ul style={{ marginTop: 6 }}>
             <li>Sign up → admin builds divisions → you get a Discord role + channel for your division.</li>
-            <li>Best-of-2 sets against every other player in your division.</li>
+            <li>Best-of-2 matches against every other player in your division.</li>
             <li>Top finishers promote, bottom finishers relegate, ties broken by 1-game showdowns.</li>
             <li>Season ends, ratings recompute, next season opens with the same flow.</li>
           </ul>
