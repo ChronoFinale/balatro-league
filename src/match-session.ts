@@ -48,12 +48,8 @@ export interface GameState {
   // regenerated, bans/pendingBans are cleared, and the votes reset.
   rerollVoteByA?: boolean;
   rerollVoteByB?: boolean;
-  // Cancel-match consent during the ban phase (game 1 only). Same
-  // mutual-consent pattern as reroll: first click registers a vote,
-  // second click flips the session to CANCELLED. No DB cleanup beyond
-  // that — the row sticks around for audit.
-  cancelVoteByA?: boolean;
-  cancelVoteByB?: boolean;
+  // (Mutual-consent cancel moved to MatchSession.cancelInitiatorPlayerId
+  // so it works in any non-terminal phase, not just BAN.)
   // If non-null, this game was forfeited because the named player
   // disconnected mid-game. winnerId is also set (to the OTHER player)
   // so phase resolution and standings work normally — the field is

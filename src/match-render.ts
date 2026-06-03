@@ -95,6 +95,15 @@ function computeActiveContent(
   g2: GameState | null,
   g3: GameState | null,
 ): string {
+  // Cancel vote pending overrides the normal turn-based ping — the
+  // OTHER player needs to either confirm and drop the match, or
+  // ignore it and keep playing. That decision is more urgent than
+  // whoever's mid-turn, so it takes precedence.
+  if (s.cancelInitiatorPlayerId && s.state !== "CANCELLED" && s.state !== "COMPLETE") {
+    const initiator = s.cancelInitiatorPlayerId === a.id ? a : b;
+    const opposingDc = s.cancelInitiatorPlayerId === a.id ? b.discordId : a.discordId;
+    return `<@${opposingDc}> ⛔ **${initiator.displayName}** voted to cancel — open the cancel menu in the helper row to confirm or keep playing.`;
+  }
   switch (s.state) {
     case "WAITING_ACCEPT":
       return `<@${b.discordId}> 🎴 match invite from <@${a.discordId}> — accept or decline.`;
@@ -164,9 +173,25 @@ function withHelperRow(
 ): { embeds: EmbedBuilder[]; components: ComponentRow[] } {
   if (rendered.components.length >= 5) return rendered;
   const extras: ButtonBuilder[] = [];
+  // Cancel is universal — any non-terminal, non-paused state. Confirms
+  // via an ephemeral menu to avoid accidental clicks. Label flips when
+  // a vote is already in flight so the action is obvious.
+  if (
+    session.state !== "WAITING_ACCEPT" &&
+    session.state !== "COMPLETE" &&
+    session.state !== "CANCELLED" &&
+    session.state !== "PAUSED"
+  ) {
+    extras.push(
+      new ButtonBuilder()
+        .setCustomId(`match:cancelmatch:${session.id}`)
+        .setLabel(session.cancelInitiatorPlayerId ? "⛔ Cancel vote pending" : "⛔ Cancel match")
+        .setStyle(session.cancelInitiatorPlayerId ? ButtonStyle.Danger : ButtonStyle.Secondary),
+    );
+  }
   // Pause is offered any time after game 1's winner is recorded — i.e.
-  // game-2 / game-3 phases. Before that, players can cancel the match
-  // outright. After PAUSED, the resume button lives on the paused embed.
+  // game-2 / game-3 phases. Before that, the right path is cancel.
+  // After PAUSED, the resume button lives on the paused embed.
   if (
     session.state === "GAME_2_CHOOSE_FIRST" ||
     session.state === "GAME_2_BAN" ||
@@ -327,30 +352,20 @@ function renderGame(s: MatchSession, a: Player, b: Player, pool: DeckEntry[], ga
         : !game.rerollVoteByA && game.rerollVoteByB
         ? `\n\n🔄 **${b.displayName}** wants to reroll the pool. **${a.displayName}** click "Confirm reroll" to apply.`
         : "";
-    const cancelLine =
-      game.cancelVoteByA && !game.cancelVoteByB
-        ? `\n\n🛑 **${a.displayName}** wants to cancel this match. **${b.displayName}** click "Confirm cancel" to drop it.`
-        : !game.cancelVoteByA && game.cancelVoteByB
-        ? `\n\n🛑 **${b.displayName}** wants to cancel this match. **${a.displayName}** click "Confirm cancel" to drop it.`
-        : "";
     embed.setDescription(
       `🎯 **${whose.displayName}** is banning.\n` +
         `_You'll be pinged when it's your turn._` +
-        rerollLine +
-        cancelLine,
+        rerollLine,
     );
     const rerollLabel =
       game.rerollVoteByA || game.rerollVoteByB
         ? "Confirm reroll"
         : "Reroll pool";
-    const cancelLabel =
-      game.cancelVoteByA || game.cancelVoteByB
-        ? "Confirm cancel"
-        : "Cancel match";
     // Public component row: an "Open ban menu" button for the active
     // banner (validates actor in the handler; non-actors get an
-    // ephemeral "not your turn" reply). Reroll/Cancel/Propose are
-    // shared-action buttons either player can click.
+    // ephemeral "not your turn" reply). Reroll + Propose are
+    // shared-action buttons either player can click. Cancel lives on
+    // the helper row now (universal across phases).
     const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`match:openban:${s.id}`)
@@ -360,10 +375,6 @@ function renderGame(s: MatchSession, a: Player, b: Player, pool: DeckEntry[], ga
         .setCustomId(`match:reroll:${s.id}`)
         .setLabel(rerollLabel)
         .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`match:cancelmatch:${s.id}`)
-        .setLabel(cancelLabel)
-        .setStyle(ButtonStyle.Danger),
       new ButtonBuilder()
         .setCustomId(`match:proposestart:${s.id}`)
         .setLabel("Propose custom combo")

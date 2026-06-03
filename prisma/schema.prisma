@@ -277,6 +277,11 @@ model MatchSession {
   // Set when the session enters PAUSED. match-sweep cancels paused
   // sessions older than 7 days so abandoned pauses don't leak.
   pausedAt                DateTime?
+  // Mutual-consent cancel — first click sets initiator, second click
+  // from the other player flips state to CANCELLED. Lives at session
+  // level (not per-game) so cancel works from any non-terminal phase.
+  cancelInitiatorPlayerId String?
+  cancelInitiatedAt       DateTime?
   // Bumped on every update; used for optimistic concurrency control so
   // racing button clicks can't double-write the state machine. Any update
   // is gated by `where: { id, version }` — a stale click hits 0 rows updated.
