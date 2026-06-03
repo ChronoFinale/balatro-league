@@ -182,15 +182,25 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
     const resultsChan = await ensureChannel("results", "Auto-posted by the bot whenever a set is recorded.");
     const chatChan = await ensureChannel("league-chat", "General league chat. Match scheduling, banter, etc.");
     const botCmdChan = await ensureChannel("bot-commands", "Use match-flow commands here when you're not in a division channel: /challenge, /report.");
+    const announcementsChan = await ensureChannel(
+      "announcements",
+      "League-wide announcements: season starts, recaps, league news. Bot-posted, read-only for members.",
+    );
 
-    // Persist the bot-commands channel id in LeagueConfig so command-channels.ts
-    // resolves the right channel without admin needing to set an env var,
-    // and the bot's ensureBotCommandsChannel auto-create on startup no-ops
-    // (it only acts when neither env var nor LeagueConfig has a value).
+    // Persist channel ids in LeagueConfig so the bot's per-channel
+    // resolvers (command-channels.ts, announcements-channel.ts, etc.)
+    // pick them up without admin having to set env vars, and the
+    // boot-time auto-create hooks no-op (they only fire when neither
+    // env var nor LeagueConfig has a value).
     await prisma.leagueConfig.upsert({
       where: { key: "bot_commands_channel_id" },
       create: { key: "bot_commands_channel_id", value: botCmdChan.id, updatedBy: interaction.user.id },
       update: { value: botCmdChan.id, updatedBy: interaction.user.id },
+    });
+    await prisma.leagueConfig.upsert({
+      where: { key: "announcements_channel_id" },
+      create: { key: "announcements_channel_id", value: announcementsChan.id, updatedBy: interaction.user.id },
+      update: { value: announcementsChan.id, updatedBy: interaction.user.id },
     });
 
     // Always (re-)seed #league-info with a pinned 'how it works' message.
