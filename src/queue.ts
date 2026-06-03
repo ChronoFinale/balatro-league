@@ -701,7 +701,7 @@ async function bootstrapDivision({ divisionId, guildId }: BootstrapDivisionJob):
       ``,
       mentions,
       ``,
-      `**Your opponents (${div.members.length}):**`,
+      `**Your division (${div.members.length} players):**`,
       memberList,
       ``,
       `**What to do**`,

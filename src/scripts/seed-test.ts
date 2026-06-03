@@ -30,7 +30,6 @@ const season = await prisma.season.upsert({
     id: "test-season",
     number: seasonNumber,
     subtitle: "Test",
-    deadline: new Date("2026-06-13T18:00:00Z"),
     isActive: true,
   },
   update: { isActive: true },

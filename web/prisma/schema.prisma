@@ -142,9 +142,6 @@ model Season {
   // the default label of just "Season N".
   subtitle    String?
   startedAt   DateTime @default(now())
-  // Soft target end. Used as a planning marker, NOT auto-enforced —
-  // admin clicks End season when ready. UI shows this as "target end".
-  deadline    DateTime?
   // If set, the match-sweep loop auto-activates this season (flips
   // isActive=true) the next time it runs after this timestamp. Admin
   // can edit/clear at any point before activation. Cleared on activate.

@@ -289,14 +289,6 @@ async function AdminSeasonPanel({
       </div>
       <div className="muted" style={{ marginTop: 4 }}>
         {season.tiers.length} tier(s) · {season.divisions.length} division(s) · {totalMembers} player(s) · {totalConfirmed}/{totalExpected} match(es)
-        {season.deadline && (
-          <>
-            {" "}·{" "}
-            <span title="Rough target for when this season ends — not strictly enforced.">
-              target end <LocalDateTime iso={season.deadline.toISOString()} style="date" />
-            </span>
-          </>
-        )}
         {season.endedAt && (
           <>
             {" "}·{" "}ended <LocalDateTime iso={season.endedAt.toISOString()} style="date" />

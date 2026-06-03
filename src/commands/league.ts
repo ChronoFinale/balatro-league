@@ -105,11 +105,17 @@ export const league: SlashCommand = {
             .setDescription("Type RESET DISCORD STATE to confirm. League data (seasons, players, results) is preserved.")
             .setRequired(true),
         ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("check-setup")
+        .setDescription("Diagnose what's configured vs missing: channels, webhook, role bindings, presets."),
     ),
 
   async execute(interaction: ChatInputCommandInteraction) {
     const sub = interaction.options.getSubcommand();
     if (sub === "list-roles") return listRoles(interaction);
+    if (sub === "check-setup") return checkSetup(interaction);
     // Owner-only for state-changing role-binding + bootstrap + webhook config
     if (!(await requireOwner(interaction))) return;
     if (sub === "bootstrap-server") return bootstrapServer(interaction);
@@ -227,6 +233,7 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
     const existingWebhook = await prisma.leagueConfig.findUnique({
       where: { key: "results_webhook_url" },
     });
+    let webhookWarning: string | null = null;
     if (!existingWebhook && resultsChan.type === ChannelType.GuildText) {
       try {
         const wh = await (resultsChan as TextChannel).createWebhook({
@@ -242,10 +249,9 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
           created.push("results-channel webhook");
         }
       } catch (err) {
-        console.warn(
-          `[bootstrap] couldn't auto-create results webhook (needs Manage Webhooks): ${(err as Error).message}`,
-        );
-        // Non-fatal — admin can wire it up later via /league setup-results-webhook
+        const msg = (err as Error).message;
+        console.warn(`[bootstrap] couldn't auto-create results webhook: ${msg}`);
+        webhookWarning = msg;
       }
     }
 
@@ -443,6 +449,9 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       `✅ **${categoryName}** scaffolded.`,
       created.length > 0 ? `  Created: ${created.join(", ")}` : `  (nothing new — everything already existed)`,
       reused.length > 0 ? `  Reused: ${reused.join(", ")}` : null,
+      webhookWarning
+        ? `\n⚠️ **Match Results webhook didn't get created** — the bot probably needs **Manage Webhooks** in <#${resultsChan.id}>. Either:\n  • Grant the bot Manage Webhooks at the channel or category level, OR\n  • Create the webhook manually in **#results → Edit Channel → Integrations → Webhooks**, then paste the URL via \`/league set-results-webhook url:<url>\`\n  Error: \`${webhookWarning}\``
+        : null,
       ``,
       `📌 <#${infoChan.id}> — league-info`,
       `📝 <#${signupChan.id}> — signups`,
@@ -491,6 +500,111 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       `Bootstrap failed: ${(err as Error).message}. The bot may need additional permissions.`,
     );
   }
+}
+
+// Setup-diagnostic: walks every LeagueConfig channel ID + the
+// RoleBinding table + the match-config preset pointers, reporting
+// which resolve cleanly vs are missing/broken. Ephemeral so admin
+// can run it anywhere without spamming a channel.
+async function checkSetup(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const lines: string[] = ["**Setup diagnostic**"];
+  let ok = 0;
+  let warn = 0;
+
+  // Helper for channel-config keys.
+  async function checkChannel(key: string, label: string): Promise<void> {
+    const row = await prisma.leagueConfig.findUnique({ where: { key } });
+    if (!row?.value) {
+      lines.push(`❌ **${label}** — \`${key}\` not set`);
+      warn++;
+      return;
+    }
+    try {
+      const ch = await interaction.client.channels.fetch(row.value);
+      if (!ch) {
+        lines.push(`⚠️ **${label}** — \`${key}\` points at \`${row.value}\` but the channel can't be fetched`);
+        warn++;
+      } else {
+        lines.push(`✅ **${label}** — <#${row.value}>`);
+        ok++;
+      }
+    } catch {
+      lines.push(`⚠️ **${label}** — \`${key}\` points at \`${row.value}\` but the bot can't see it`);
+      warn++;
+    }
+  }
+
+  lines.push("\n__Channels__");
+  await checkChannel("bot_commands_channel_id", "Bot commands");
+  await checkChannel("results_channel_id", "Results");
+  await checkChannel("announcements_channel_id", "Announcements");
+  await checkChannel("backup_channel_id", "Backups");
+  await checkChannel("devops_channel_id", "DevOps");
+  await checkChannel("challenges_channel_id", "Challenges (casual)");
+
+  lines.push("\n__Results webhook__");
+  const wh = await prisma.leagueConfig.findUnique({ where: { key: "results_webhook_url" } });
+  if (wh?.value && /discord\.com\/api\/webhooks\//i.test(wh.value)) {
+    lines.push("✅ Match Results webhook URL is set");
+    ok++;
+  } else {
+    lines.push("❌ Match Results webhook not configured — results fall back to bot REST. Run `/league setup-results-webhook` or wait for bootstrap.");
+    warn++;
+  }
+
+  lines.push("\n__Role bindings__");
+  const bindings = await prisma.roleBinding.groupBy({ by: ["tier"], _count: { _all: true } });
+  const tierCounts = new Map(bindings.map((b) => [b.tier, b._count._all]));
+  for (const tier of ["OWNER", "ADMIN", "HELPER", "DEVOPS"] as const) {
+    const count = tierCounts.get(tier) ?? 0;
+    if (count > 0) {
+      lines.push(`✅ ${tier} — ${count} role(s) bound`);
+      ok++;
+    } else {
+      lines.push(`⚠️ ${tier} — no role bound. Run \`/league set-role tier:${tier} role:@your-role\`.`);
+      warn++;
+    }
+  }
+
+  lines.push("\n__Match-config presets__");
+  const presetCount = await prisma.matchConfigPreset.count();
+  if (presetCount === 0) {
+    lines.push("❌ No deck/stake presets exist. Open `/admin/deck-bans` to create one.");
+    warn++;
+  } else {
+    lines.push(`✅ ${presetCount} preset(s) exist`);
+    ok++;
+  }
+  const seasonDefault = await prisma.leagueConfig.findUnique({ where: { key: "season_default_preset_id" } });
+  const casual = await prisma.leagueConfig.findUnique({ where: { key: "casual_preset_id" } });
+  if (seasonDefault?.value) {
+    lines.push("✅ Season default preset pointer set");
+    ok++;
+  } else {
+    lines.push("⚠️ Season default preset pointer not set — `/start-match` falls back to first preset.");
+    warn++;
+  }
+  if (casual?.value) {
+    lines.push("✅ Casual preset pointer set");
+    ok++;
+  } else {
+    lines.push("⚠️ Casual preset pointer not set — `/challenge` falls back to first preset.");
+    warn++;
+  }
+
+  lines.push("\n__Discord server invite__");
+  const invite = await prisma.leagueConfig.findUnique({ where: { key: "discord_server_invite_url" } });
+  if (invite?.value) {
+    lines.push("✅ Public invite URL set (used by /join page)");
+    ok++;
+  } else {
+    lines.push("⚠️ No public invite URL set. Visitors to /join can't see one. Set `discord_server_invite_url` on `/admin/config`.");
+    warn++;
+  }
+
+  lines.push(`\n**Summary**: ${ok} ✓ / ${warn} ⚠️`);
+  await interaction.editReply(lines.join("\n"));
 }
 
 async function setRole(interaction: ChatInputCommandInteraction) {

@@ -54,24 +54,12 @@ export async function createSeason(formData: FormData) {
   // later once they see how many players signed up.
   const configs = parseConfig(String(formData.get("config") ?? ""));
 
-  // `datetime-local` inputs submit the value in the user's local
-  // timezone WITHOUT a Z suffix. Parsing the raw value lets JS treat
-  // it as local time and convert to UTC for storage. Appending "Z"
-  // (as we used to) misinterpreted the input as already-UTC, shifting
-  // the stored time by the user's offset.
-  let deadline: Date | null = null;
-  const deadlineStr = String(formData.get("deadline") ?? "");
-  if (deadlineStr) {
-    const d = new Date(deadlineStr);
-    if (!Number.isNaN(d.getTime())) deadline = d;
-  }
-
   const targetGroupSize = Math.max(2, parseInt(String(formData.get("targetGroupSize")), 10) || 5);
   const minGroupSize = Math.max(2, parseInt(String(formData.get("minGroupSize")), 10) || 3);
 
   const number = await nextSeasonNumber(prisma);
   const season = await prisma.season.create({
-    data: { number, subtitle, deadline, isActive: false, targetGroupSize, minGroupSize },
+    data: { number, subtitle, isActive: false, targetGroupSize, minGroupSize },
   });
 
   if (configs.length > 0) {
@@ -88,7 +76,7 @@ export async function createSeason(formData: FormData) {
     targetType: "Season",
     targetId: season.id,
     summary: `Created season "${formatSeasonLabel(season)}"`,
-    metadata: { targetGroupSize, minGroupSize, tierCount: configs.length, deadline: deadline?.toISOString() ?? null },
+    metadata: { targetGroupSize, minGroupSize, tierCount: configs.length },
   });
 
   revalidatePath("/admin/seasons");
