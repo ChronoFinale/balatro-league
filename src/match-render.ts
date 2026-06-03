@@ -42,36 +42,114 @@ export function renderMatch(
   playerA: Player,
   playerB: Player,
   opts: RenderOptions = {},
-): { embeds: EmbedBuilder[]; components: ComponentRow[] } {
+): { embeds: EmbedBuilder[]; components: ComponentRow[]; content: string } {
   const game1 = parseGame(session.game1);
   const game2 = parseGame(session.game2);
+  const game3 = parseGame(session.game3);
 
-  if (session.state === "WAITING_ACCEPT") {
-    return withHelperRow(session, renderWaitingAccept(session, playerA, playerB));
-  }
-  if (session.state === "GAME_2_CHOOSE_FIRST") {
-    return withHelperRow(session, renderChooseFirst(session, playerA, playerB, game1));
-  }
-  if (session.state === "COMPLETE") {
-    return renderComplete(session, playerA, playerB, game1, game2);
-  }
-  if (session.state === "CANCELLED") {
-    return renderCancelled(session, playerA, playerB);
-  }
-  if (session.state === "PAUSED") {
-    return renderPaused(session, playerA, playerB);
-  }
+  const bare = (() => {
+    if (session.state === "WAITING_ACCEPT") {
+      return withHelperRow(session, renderWaitingAccept(session, playerA, playerB));
+    }
+    if (session.state === "GAME_2_CHOOSE_FIRST") {
+      return withHelperRow(session, renderChooseFirst(session, playerA, playerB, game1));
+    }
+    if (session.state === "COMPLETE") {
+      return renderComplete(session, playerA, playerB, game1, game2);
+    }
+    if (session.state === "CANCELLED") {
+      return renderCancelled(session, playerA, playerB);
+    }
+    if (session.state === "PAUSED") {
+      return renderPaused(session, playerA, playerB);
+    }
 
-  // Game 1 / 2 / 3 phases
-  const gameNum: 1 | 2 | 3 = session.state.startsWith("GAME_1") ? 1
-    : session.state.startsWith("GAME_2") ? 2 : 3;
-  const game = gameNum === 1 ? game1 : gameNum === 2 ? game2 : parseGame(session.game3);
-  // GAME_N_CHOOSE_FIRST is rendered by a separate path
-  if (session.state === "GAME_3_CHOOSE_FIRST") {
-    return withHelperRow(session, renderChooseFirst(session, playerA, playerB, game2));
+    // Game 1 / 2 / 3 phases
+    const gameNum: 1 | 2 | 3 = session.state.startsWith("GAME_1") ? 1
+      : session.state.startsWith("GAME_2") ? 2 : 3;
+    const game = gameNum === 1 ? game1 : gameNum === 2 ? game2 : game3;
+    // GAME_N_CHOOSE_FIRST is rendered by a separate path
+    if (session.state === "GAME_3_CHOOSE_FIRST") {
+      return withHelperRow(session, renderChooseFirst(session, playerA, playerB, game2));
+    }
+    if (!game) return renderError(session, playerA, playerB, "Game state missing");
+    return withHelperRow(session, renderGame(session, playerA, playerB, game.pool, game, gameNum, opts));
+  })();
+
+  const content = computeActiveContent(session, playerA, playerB, game1, game2, game3);
+  return { embeds: bare.embeds, components: bare.components, content };
+}
+
+// Build the message-level content line that pings whoever's expected
+// to act next. Discord re-fires push notifications whenever an edit
+// introduces a new mention, so re-rendering with a different active
+// player on each transition gives the next player a fresh ping (and
+// the same content across no-op refreshes doesn't ping anyone). The
+// embed itself remains the canonical source for "what to do" — this
+// is just the loud nudge.
+function computeActiveContent(
+  s: MatchSession,
+  a: Player,
+  b: Player,
+  g1: GameState | null,
+  g2: GameState | null,
+  g3: GameState | null,
+): string {
+  switch (s.state) {
+    case "WAITING_ACCEPT":
+      return `<@${b.discordId}> 🎴 match invite from <@${a.discordId}> — accept or decline.`;
+    case "GAME_2_CHOOSE_FIRST": {
+      if (!g1?.winnerId) return "";
+      const loserDc = g1.winnerId === a.id ? b.discordId : a.discordId;
+      return `<@${loserDc}> 🎯 you lost game 1 — pick who bans first in game 2.`;
+    }
+    case "GAME_3_CHOOSE_FIRST": {
+      if (!g2?.winnerId) return "";
+      const loserDc = g2.winnerId === a.id ? b.discordId : a.discordId;
+      return `<@${loserDc}> 🎯 game 3 tiebreaker — pick who bans first.`;
+    }
+    case "GAME_1_BAN":
+    case "GAME_2_BAN":
+    case "GAME_3_BAN": {
+      const game = s.state.startsWith("GAME_1") ? g1 : s.state.startsWith("GAME_2") ? g2 : g3;
+      if (!game) return "";
+      // A custom-combo proposal in flight changes who's expected to
+      // act — the OTHER player has to accept/counter. Bare-ban phase
+      // pings the active banner.
+      const proposal = parseProposalForRender(s.customComboProposal);
+      if (proposal?.status === "pending") {
+        const targetDc = proposal.by === a.id ? b.discordId : a.discordId;
+        return `<@${targetDc}> 🎯 custom combo proposed — accept, counter, or cancel.`;
+      }
+      const phase = phaseFor(game, a.id, b.id, parsePolicy(s.policy));
+      if (phase.kind !== "BAN") return "";
+      const dc = phase.whoseBanId === a.id ? a.discordId : b.discordId;
+      return `<@${dc}> 🎯 your turn — ban ${phase.remainingForThem} combo(s).`;
+    }
+    case "GAME_1_PICK":
+    case "GAME_2_PICK":
+    case "GAME_3_PICK": {
+      const game = s.state.startsWith("GAME_1") ? g1 : s.state.startsWith("GAME_2") ? g2 : g3;
+      if (!game) return "";
+      const phase = phaseFor(game, a.id, b.id, parsePolicy(s.policy));
+      if (phase.kind !== "PICK") return "";
+      const dc = phase.pickerId === a.id ? a.discordId : b.discordId;
+      return `<@${dc}> 🎯 your turn — pick the deck/stake.`;
+    }
+    case "GAME_1_PLAYING":
+    case "GAME_2_PLAYING":
+    case "GAME_3_PLAYING":
+      // Both players are expected to play the run and vote a winner.
+      // Mention once — Discord won't re-ping if the same content
+      // shows up across no-op refreshes.
+      return `<@${a.discordId}> <@${b.discordId}> 🎮 play the run, then vote for the winner.`;
+    case "PAUSED":
+    case "COMPLETE":
+    case "CANCELLED":
+      return "";
+    default:
+      return "";
   }
-  if (!game) return renderError(session, playerA, playerB, "Game state missing");
-  return withHelperRow(session, renderGame(session, playerA, playerB, game.pool, game, gameNum, opts));
 }
 
 // Append the universal "🆘 Call helper" button as the LAST row on any

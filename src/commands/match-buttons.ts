@@ -143,8 +143,12 @@ async function refreshMessage(interaction: AnyInteraction, session: MatchSession
   // can happen per-game now). Cheap to always fetch.
   const isBanPhase = session.state === "GAME_1_BAN" || session.state === "GAME_2_BAN" || session.state === "GAME_3_BAN";
   const allowedStakes = isBanPhase ? await loadAllowedStakes(session) : [];
-  const { embeds, components } = renderMatch(session, playerA, playerB, { allowedStakes });
-  await interaction.update({ embeds, components });
+  const { embeds, components, content } = renderMatch(session, playerA, playerB, { allowedStakes });
+  // Including content on every update lets Discord re-ping whoever's
+  // turn it is now — a new mention in an edit fires the same push
+  // notification a new message would. Same content across no-op
+  // refreshes doesn't notify anyone.
+  await interaction.update({ content, embeds, components });
 }
 
 async function reply(interaction: AnyInteraction, content: string) {
@@ -250,7 +254,11 @@ async function loadBanContext(
     session.state === "GAME_2_BAN" ? 2 :
     session.state === "GAME_3_BAN" ? 3 : 0;
   if (gameNum === 0) {
-    await reply(interaction, "Not in a ban phase.");
+    // Most likely cause: stale button — the match has advanced past
+    // the ban phase since this message was rendered. Refresh the
+    // embed in place so the user sees the current state instead of
+    // an ephemeral "wrong phase" error with no recovery path.
+    await refreshMessage(interaction, session);
     return null;
   }
   const gameField: "game1" | "game2" | "game3" = `game${gameNum}` as const;
@@ -261,7 +269,10 @@ async function loadBanContext(
   }
   const phase = phaseFor(game, session.playerAId, session.playerBId, parsePolicy(session.policy));
   if (phase.kind !== "BAN") {
-    await reply(interaction, "Not a ban phase.");
+    // Same stale-button case as above — session state still says
+    // BAN but bans have already been confirmed past the policy
+    // threshold (race between two players' clicks). Re-render.
+    await refreshMessage(interaction, session);
     return null;
   }
   const actor = await prisma.player.findUniqueOrThrow({ where: { id: phase.whoseBanId } });
@@ -598,9 +609,9 @@ async function handleAccept(interaction: ButtonInteraction, session: MatchSessio
     try {
       const thread = await interaction.client.channels.fetch(matchChannelId);
       if (thread && thread.type === ChannelType.PrivateThread) {
-        const { embeds, components } = renderMatch(updated, playerA, playerB);
+        const { embeds, components, content } = renderMatch(updated, playerA, playerB);
         await thread.send({
-          content: `<@${playerA.discordId}> <@${playerB.discordId}> — your match thread. Bans/picks below.`,
+          content: content || `<@${playerA.discordId}> <@${playerB.discordId}> — your match thread.`,
           embeds,
           components,
         });

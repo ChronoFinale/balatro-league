@@ -161,8 +161,8 @@ export const startMatch: SlashCommand = {
       },
     });
 
-    const { embeds, components } = renderMatch(session, me, opp);
-    const message = await (interaction.channel as TextChannel).send({ embeds, components });
+    const { embeds, components, content } = renderMatch(session, me, opp);
+    const message = await (interaction.channel as TextChannel).send({ content, embeds, components });
     recordAudit({
       actor: actorFromInteractionUser(interaction.user),
       action: "match.create",
