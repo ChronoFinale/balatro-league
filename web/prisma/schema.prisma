@@ -530,6 +530,12 @@ model DivisionMember {
   status        DivisionMemberStatus @default(ACTIVE)
   droppedAt     DateTime?
   dropoutReason String?
+  // Snapshot of Player.rating at the moment the season was BUILT —
+  // i.e. the "seed" rank admin set during the drag/sort/build flow.
+  // Frozen in time per-season so we can show "entered at #N, finished
+  // at #M" in profile / standings without confusing the live
+  // Player.rating with the as-of-build snapshot.
+  seedRank Int?
   // Snapshot of Player.rating (= global rank) at end-of-season. Written by
   // endSeason for each ACTIVE member at the same moment Player.rating is
   // updated. Lets us answer "what was X's global rank when Season 4

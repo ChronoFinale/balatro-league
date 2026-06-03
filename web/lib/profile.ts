@@ -48,6 +48,11 @@ export interface SeasonHistoryEntry {
   tierPosition: number;
   rank: number;          // 0 when no cache row exists (cold or dropped)
   totalMembers: number;
+  // Snapshot of Player.rating at the moment THIS season was BUILT
+  // (entered). Null for players who had no Player.rating yet at build
+  // time. Use with finalGlobalRank to show the arc:
+  // "Entered as #N → finished as #M".
+  seedRank: number | null;
   // Snapshot of the player's global rank (= Player.rating) at the
   // moment THIS season ended. Null if the season hasn't ended yet OR
   // ended before the snapshot column existed (no backfill). Used to
@@ -123,6 +128,7 @@ export async function loadPlayerHistory(playerId: string): Promise<PlayerHistory
     select: {
       status: true,
       divisionId: true,
+      seedRank: true,
       finalGlobalRank: true,
       division: {
         select: {
@@ -294,6 +300,7 @@ export async function loadPlayerHistory(playerId: string): Promise<PlayerHistory
       tierPosition: m.division.tier.position,
       rank: myRank,
       totalMembers: cached?.length ?? 0,
+      seedRank: m.seedRank,
       finalGlobalRank: m.finalGlobalRank,
       points: myCached?.points ?? derivedWins * 3 + derivedDraws * 1,
       wins: myCached?.wins ?? derivedWins,

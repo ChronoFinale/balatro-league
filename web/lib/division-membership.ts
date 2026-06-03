@@ -76,6 +76,16 @@ export async function placePlayerInDivision(
   });
   const nextOrder = (maxOrderRow?.draftOrder ?? 0) + 1;
 
+  // Snapshot Player.rating as seedRank — only on CREATE (initial
+  // placement). Subsequent moves within the same season preserve the
+  // original seed; we don't re-snapshot when admin transfers a player
+  // mid-build. Null seedRank for players with no current Player.rating
+  // (brand-new signups that haven't been ranked yet).
+  const player = await prisma.player.findUnique({
+    where: { id: playerId },
+    select: { rating: true },
+  });
+
   await prisma.divisionMember.upsert({
     where: { divisionId_playerId: { divisionId: division.id, playerId } },
     create: {
@@ -84,6 +94,7 @@ export async function placePlayerInDivision(
       playerId,
       status: "ACTIVE",
       draftOrder: nextOrder,
+      seedRank: player?.rating ?? null,
     },
     update: { status: "ACTIVE", droppedAt: null, dropoutReason: null },
   });

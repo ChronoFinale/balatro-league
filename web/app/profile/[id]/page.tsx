@@ -335,12 +335,38 @@ export default async function ProfilePage({
                       )}
                     </span>{" "}
                     · {h.gamesWon}-{h.gamesLost} games
-                    {h.finalGlobalRank != null && (
+                    {(h.seedRank != null || h.finalGlobalRank != null) && (
                       <span
-                        title="Global league rank when this season ended. Doesn't shift when later seasons recompute Player.rating."
+                        title={
+                          h.seedRank != null && h.finalGlobalRank != null
+                            ? `Seeded into this season at global #${h.seedRank}, finished at global #${h.finalGlobalRank}.`
+                            : h.seedRank != null
+                            ? `Seeded into this season at global #${h.seedRank}.`
+                            : `Finished this season at global #${h.finalGlobalRank}.`
+                        }
                         style={{ marginLeft: 8 }}
                       >
-                        · global #{h.finalGlobalRank}
+                        · global{" "}
+                        {h.seedRank != null ? `#${h.seedRank}` : "—"}
+                        {" → "}
+                        {h.finalGlobalRank != null ? `#${h.finalGlobalRank}` : "TBD"}
+                        {h.seedRank != null && h.finalGlobalRank != null && (
+                          <span
+                            style={{
+                              marginLeft: 4,
+                              fontSize: 11,
+                              color:
+                                h.finalGlobalRank < h.seedRank
+                                  ? "#2ecc71"
+                                  : h.finalGlobalRank > h.seedRank
+                                  ? "#e74c3c"
+                                  : "#888",
+                            }}
+                          >
+                            ({h.finalGlobalRank < h.seedRank ? "↑" : h.finalGlobalRank > h.seedRank ? "↓" : "·"}
+                            {Math.abs(h.finalGlobalRank - h.seedRank)})
+                          </span>
+                        )}
                       </span>
                     )}
                   </span>
