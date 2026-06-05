@@ -677,7 +677,15 @@ async function handleAccept(interaction: ButtonInteraction, session: MatchSessio
   // previously called loadPlayers three times (here, again below, and once
   // more inside refreshMessage), i.e. 6 player queries for 2 players.
   const { playerA, playerB } = await loadPlayers(session);
-  if (!(await requireActor(interaction, playerB.discordId))) return;
+  // Only the challenged player accepts. If the challenger clicks their own
+  // Accept (it's visible to them — public message, one render), point them
+  // at Decline to withdraw instead of a confusing "not your turn".
+  if (interaction.user.id === playerA.discordId) {
+    return reply(interaction, "You sent this challenge — waiting on your opponent to accept. Click Decline to withdraw it.");
+  }
+  if (interaction.user.id !== playerB.discordId) {
+    return reply(interaction, "Only the challenged player can accept this match.");
+  }
 
   // Custom-combo path: skip the ban/pick flow entirely. game1 starts
   // with the pre-agreed combo as a 1-item pool with pickedDeckIdx=0,
@@ -848,9 +856,12 @@ async function handleDecline(interaction: ButtonInteraction, session: MatchSessi
   if (session.state !== "WAITING_ACCEPT") {
     return reply(interaction, "This match is no longer waiting.");
   }
-  const { playerB } = await loadPlayers(session);
-  if (!(await requireActor(interaction, playerB.discordId))) return;
-
+  // Either player can call it off: the challenged player declines, the
+  // challenger withdraws — both just cancel the pending invite.
+  const { playerA, playerB } = await loadPlayers(session);
+  if (interaction.user.id !== playerA.discordId && interaction.user.id !== playerB.discordId) {
+    return reply(interaction, "Only the two players in this match can decline it.");
+  }
   const updated = await updateSession(session, { state: MatchSessionState.CANCELLED });
   if (!updated) return raceLost(interaction);
   await refreshMessage(interaction, updated);
@@ -1096,6 +1107,11 @@ async function handleWinner(interaction: ButtonInteraction, session: MatchSessio
 // surface as the /helper slash command, just one click away from
 // inside the match flow.
 async function handleCallHelper(interaction: ButtonInteraction, session: MatchSession) {
+  // One helper call per match — don't even open the modal on a re-click.
+  // (A simultaneous double-click is caught atomically at submit time.)
+  if (session.helperCalledAt) {
+    return reply(interaction, "A helper has already been called for this match — they're on the way.");
+  }
   const modal = new ModalBuilder()
     .setCustomId(`match-helper-modal:${session.id}`)
     .setTitle("Call a helper");
@@ -1120,6 +1136,24 @@ export const callHelperModal = {
       await interaction.reply({ content: "Run this in a server channel, not DMs.", flags: MessageFlags.Ephemeral });
       return;
     }
+    // Atomically claim the one-call slot: the conditional update only
+    // succeeds for the FIRST submit (helperCalledAt still null), so two
+    // simultaneous submits can't both ping the helper role. We roll the
+    // claim back if the summon itself fails so they can retry.
+    const sessionId = interaction.customId.split(":")[1];
+    if (sessionId) {
+      const claim = await prisma.matchSession.updateMany({
+        where: { id: sessionId, helperCalledAt: null },
+        data: { helperCalledAt: new Date() },
+      });
+      if (claim.count === 0) {
+        await interaction.reply({
+          content: "A helper has already been called for this match — they're on the way.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+    }
     const reason = interaction.fields.getTextInputValue("reason").trim();
     const channel = interaction.channel as GuildTextBasedChannel | null;
     const result = await summonHelpers({
@@ -1129,6 +1163,12 @@ export const callHelperModal = {
       reason,
     });
     if ("error" in result) {
+      // Summon failed — release the claim so the call can be retried.
+      if (sessionId) {
+        await prisma.matchSession
+          .update({ where: { id: sessionId }, data: { helperCalledAt: null } })
+          .catch(() => {});
+      }
       await interaction.reply({ content: result.error, flags: MessageFlags.Ephemeral });
       return;
     }

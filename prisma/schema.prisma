@@ -306,6 +306,12 @@ model MatchSession {
   // when the message is first posted; survives state changes.
   matchMessageId String?
 
+  // Set the first time a helper is summoned for this match (via the
+  // Call helper button). Gates re-calls so the helper role can't be
+  // re-pinged for the same match. Claimed atomically to also beat a
+  // simultaneous double-click.
+  helperCalledAt DateTime?
+
   // JSON blobs so we can evolve state shape without migrations.
   pool          String?           // [{deck, stake}, ...] generated at accept
   // Snapshot of the league match policy at session-create time: JSON of
