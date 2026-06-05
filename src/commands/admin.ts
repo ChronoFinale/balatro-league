@@ -604,9 +604,52 @@ async function recordPairing(interaction: ChatInputCommandInteraction) {
     metadata: { result, reason: reason ?? null, divisionId: division.id, seasonId: activeSeason.id },
   });
 
+  // If a live match session for this pair is still open — players got
+  // stuck mid-game and a helper recorded the result instead of them
+  // clicking winner — reconcile it: mark COMPLETE so the winner buttons
+  // go inert (no double-record) and close the thread so it doesn't linger.
+  const liveSession = await prisma.matchSession.findFirst({
+    where: {
+      divisionId: division.id,
+      state: { notIn: [MatchSessionState.COMPLETE, MatchSessionState.CANCELLED] },
+      OR: [
+        { playerAId: p1.id, playerBId: p2.id },
+        { playerAId: p2.id, playerBId: p1.id },
+      ],
+    },
+  });
+  let closedThread = false;
+  if (liveSession) {
+    await prisma.matchSession.update({
+      where: { id: liveSession.id },
+      data: { state: MatchSessionState.COMPLETE, completedAt: new Date() },
+    });
+    recordAudit({
+      actor: actorFromInteractionUser(interaction.user),
+      action: "match.complete-admin",
+      targetType: "MatchSession",
+      targetId: liveSession.id,
+      summary: `Closed in-progress match ${liveSession.id.slice(-6)} after recording the result (was ${liveSession.state})`,
+      metadata: { pairingId: upserted.id, previousState: liveSession.state, threadId: liveSession.threadId },
+    });
+    if (liveSession.threadId) {
+      try {
+        const channel = await interaction.client.channels.fetch(liveSession.threadId);
+        if (channel?.type === ChannelType.PrivateThread || channel?.type === ChannelType.PublicThread) {
+          await channel.send(`✅ Result recorded by <@${interaction.user.id}>. Closing this match thread.`);
+          await channel.delete("Result recorded via /admin record-match").catch(() => {});
+          closedThread = true;
+        }
+      } catch (err) {
+        console.warn("[admin record-match] failed to close live session thread:", err);
+      }
+    }
+  }
+
   await interaction.editReply(
     `Recorded: **${p1User.username} ${games.a}-${games.b} ${p2User.username}** in **${division.name}**.` +
-      (reason ? `\nReason: ${reason}` : ""),
+      (reason ? `\nReason: ${reason}` : "") +
+      (liveSession ? `\nClosed the in-progress match${closedThread ? " and its thread" : ""}.` : ""),
   );
 }
 
