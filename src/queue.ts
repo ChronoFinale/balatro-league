@@ -93,23 +93,38 @@ export async function initQueue(): Promise<void> {
 
   console.log("[pg-boss] queue started");
 
-  // Worker: send a DM to one user. Retried automatically on failure.
+  // Worker: send a DM to one user. batchSize 1 so a single failing send
+  // can be retried on its own (throwing in a multi-job batch would re-run
+  // the successful sends too and double-DM people). Transient failures
+  // (client not ready yet, rate limits) throw → pg-boss retries. Permanent
+  // ones (user has DMs off / blocked the bot, code 50007) are logged and
+  // marked done so we don't retry a send that can never succeed.
   await boss.work<DmJob>(
     "notify.dm",
-    { batchSize: 5, pollingIntervalSeconds: 2 },
+    { batchSize: 1, pollingIntervalSeconds: 2 },
     async (jobs: Job<DmJob>[]) => {
-      const results = await Promise.allSettled(
-        jobs.map(async (job: Job<DmJob>) => {
-          const { discordId, content } = job.data;
-          const client = tryGetDiscordClient();
-          if (!client) throw new Error("Discord client not ready");
+      for (const job of jobs) {
+        const { discordId, content } = job.data;
+        const client = tryGetDiscordClient();
+        if (!client) {
+          // Enqueued during boot before login — throw so it retries rather
+          // than getting silently dropped.
+          throw new Error("Discord client not ready — will retry");
+        }
+        try {
           const user = await client.users.fetch(discordId);
           await user.send({ content });
-        }),
-      );
-      const failures = results.filter((r) => r.status === "rejected");
-      if (failures.length > 0) {
-        console.warn(`[notify.dm] ${failures.length}/${jobs.length} failed:`, failures);
+        } catch (err) {
+          const code = (err as { code?: number })?.code;
+          if (code === 50007) {
+            // "Cannot send messages to this user" — DMs disabled, bot
+            // blocked, or no shared server. Unfixable from our side.
+            console.warn(`[notify.dm] ${discordId} can't receive DMs (disabled/blocked) — skipping.`);
+            return;
+          }
+          console.warn(`[notify.dm] send to ${discordId} failed (code ${code ?? "?"}) — will retry:`, err);
+          throw err;
+        }
       }
     },
   );
