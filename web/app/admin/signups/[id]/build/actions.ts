@@ -354,6 +354,14 @@ export async function buildSeason(formData: FormData) {
     });
     if (!existing) return;
 
+    // Apply a subtitle edit from the build form (the page pre-fills the
+    // existing subtitle; the admin can rename here).
+    const subtitleRaw = String(formData.get("subtitle") ?? "").trim();
+    const subtitle = subtitleRaw.length > 0 ? subtitleRaw : null;
+    if (subtitle !== existing.subtitle) {
+      await prisma.season.update({ where: { id: existing.id }, data: { subtitle } });
+    }
+
     // If the season has no tiers yet (admin deferred shape until after
     // signups closed), create them now from the build form's tier config.
     if (existing.tiers.length === 0) {

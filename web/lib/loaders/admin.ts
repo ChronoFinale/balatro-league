@@ -647,6 +647,7 @@ export interface BuildSeasonPageData {
     id: string;
     name: string;
     status: "OPEN" | "CLOSED" | "BUILT";
+    resultingSeasonId: string | null;
     signups: BuildSeasonSignup[];
   };
   sortedSignups: BuildSeasonSignup[];
@@ -861,7 +862,7 @@ export async function loadBuildSeasonPage(roundId: string): Promise<BuildSeasonR
   const totalSlots = initialTiers.reduce((sum, t) => sum + t.divisionCount * 5, 0);
 
   return {
-    round: { id: round.id, name: round.name, status: round.status, signups: round.signups },
+    round: { id: round.id, name: round.name, status: round.status, resultingSeasonId: round.resultingSeasonId, signups: round.signups },
     sortedSignups,
     playerByDiscordId,
     snapshotByDiscordId,

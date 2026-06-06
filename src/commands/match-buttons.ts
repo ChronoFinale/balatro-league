@@ -188,7 +188,7 @@ async function raceLost(interaction: AnyInteraction) {
 
 async function requireActor(interaction: AnyInteraction, expectedDiscordId: string): Promise<boolean> {
   if (interaction.user.id !== expectedDiscordId) {
-    await reply(interaction, "Only the player whose turn it is can use this button.");
+    await reply(interaction, "Only the turn player can use this button.");
     return false;
   }
   return true;

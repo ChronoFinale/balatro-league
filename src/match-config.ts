@@ -16,9 +16,12 @@ import { getConfig, LeagueConfigKey } from "./league-config.js";
 export const DEFAULT_POOL_SIZE = 9;
 
 // Name used by the one-shot auto-seed when NO presets exist at all.
-// Admin can rename it freely afterwards — nothing depends on this
-// string being a specific value at runtime.
-const STOCK_SEED_NAME = "Stock";
+// Name of the managed canonical preset. The bootstrap force-syncs the
+// preset WITH THIS NAME to match-defaults.json on every boot, so the name
+// is load-bearing — don't rename the live preset in the UI (it'd get
+// re-created). LEGACY_SEED_NAME is the old name we auto-rename on boot.
+const STOCK_SEED_NAME = "League decks";
+const LEGACY_SEED_NAME = "Stock";
 
 export interface DeckEntry {
   deck: string;
@@ -110,14 +113,21 @@ function shuffle<T>(arr: T[], rand: () => number): T[] {
   return a;
 }
 
-// Bootstrap + keep the canonical pool in sync. The "Stock" preset is the
-// managed default — it's force-synced to match-defaults.json on every
+// Bootstrap + keep the canonical pool in sync. The "League decks" preset is
+// the managed default — it's force-synced to match-defaults.json on every
 // boot, so editing that file and redeploying actually updates the live
 // pool. (The old behavior only seeded once, so a stale pool stuck forever
 // even across test-env wipes, which preserve presets.) Admins who want a
-// different pool make a SEPARATE named preset and point a role at it;
-// Stock stays canonical.
+// different pool make a SEPARATE named preset and point a role at it; the
+// managed one stays canonical.
 export async function bootstrapPresetsAndPointers(): Promise<void> {
+  // One-time migration: rename a legacy "Stock" preset to the new name so
+  // we keep managing the same row instead of creating a duplicate.
+  const legacy = await prisma.matchConfigPreset.findUnique({ where: { name: LEGACY_SEED_NAME } });
+  if (legacy && !(await prisma.matchConfigPreset.findUnique({ where: { name: STOCK_SEED_NAME } }))) {
+    await prisma.matchConfigPreset.update({ where: { id: legacy.id }, data: { name: STOCK_SEED_NAME } });
+  }
+
   let anchor = await prisma.matchConfigPreset.findUnique({ where: { name: STOCK_SEED_NAME } });
 
   if (!anchor) {

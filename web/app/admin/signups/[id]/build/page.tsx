@@ -41,6 +41,14 @@ export default async function BuildSeasonPage({
     playerCount,
   } = result;
   const nextNumber = await nextSeasonNumber(prisma);
+  // If this round was opened from an EXISTING season, build into that one —
+  // show its real number/name instead of "create Season <next>".
+  const existingSeason = round.resultingSeasonId
+    ? await prisma.season.findUnique({
+        where: { id: round.resultingSeasonId },
+        select: { number: true, subtitle: true },
+      })
+    : null;
   // Existing players for the "add by name" search picker.
   const allPlayers = await prisma.player.findMany({
     select: { id: true, displayName: true },
@@ -197,8 +205,12 @@ export default async function BuildSeasonPage({
             <input type="hidden" name="roundId" value={round.id} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <label>
-                Subtitle (optional) — will create <strong>Season {nextNumber}</strong>
-                <input name="subtitle" placeholder="Optional subtitle (e.g. 'Launch')" style={{ width: "100%" }} />
+                {existingSeason ? (
+                  <>Subtitle — building <strong>Season {existingSeason.number}</strong> (edit to rename)</>
+                ) : (
+                  <>Subtitle (optional) — will create <strong>Season {nextNumber}</strong></>
+                )}
+                <input name="subtitle" defaultValue={existingSeason?.subtitle ?? ""} placeholder="Optional subtitle (e.g. 'Launch')" style={{ width: "100%" }} />
               </label>
               <label>
                 Group size
