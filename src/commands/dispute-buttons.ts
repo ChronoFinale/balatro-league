@@ -1,11 +1,13 @@
-// In-thread dispute resolution buttons (posted on the dispute thread by
-// spawnDisputeThread). Two actions:
+// In-thread dispute resolution (posted on the dispute thread by
+// spawnDisputeThread). Actions:
 //   close  — end the dispute, KEEP the reported result. Either player can
 //            do this ("never mind, the score stands"), as can staff.
 //   apply  — resolve by applying the disputer's PROPOSED correction.
 //            Staff (HELPER/ADMIN) only; shown only when a proposal exists.
-// Both flip the Pairing back to CONFIRMED, recompute + announce, and delete
-// the dispute thread.
+//   other  — staff pick a DIFFERENT result entirely (when neither the
+//            reported nor proposed score is right). Opens a result picker.
+// All resolve the Pairing to CONFIRMED, recompute + announce, delete the
+// dispute thread, and clear the in-flight proposal.
 
 import {
   ActionRowBuilder,
@@ -13,18 +15,21 @@ import {
   ButtonStyle,
   ChannelType,
   MessageFlags,
+  StringSelectMenuBuilder,
   type ButtonInteraction,
   type GuildMember,
+  type StringSelectMenuInteraction,
 } from "discord.js";
 import { recordAudit, actorFromInteractionUser } from "../audit.js";
 import { prisma } from "../db.js";
 import { hasTier } from "../permissions.js";
 import { enqueueAnnounceResult } from "../queue.js";
 import { recomputeDivisionStandings } from "../standings-cache.js";
-import type { ButtonHandler } from "./types.js";
+import type { ButtonHandler, SelectMenuHandler } from "./types.js";
 
-// Action row for the dispute thread message. "Apply proposed" only shows
-// when the disputer actually proposed a corrected score.
+// Action row for the dispute thread message. "Apply proposed" shows only
+// when the disputer proposed a corrected score; "Set other result" is
+// always available for staff.
 export function disputeThreadButtons(
   pairingId: string,
   hasProposal: boolean,
@@ -43,27 +48,34 @@ export function disputeThreadButtons(
         .setStyle(ButtonStyle.Primary),
     );
   }
+  row.addComponents(
+    new ButtonBuilder()
+      .setCustomId(`dispute-thread:other:${pairingId}`)
+      .setLabel("Set other result (staff)")
+      .setStyle(ButtonStyle.Secondary),
+  );
   return row;
 }
 
-async function resolveDispute(
-  interaction: ButtonInteraction,
+function isStaffMember(interaction: ButtonInteraction | StringSelectMenuInteraction): Promise<boolean> {
+  const member = interaction.member && "roles" in interaction.member ? (interaction.member as GuildMember) : null;
+  return hasTier(member, interaction.user.id, "HELPER");
+}
+
+// Core resolution: write the result, clear the proposal, recompute,
+// announce, audit, delete the dispute thread. Returns ok/reason. Loads
+// the pairing fresh so a stale button can't double-resolve.
+async function applyResolution(
+  interaction: ButtonInteraction | StringSelectMenuInteraction,
   pairingId: string,
-  mode: "close" | "apply",
-): Promise<{ ok: true; gamesWonA: number; gamesWonB: number } | { ok: false; reason: string }> {
+  gamesWonA: number,
+  gamesWonB: number,
+  actionTag: string,
+  reason: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
   const pairing = await prisma.pairing.findUnique({ where: { id: pairingId } });
   if (!pairing) return { ok: false, reason: "This match isn't on record anymore." };
   if (pairing.status !== "DISPUTED") return { ok: false, reason: "This match isn't disputed anymore." };
-
-  let gamesWonA = pairing.gamesWonA;
-  let gamesWonB = pairing.gamesWonB;
-  if (mode === "apply") {
-    if (pairing.disputeProposedGamesWonA == null || pairing.disputeProposedGamesWonB == null) {
-      return { ok: false, reason: "There's no proposed result to apply." };
-    }
-    gamesWonA = pairing.disputeProposedGamesWonA;
-    gamesWonB = pairing.disputeProposedGamesWonB;
-  }
 
   await prisma.pairing.update({
     where: { id: pairingId },
@@ -73,9 +85,7 @@ async function resolveDispute(
       gamesWonB,
       confirmedAt: new Date(),
       adminOverrideBy: interaction.user.id,
-      adminOverrideReason:
-        mode === "apply" ? "Dispute resolved — proposed result applied" : "Dispute closed — reported result kept",
-      // Clear the in-flight proposal; keep disputedAt/disputedById as audit.
+      adminOverrideReason: reason,
       disputeProposedGamesWonA: null,
       disputeProposedGamesWonB: null,
     },
@@ -84,78 +94,137 @@ async function resolveDispute(
   enqueueAnnounceResult(pairingId).catch(() => {});
   recordAudit({
     actor: actorFromInteractionUser(interaction.user),
-    action: mode === "apply" ? "dispute.resolve-apply" : "dispute.close",
+    action: actionTag,
     targetType: "Pairing",
     targetId: pairingId,
-    summary:
-      mode === "apply"
-        ? `Resolved dispute on ${pairingId.slice(-6)} — applied ${gamesWonA}-${gamesWonB}`
-        : `Closed dispute on ${pairingId.slice(-6)} — kept ${gamesWonA}-${gamesWonB}`,
-    metadata: { pairingId, mode, gamesWonA, gamesWonB, divisionId: pairing.divisionId },
+    summary: `${reason} — ${pairing.playerAId.slice(-4)} ${gamesWonA}-${gamesWonB} ${pairing.playerBId.slice(-4)}`,
+    metadata: { pairingId, gamesWonA, gamesWonB, divisionId: pairing.divisionId },
   });
-
-  // Delete the dispute thread — it's resolved.
   if (pairing.disputeThreadId) {
     try {
       const channel = await interaction.client.channels.fetch(pairing.disputeThreadId);
-      if (
-        channel &&
-        (channel.type === ChannelType.PublicThread || channel.type === ChannelType.PrivateThread)
-      ) {
+      if (channel && (channel.type === ChannelType.PublicThread || channel.type === ChannelType.PrivateThread)) {
         await channel.delete("Dispute resolved").catch(() => {});
       }
     } catch {
       // best-effort
     }
   }
-  return { ok: true, gamesWonA, gamesWonB };
+  return { ok: true };
 }
 
 export const disputeThreadButtonHandler: ButtonHandler = {
   prefix: "dispute-thread:",
   async execute(interaction: ButtonInteraction) {
     const [, action, pairingId] = interaction.customId.split(":");
-    if (!pairingId || (action !== "close" && action !== "apply")) {
+    if (!pairingId || (action !== "close" && action !== "apply" && action !== "other")) {
       await interaction.reply({ content: "This button looks broken — refresh Discord.", flags: MessageFlags.Ephemeral });
       return;
     }
 
     const pairing = await prisma.pairing.findUnique({
       where: { id: pairingId },
-      include: { playerA: { select: { discordId: true } }, playerB: { select: { discordId: true } } },
+      include: {
+        playerA: { select: { discordId: true, displayName: true } },
+        playerB: { select: { discordId: true, displayName: true } },
+      },
     });
     if (!pairing) {
       await interaction.reply({ content: "This match isn't on record anymore.", flags: MessageFlags.Ephemeral });
       return;
     }
-
-    const member = interaction.member && "roles" in interaction.member ? (interaction.member as GuildMember) : null;
-    const isStaff = await hasTier(member, interaction.user.id, "HELPER");
+    const staff = await isStaffMember(interaction);
     const isPlayer =
       interaction.user.id === pairing.playerA.discordId || interaction.user.id === pairing.playerB.discordId;
 
-    if (action === "apply" && !isStaff) {
-      await interaction.reply({ content: "Only a League Helper or Admin can apply a corrected result.", flags: MessageFlags.Ephemeral });
+    if ((action === "apply" || action === "other") && !staff) {
+      await interaction.reply({ content: "Only a League Helper or Admin can set a corrected result.", flags: MessageFlags.Ephemeral });
       return;
     }
-    if (action === "close" && !isPlayer && !isStaff) {
+    if (action === "close" && !isPlayer && !staff) {
       await interaction.reply({ content: "Only the two players or a helper can close this dispute.", flags: MessageFlags.Ephemeral });
       return;
     }
 
-    // Ack before the thread is deleted in resolveDispute.
-    await interaction.reply({
-      content: action === "apply" ? "Applying the proposed result…" : "Closing the dispute…",
-      flags: MessageFlags.Ephemeral,
-    });
-    const r = await resolveDispute(interaction, pairingId, action);
-    if (!r.ok) {
-      await interaction.followUp({ content: r.reason, flags: MessageFlags.Ephemeral }).catch(() => {});
+    // "other" → show the result picker (ephemeral) and stop here.
+    if (action === "other") {
+      const select = new StringSelectMenuBuilder()
+        .setCustomId(`dispute-resolve-select:${pairingId}`)
+        .setPlaceholder("Set the correct result")
+        .addOptions(
+          { label: `${pairing.playerA.displayName} won 2-0`, value: "2-0" },
+          { label: "Draw 1-1", value: "1-1" },
+          { label: `${pairing.playerB.displayName} won 2-0`, value: "0-2" },
+        );
+      await interaction.reply({
+        content: "Pick the correct result — applies it and closes the dispute.",
+        components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)],
+        flags: MessageFlags.Ephemeral,
+      });
       return;
     }
+
+    const keep = action === "close";
+    if (!keep && (pairing.disputeProposedGamesWonA == null || pairing.disputeProposedGamesWonB == null)) {
+      await interaction.reply({ content: "There's no proposed result to apply — use Set other result.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const gamesWonA = keep ? pairing.gamesWonA : pairing.disputeProposedGamesWonA!;
+    const gamesWonB = keep ? pairing.gamesWonB : pairing.disputeProposedGamesWonB!;
+
+    await interaction.reply({
+      content: keep ? "Closing the dispute…" : "Applying the proposed result…",
+      flags: MessageFlags.Ephemeral,
+    });
+    const r = await applyResolution(
+      interaction,
+      pairingId,
+      gamesWonA,
+      gamesWonB,
+      keep ? "dispute.close" : "dispute.resolve-apply",
+      keep ? "Dispute closed — reported result kept" : "Dispute resolved — proposed result applied",
+    );
     await interaction
       .followUp({
-        content: `✓ Dispute ${action === "apply" ? "resolved" : "closed"} — recorded **${r.gamesWonA}-${r.gamesWonB}**.`,
+        content: r.ok ? `✓ Dispute resolved — recorded **${gamesWonA}-${gamesWonB}**.` : r.reason,
+        flags: MessageFlags.Ephemeral,
+      })
+      .catch(() => {});
+  },
+};
+
+// Staff picked a custom result from the "Set other result" menu.
+export const disputeResolveSelect: SelectMenuHandler = {
+  prefix: "dispute-resolve-select:",
+  async execute(interaction: StringSelectMenuInteraction) {
+    const pairingId = interaction.customId.split(":")[1];
+    if (!pairingId) {
+      await interaction.reply({ content: "This menu looks broken — refresh Discord.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+    if (!(await isStaffMember(interaction))) {
+      await interaction.reply({ content: "Only a League Helper or Admin can set a result.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const choice = interaction.values[0];
+    const map: Record<string, [number, number]> = { "2-0": [2, 0], "1-1": [1, 1], "0-2": [0, 2] };
+    const pair = choice ? map[choice] : undefined;
+    if (!pair) {
+      await interaction.reply({ content: "Unknown result.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.update({ content: "Applying…", components: [] });
+    const r = await applyResolution(
+      interaction,
+      pairingId,
+      pair[0],
+      pair[1],
+      "dispute.resolve-custom",
+      "Dispute resolved — staff set a corrected result",
+    );
+    await interaction
+      .followUp({
+        content: r.ok ? `✓ Dispute resolved — recorded **${pair[0]}-${pair[1]}**.` : r.reason,
         flags: MessageFlags.Ephemeral,
       })
       .catch(() => {});

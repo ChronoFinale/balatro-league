@@ -14,7 +14,7 @@ import { requireAdmin } from "@/lib/admin";
 import { loadAdminDisputes } from "@/lib/loaders/admin";
 import { AdminNav } from "@/components/AdminNav";
 import { SiteNav } from "@/components/SiteNav";
-import { acceptDisputeProposal, rejectDispute } from "./actions";
+import { acceptDisputeProposal, rejectDispute, setDisputeResult } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -129,9 +129,17 @@ export default async function AdminDisputesPage({
                       Keep original
                     </button>
                   </form>
-                  <Link href={`/divisions/${d.divisionId}`} className="muted" style={{ fontSize: 12, alignSelf: "center", marginLeft: "auto" }}>
-                    Custom edit on division page →
-                  </Link>
+                  {/* Set a different result than reported OR proposed. */}
+                  <form action={setDisputeResult} style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    <input type="hidden" name="pairingId" value={d.pairingId} />
+                    <select name="result" required defaultValue="">
+                      <option value="" disabled>set other result…</option>
+                      <option value="2-0">{d.playerA.displayName} won 2-0</option>
+                      <option value="1-1">draw 1-1</option>
+                      <option value="0-2">{d.playerB.displayName} won 2-0</option>
+                    </select>
+                    <button type="submit" className="secondary">Apply</button>
+                  </form>
                   {d.disputeThreadId && (
                     <span className="muted" style={{ fontSize: 11, alignSelf: "center" }}>
                       🧵 thread spawned

@@ -121,3 +121,53 @@ export async function rejectDispute(formData: FormData) {
   revalidatePath("/standings");
   redirect("/admin/disputes?ok=rejected");
 }
+
+// Set a DIFFERENT result than either the reported or proposed score, in
+// one click. For when neither side had it right.
+export async function setDisputeResult(formData: FormData) {
+  const { user } = await requireAdmin();
+  const pairingId = String(formData.get("pairingId") ?? "").trim();
+  const resultStr = String(formData.get("result") ?? "");
+  if (!pairingId) redirect("/admin/disputes?err=missing-id");
+  const map: Record<string, [number, number]> = { "2-0": [2, 0], "1-1": [1, 1], "0-2": [0, 2] };
+  const games = map[resultStr];
+  if (!games) redirect(`/admin/disputes?err=${encodeURIComponent("Pick a result")}`);
+
+  const pairing = await prisma.pairing.findUnique({ where: { id: pairingId } });
+  if (!pairing) redirect("/admin/disputes?err=not-found");
+  if (pairing.status !== "DISPUTED") {
+    redirect(`/admin/disputes?err=${encodeURIComponent("Match isn't disputed")}`);
+  }
+
+  await prisma.pairing.update({
+    where: { id: pairingId },
+    data: {
+      status: "CONFIRMED",
+      gamesWonA: games![0],
+      gamesWonB: games![1],
+      confirmedAt: new Date(),
+      adminOverrideBy: user.discordId,
+      adminOverrideReason: "Dispute resolved — admin set a corrected result",
+      disputeProposedGamesWonA: null,
+      disputeProposedGamesWonB: null,
+    },
+  });
+  await closeDisputeThread(pairing.disputeThreadId);
+  enqueueAnnounceResult(pairingId).catch((err) => console.warn("[dispute.custom] announceResult failed:", err));
+  recomputeDivisionStandings(pairing.divisionId).catch(() => {});
+  recordAudit({
+    actor: actorFromAdminUser(user),
+    action: "dispute.resolve-custom",
+    targetType: "Pairing",
+    targetId: pairingId,
+    summary: `Set corrected result ${games![0]}-${games![1]} (was ${pairing.gamesWonA}-${pairing.gamesWonB})`,
+    metadata: {
+      previous: { gamesWonA: pairing.gamesWonA, gamesWonB: pairing.gamesWonB },
+      next: { gamesWonA: games![0], gamesWonB: games![1] },
+      disputeReason: pairing.disputeReason,
+    },
+  });
+  revalidatePath("/admin/disputes");
+  revalidatePath("/standings");
+  redirect("/admin/disputes?ok=custom");
+}
