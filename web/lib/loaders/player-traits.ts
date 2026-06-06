@@ -139,14 +139,15 @@ export async function loadPlayerTraits(playerId: string): Promise<PlayerTrait[]>
       detail: `avg picked stake ${pickedAvg.toFixed(1)}/4`,
     });
   }
-  // 🎩 Dr. Spectre — the resident high-stakes menace.
-  if (pickedAvg !== null && totalPicks >= 4 && pickedAvg >= 2.8) {
+  // 🎩 Dr. Spectre — the mirror of the White Stake Warrior: picks the
+  // brutal stakes and bans the gentle ones. Lives for the high stakes.
+  if (pickedAvg !== null && bannedAvg !== null && totalPicks >= 4 && pickedAvg >= 2.8 && bannedAvg <= 1.6) {
     traits.push({
       key: "dr-spectre",
       label: "Dr. Spectre",
       emoji: "🎩",
-      description: "Picks the nastiest stakes on purpose. A true high-stakes player.",
-      detail: `avg picked stake ${pickedAvg.toFixed(1)}/4`,
+      description: "Picks the brutal stakes and bans the gentle ones — lives for the high stakes.",
+      detail: `avg picked stake ${pickedAvg.toFixed(1)}/4, banned ${bannedAvg.toFixed(1)}/4`,
     });
   }
   // 🃏 Deck Loyalist — keeps reaching for the same deck. Shows the favourite.
