@@ -8,7 +8,6 @@ import { SiteNav } from "@/components/SiteNav";
 import { DraggableDivisionsEditor, type EditorMember, type EditorTier } from "@/components/DraggableDivisionsEditor";
 import { LocalDateTime } from "@/components/LocalDateTime";
 import { SeasonDeckPresetPicker } from "@/components/SeasonDeckPresetPicker";
-import { TierEditor } from "@/components/TierEditor";
 import { tierColors } from "@/lib/tier-colors";
 import { computeStandings } from "@/lib/standings";
 import { listGuildTextChannels } from "@/lib/discord";
@@ -18,7 +17,6 @@ import {
   activateSeason,
   addLatePlayerToDivision,
   clearSeasonScheduledStart,
-  configureTiers,
   deleteSeason,
   finalizeSignupsForSeason,
   moveDivisionMember,
@@ -258,8 +256,6 @@ async function AdminSeasonPanel({
     presets,
     defaultPreset,
     signupRound,
-    templates,
-    initialTiers,
     totalMembers,
     totalConfirmed,
     totalExpected,
@@ -329,15 +325,16 @@ async function AdminSeasonPanel({
 
       {season.divisions.length === 0 ? (
         <div className="card">
-          <strong>⚙ Configure tier shape</strong>
+          <strong>No divisions yet</strong>
           <p className="muted" style={{ fontSize: 12 }}>
-            No divisions yet. {signupRound?._count.signups != null && `${signupRound._count.signups} player(s) signed up so far — `}set the shape to create divisions.
+            Divisions get built from the signups after you finalize sign-ups —
+            do that from <Link href="/admin/seasons">Manage seasons</Link> →
+            “Build divisions from signups” (you set the tier shape there).
+            {signupRound?._count.signups != null && ` ${signupRound._count.signups} signed up so far.`}
           </p>
-          <form action={configureTiers}>
-            <input type="hidden" name="seasonId" value={season.id} />
-            <TierEditor initial={initialTiers} templates={templates} />
-            <button type="submit" style={{ marginTop: 8 }}>Create tiers + divisions</button>
-          </form>
+          <Link href={`/admin/seasons/${season.id}/bulk-import`}>
+            <button type="button" className="secondary" style={{ marginTop: 8 }}>📥 Or bulk-import members directly</button>
+          </Link>
         </div>
       ) : (
         <>
