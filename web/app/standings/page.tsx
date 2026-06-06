@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { prisma } from "@/lib/prisma";
 import { loadStandingsPageData, type StandingsMmrEntry } from "@/lib/loaders/standings";
 import { getShowBmpMmr } from "@/lib/preferences";
 import { tierColors } from "@/lib/tier-colors";
@@ -57,12 +58,37 @@ function gameRateTooltip(r: StandingRow): string {
 
 export default async function StandingsPage() {
   const showBmpMmr = await getShowBmpMmr();
-  const data = await loadStandingsPageData({ showBmpMmr });
+  const [data, openRound] = await Promise.all([
+    loadStandingsPageData({ showBmpMmr }),
+    prisma.signupRound.findFirst({
+      where: { status: "OPEN" },
+      orderBy: { openedAt: "desc" },
+      select: { id: true },
+    }),
+  ]);
 
   return (
     <>
       <SiteNav activePath="/standings" />
       <main>
+        {/* Open-signups CTA — pinned to the very top so anyone landing here
+            during a signup window sees it first, not buried below standings
+            or a "no active season" notice. */}
+        {openRound && (
+          <Link
+            href="/join"
+            className="card"
+            style={{
+              display: "block",
+              textDecoration: "none",
+              marginBottom: 16,
+              background: "rgba(46,204,113,0.12)",
+              border: "1px solid rgba(46,204,113,0.45)",
+            }}
+          >
+            🎴 <strong>Sign-ups are open!</strong> Join the next season →
+          </Link>
+        )}
         {!data.season ? (
           <>
             <h2>Standings</h2>
