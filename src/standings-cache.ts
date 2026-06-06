@@ -10,6 +10,7 @@
 
 import { prisma } from "./db.js";
 import { getLeagueSettingsForSeason } from "./league-settings.js";
+import { projectDivisionMatches } from "./match-projection.js";
 import { computeStandings, type StandingRow } from "./standings.js";
 
 interface CachedRow {
@@ -61,6 +62,13 @@ export async function recomputeDivisionStandings(divisionId: string): Promise<vo
     create: { divisionId, rowsJson: JSON.stringify(payload) },
     update: { rowsJson: JSON.stringify(payload), computedAt: new Date() },
   });
+
+  // Transitional dual-write: keep the unified Match/Game/Ban model in sync
+  // with this division's results. Best-effort — a projection failure must
+  // never break the standings cache. Removed at the contract stage.
+  await projectDivisionMatches(divisionId).catch((err) =>
+    console.warn(`[match-projection] division ${divisionId} failed:`, err),
+  );
 }
 
 export async function loadDivisionStandings(divisionId: string): Promise<StandingRow[]> {
