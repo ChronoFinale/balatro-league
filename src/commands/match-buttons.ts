@@ -1330,7 +1330,7 @@ async function handleDcDispute(interaction: ButtonInteraction, session: MatchSes
   const updated = await updateSession(session, { dcInitiatorPlayerId: null });
   if (!updated) return raceLost(interaction);
   await refreshMessage(interaction, updated);
-  return reply(interaction, "Disputed the DC report — game continues. If you can't agree, use `/helper`.");
+  return reply(interaction, "Cleared the DC report — keep playing. If you can't agree, use `/helper`.");
 }
 
 // Shared forfeit application: claimant wins the current game, dcer is

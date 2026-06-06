@@ -115,7 +115,7 @@ function computeActiveContent(
   if (s.dcInitiatorPlayerId && s.state !== "CANCELLED" && s.state !== "COMPLETE") {
     const claimant = s.dcInitiatorPlayerId === a.id ? a : b;
     const opposingDc = s.dcInitiatorPlayerId === a.id ? b.discordId : a.discordId;
-    return `<@${opposingDc}> 🔌 **${claimant.displayName}** says you disconnected — **Confirm** to forfeit this game, or **Dispute** to keep playing.`;
+    return `<@${opposingDc}> 🔌 **${claimant.displayName}** says you disconnected — **Confirm** to forfeit this game, or **Keep playing** if you're still here.`;
   }
   switch (s.state) {
     case "WAITING_ACCEPT":
@@ -537,9 +537,11 @@ function renderGame(s: MatchSession, a: Player, b: Player, pool: DeckEntry[], ga
       embed.setDescription(
         `🎲 Playing: **${picked?.deck ?? "?"} / ${picked?.stake ?? "?"} stake**\n\n` +
           `🔌 **${claimant.displayName}** reports that **${dcer.displayName}** disconnected.\n\n` +
-          `**${dcer.displayName}** — **Confirm** to give ${claimant.displayName} this game, or **Dispute** to keep playing.\n` +
+          `**${dcer.displayName}** — **Confirm** to give ${claimant.displayName} this game, or **Keep playing** if you're still here.\n` +
           `_If ${dcer.displayName} is gone for good, use \`/helper\` to get a mod._`,
       );
+      // Two options only: the reported player confirms (forfeits), or
+      // either player clicks Keep playing to clear the report and resume.
       const dcActions = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
           .setCustomId(`match:dcconfirm:${s.id}`)
@@ -547,13 +549,7 @@ function renderGame(s: MatchSession, a: Player, b: Player, pool: DeckEntry[], ga
           .setStyle(ButtonStyle.Danger),
         new ButtonBuilder()
           .setCustomId(`match:dcdispute:${s.id}`)
-          .setLabel("Dispute")
-          .setStyle(ButtonStyle.Secondary),
-        // Lets the claimant take their own report back (the "Opponent
-        // DC'd" button is hidden while a claim is pending).
-        new ButtonBuilder()
-          .setCustomId(`match:dc:${s.id}`)
-          .setLabel("Withdraw report")
+          .setLabel("▶️ Keep playing")
           .setStyle(ButtonStyle.Secondary),
       );
       return { embeds: [embed], components: [dcActions] };
