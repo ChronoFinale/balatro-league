@@ -49,6 +49,11 @@ model Player {
   pairingsAsB     Pairing[] @relation("PairingPlayerB")
   reportedPairings Pairing[] @relation("PairingReporter")
   disputedPairings Pairing[] @relation("PairingDisputer")
+  // Unified Match model (expand phase — coexists with Pairing until cut-over).
+  matchesAsA      Match[]   @relation("MatchPlayerA")
+  matchesAsB      Match[]   @relation("MatchPlayerB")
+  reportedMatches Match[]   @relation("MatchReporter")
+  disputedMatches Match[]   @relation("MatchDisputer")
   mmrSnapshots    PlayerMmrSnapshot[]
 
   @@index([rating])
@@ -481,6 +486,7 @@ model Division {
   tier        Tier              @relation(fields: [tierId], references: [id], onDelete: Cascade)
   members     DivisionMember[]
   pairings    Pairing[]
+  matches     Match[]
 
   standings   DivisionStandings?
   shootouts   Shootout[]
@@ -684,6 +690,116 @@ model Pairing {
   // but not playerBId. Profile-history loads do `OR: [{playerAId}, {playerBId}]`
   // across many divisions; without this the playerBId arm full-scans.
   @@index([playerBId])
+}
+
+// ---------------------------------------------------------------------------
+// Unified relational match model (EXPAND phase of an expand/contract
+// migration). A Match is the durable record of a played series between two
+// players in a division — a standard best-of-2 (LEAGUE_BO2) or a 1-game
+// tiebreaker (SHOOTOUT_BO1). Games + bans are REAL ROWS, not JSON, so
+// deck/stake stats, traits, and "most-banned" become indexed SQL aggregates
+// instead of app-side JSON parsing.
+//
+// This coexists with Pairing/Shootout during the migration: the backfill
+// endpoint populates it, then writers/readers cut over, then Pairing/Shootout
+// + the MatchSession game JSON columns are dropped (contract phase). The live
+// MatchSession ban/pick driver is unchanged — it projects to these rows on
+// completion. Match.id/Game/Ban reuse source ids during backfill so the
+// conversion is idempotent and traceable.
+
+enum MatchFormat {
+  LEAGUE_BO2    // standard best-of-2 series
+  SHOOTOUT_BO1  // 1-game tiebreaker
+}
+
+model Match {
+  id           String        @id @default(cuid())
+  divisionId   String
+  playerAId    String        // canonical: playerA.id < playerB.id
+  playerBId    String
+  format       MatchFormat   @default(LEAGUE_BO2)
+  gamesWonA    Int           @default(0)
+  gamesWonB    Int           @default(0)
+  // Convenience winner (one of playerAId/playerBId). Always set for a
+  // shootout; null for a BO2 that finished 1-1.
+  winnerId     String?
+  status       PairingStatus @default(PENDING)
+  reporterId   String?
+  reportedAt   DateTime?
+  confirmedAt  DateTime?
+  adminOverrideBy     String?
+  adminOverrideReason String?
+  reportChannelId String?
+  reportMessageId String?
+  disputedById              String?
+  disputeProposedGamesWonA  Int?
+  disputeProposedGamesWonB  Int?
+  disputeReason             String?
+  disputedAt                DateTime?
+  disputeThreadId           String?
+  hadDc                     Boolean       @default(false)
+  // Optional combo from a manual report with no per-game detail. When the
+  // guided flow ran, per-game decks/stakes live on Game rows instead.
+  reportedDeck              String?
+  reportedStake             String?
+  createdAt    DateTime      @default(now())
+
+  division     Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  playerA      Player   @relation("MatchPlayerA", fields: [playerAId], references: [id])
+  playerB      Player   @relation("MatchPlayerB", fields: [playerBId], references: [id])
+  reporter     Player?  @relation("MatchReporter", fields: [reporterId], references: [id])
+  disputer     Player?  @relation("MatchDisputer", fields: [disputedById], references: [id])
+  games        Game[]
+
+  // One BO2 + one shootout can both exist for a pair, so format is part of
+  // the uniqueness (vs Pairing's pair-only unique).
+  @@unique([divisionId, playerAId, playerBId, format])
+  @@index([divisionId, status])
+  @@index([playerBId])
+}
+
+// One game within a Match (BO2 → up to 3 rows; shootout → 1). Carries the
+// deck+stake it was played on plus per-game flags. firstPlayerId/winnerId/
+// dcByPlayerId are player ids (no FK — same as the old GameState, kept light).
+model Game {
+  id            String  @id @default(cuid())
+  matchId       String
+  num           Int     // 1, 2, 3 — shootout uses 1
+  firstPlayerId String  // who banned first this game
+  winnerId      String? // null if indeterminate (rare)
+  deck          String  // the picked/played deck
+  stake         String  // the picked/played stake
+  dcByPlayerId  String? // set if the game was a disconnect forfeit
+  pickedRandomly      Boolean @default(false)
+  firstBannedRandomly Boolean @default(false)
+  otherBannedRandomly Boolean @default(false)
+
+  match         Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  bans          Ban[]
+
+  @@unique([matchId, num])
+  @@index([matchId])
+  @@index([deck])
+  @@index([stake])
+}
+
+// One ban within a Game, in turn order. ordinal 0 = first player's first ban;
+// 1..3 = the other player's bans; 4..6 = first player's remaining bans (same
+// attribution the old positional bans[] array encoded).
+model Ban {
+  id        String @id @default(cuid())
+  gameId    String
+  ordinal   Int    // 0..6 turn order
+  playerId  String // who banned this combo
+  deck      String
+  stake     String
+
+  game      Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, ordinal])
+  @@index([gameId])
+  @@index([deck])
+  @@index([stake])
 }
 
 // Named bundle of league rules: scoring + ban policy + timeouts.
