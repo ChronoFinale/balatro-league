@@ -36,7 +36,7 @@ import { env } from "../env.js";
 import { getLeagueSettings, getLeagueSettingsForSeason } from "../league-settings.js";
 import { logDiscordError } from "../log-discord-error.js";
 import { bootstrapPresetsAndPointers, generatePool, presetForCasualMatch, presetForDivision, type DeckEntry } from "../match-config.js";
-import { renderBanConfirmPrompt, renderComboBuilder, renderMatch } from "../match-render.js";
+import { renderComboBuilder, renderMatch } from "../match-render.js";
 import { summonHelpers } from "./helper.js";
 import { recomputeDivisionStandings } from "../standings-cache.js";
 import {
@@ -214,8 +214,6 @@ export const matchButtons: ButtonHandler = {
     if (action === "decline") return handleDecline(interaction, session);
     if (action === "choosefirst") return handleChooseFirst(interaction, session, parts[3]);
     if (action === "banrandom") return handleBanRandom(interaction, session);
-    if (action === "banconfirm") return handleBanConfirm(interaction, session);
-    if (action === "bancancel") return handleBanCancel(interaction, session);
     if (action === "reroll") return handleReroll(interaction, session);
     if (action === "pick") return handlePick(interaction, session, parts[3]);
     if (action === "winner") return handleWinner(interaction, session, parts[3]);
@@ -261,6 +259,7 @@ export const matchSelectMenus: SelectMenuHandler = {
       return;
     }
     if (action === "banselect") return handleBanSelect(interaction, session);
+    if (action === "pickselect") return handlePick(interaction, session, interaction.values[0]);
     if (action === "proposedeck") return handleProposeDeck(interaction, session);
     if (action === "proposestake") return handleProposeStake(interaction, session);
     await reply(interaction, "Unknown selection — refresh Discord and try again.");
@@ -310,59 +309,6 @@ async function loadBanContext(
   return { gameNum: gameNum as 1 | 2 | 3, gameField, game, expected: phase.remainingForThem };
 }
 
-// Ephemeral-context variant of loadBanContext used by handleBanSelect
-// and handleBanConfirm. The differences vs the public-context loader:
-//   - On stale state we update the EPHEMERAL with a "match moved on"
-//     notice instead of refreshing the public message (which lives
-//     elsewhere). Caller can still kick off a public refresh after if
-//     needed.
-//   - The interaction's user is by construction the actor (only they
-//     can see the ephemeral), but we still defensively validate.
-async function loadBanContextEphemeral(
-  interaction: ButtonInteraction | StringSelectMenuInteraction,
-  session: MatchSession,
-): Promise<{
-  gameNum: 1 | 2 | 3;
-  gameField: "game1" | "game2" | "game3";
-  game: GameState;
-  expected: number;
-} | null> {
-  const gameNum =
-    session.state === "GAME_1_BAN" ? 1 :
-    session.state === "GAME_2_BAN" ? 2 :
-    session.state === "GAME_3_BAN" ? 3 : 0;
-  const staleNotice = async () => {
-    const embed = new EmbedBuilder()
-      .setTitle("Match has moved on")
-      .setColor(0x95a5a6)
-      .setDescription("The ban phase is over. Close this menu and check the match for the latest state.");
-    await interaction.update({ embeds: [embed], components: [] });
-  };
-  if (gameNum === 0) {
-    await staleNotice();
-    return null;
-  }
-  const gameField: "game1" | "game2" | "game3" = `game${gameNum}` as const;
-  const game = parseGame(session[gameField]);
-  if (!game) {
-    await reply(interaction, "Game state missing.");
-    return null;
-  }
-  const phase = phaseFor(game, session.playerAId, session.playerBId, parsePolicy(session.policy));
-  if (phase.kind !== "BAN") {
-    await staleNotice();
-    return null;
-  }
-  // Defensive: the ephemeral should only be visible to the actor, but
-  // the interaction.user.id is the source of truth.
-  const actor = await prisma.player.findUniqueOrThrow({ where: { id: phase.whoseBanId } });
-  if (interaction.user.id !== actor.discordId) {
-    await reply(interaction, "Not your turn anymore — close this menu.");
-    return null;
-  }
-  return { gameNum: gameNum as 1 | 2 | 3, gameField, game, expected: phase.remainingForThem };
-}
-
 // Cross-interaction edit of the canonical public match message. Used
 // by ephemeral handlers (e.g. ban confirm) to push the updated state
 // to the public embed everyone sees. No-op if matchMessageId or the
@@ -385,13 +331,10 @@ async function refreshPublicMatchMessage(interaction: AnyInteraction, session: M
 }
 
 // Active banner selected from the PUBLIC ban dropdown. The selection
-// itself is client-local (the opponent never saw it), and we don't
-// apply it yet — instead we open an EPHEMERAL confirm visible only to
-// the banner so they can review before committing. The chosen indices
-// ride in the Confirm button's customId; nothing tentative is stored
-// server-side, so there's nothing for the opponent to peek at.
-// loadBanContext (public variant) guards the actor and refreshes the
-// public message in place if the phase is stale.
+// itself is client-local — the opponent never saw it — so closing the
+// dropdown commits directly (BMP-style, what players are used to). No
+// confirm step. loadBanContext (public variant) guards the actor and
+// refreshes the public message in place if the phase is stale.
 async function handleBanSelect(interaction: StringSelectMenuInteraction, session: MatchSession) {
   const ctx = await loadBanContext(interaction, session);
   if (!ctx) return;
@@ -402,13 +345,9 @@ async function handleBanSelect(interaction: StringSelectMenuInteraction, session
   if (selected.some((idx) => ctx.game.bans.includes(idx))) {
     return reply(interaction, "Some of those are already banned — pick again.");
   }
-  const { embeds, components } = renderBanConfirmPrompt({
-    sessionId: session.id,
-    gameNumber: ctx.gameNum,
-    pool: ctx.game.pool,
-    selected,
-  });
-  await interaction.reply({ embeds, components, flags: MessageFlags.Ephemeral });
+  const updated = await applyBans(session, ctx, selected);
+  if (!updated) return raceLost(interaction);
+  await refreshMessage(interaction, updated);
 }
 
 // 🎲 Random ban — roll the active banner's full allotment from what's
@@ -434,17 +373,6 @@ async function handleBanRandom(interaction: ButtonInteraction, session: MatchSes
   if (!updated) return raceLost(interaction);
   await refreshMessage(interaction, updated);
   return reply(interaction, `🎲 Randomly banned: ${banSummary(ctx.game.pool, selected)}`);
-}
-
-// "Pick again" in the ephemeral confirm — just dismiss it. The banner
-// re-selects from the public dropdown, which spawns a fresh confirm.
-async function handleBanCancel(interaction: ButtonInteraction, session: MatchSession) {
-  void session;
-  const embed = new EmbedBuilder()
-    .setTitle("Dismissed")
-    .setColor(0x95a5a6)
-    .setDescription("No bans applied — pick from the menu or roll 🎲 again on the match.");
-  await interaction.update({ embeds: [embed], components: [] });
 }
 
 // Both players consent → regenerate this game's pool. Excludes deck
@@ -558,40 +486,6 @@ function banSummary(pool: DeckEntry[], indices: number[]): string {
     })
     .filter((s): s is string => !!s)
     .join(", ");
-}
-
-// Commit handler: runs from the active banner's ephemeral confirm. The
-// chosen indices arrive in the customId (match:banconfirm:<id>:<a.b.c>)
-// rather than from server state — selecting never wrote anything. Folds
-// them into bans, advances phase if all player rounds are done, closes
-// the ephemeral with a success message, then refreshes the PUBLIC match
-// embed via REST so everyone sees the new state. Re-validation here
-// covers the foot-gun where a banner opened two confirms and clicks a
-// stale one: loadBanContextEphemeral rejects if the phase advanced, and
-// the already-banned check rejects overlapping indices.
-async function handleBanConfirm(interaction: ButtonInteraction, session: MatchSession) {
-  const ctx = await loadBanContextEphemeral(interaction, session);
-  if (!ctx) return;
-  const idxStr = interaction.customId.split(":")[3] ?? "";
-  const pending = idxStr.split(".").map((v) => parseInt(v, 10)).filter((n) => !Number.isNaN(n));
-  if (pending.length !== ctx.expected) {
-    return reply(interaction, `That selection expired — pick ${ctx.expected} again from the match menu.`);
-  }
-  if (pending.some((idx) => ctx.game.bans.includes(idx))) {
-    return reply(interaction, "Some of those bans were already applied — pick again from the match menu.");
-  }
-  const updated = await applyBans(session, ctx, pending);
-  if (!updated) return raceLost(interaction);
-  // Close the ephemeral with a success state. We can't delete an
-  // ephemeral message; clearing components + showing a confirmation
-  // is the cleanest dismissal.
-  const successEmbed = new EmbedBuilder()
-    .setTitle("✅ Banned")
-    .setColor(0x2ecc71)
-    .setDescription(`You banned: ${banSummary(ctx.game.pool, pending)}`);
-  await interaction.update({ embeds: [successEmbed], components: [] });
-  // Refresh the public match message so everyone sees the new state.
-  await refreshPublicMatchMessage(interaction, updated);
 }
 
 // Close the match thread when the match completes. For private/public
@@ -926,7 +820,7 @@ async function handleChooseFirst(interaction: ButtonInteraction, session: MatchS
   await refreshMessage(interaction, updated);
 }
 
-async function handlePick(interaction: ButtonInteraction, session: MatchSession, idxRaw: string | undefined) {
+async function handlePick(interaction: AnyInteraction, session: MatchSession, idxRaw: string | undefined) {
   if (!idxRaw) return reply(interaction, "This button looks broken — refresh Discord and try again.");
   const idx = parseInt(idxRaw, 10);
   if (Number.isNaN(idx)) return reply(interaction, "Invalid index.");

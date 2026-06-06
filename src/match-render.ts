@@ -371,11 +371,9 @@ function renderGame(s: MatchSession, a: Player, b: Player, pool: DeckEntry[], ga
     // The select menu lives directly on the PUBLIC message. Discord
     // never syncs in-progress dropdown selections to other viewers, so
     // the off-turn player sees the menu + placeholder but not what the
-    // active banner is choosing. Selecting opens an EPHEMERAL confirm
-    // (renderBanConfirmPrompt) visible only to the banner — that's the
-    // private review surface. We show only what's LEFT in the pool — the
-    // dropdown options need it anyway, and there's no need to spell out
-    // what's already gone.
+    // active banner is choosing. Closing the dropdown commits the picks
+    // directly (commit-on-select, BMP-style) — no confirm step. We show
+    // only what's LEFT in the pool — the dropdown needs it anyway.
     const sortedRemaining = [...remaining].sort((x, y) => {
       const sd = canonicalStakeIndex(x.combo.stake) - canonicalStakeIndex(y.combo.stake);
       if (sd !== 0) return sd;
@@ -476,18 +474,35 @@ function renderGame(s: MatchSession, a: Player, b: Player, pool: DeckEntry[], ga
       `Bans done. **${picker.displayName}** picks the deck for this game from the 2 remaining.\n\n` +
         optionLines.join("\n\n"),
     );
-    const rows = chunkButtons(
-      sortedPickRemaining.map(({ idx, combo }) => {
-        const btn = new ButtonBuilder()
-          .setCustomId(`match:pick:${s.id}:${idx}`)
-          .setLabel(`${combo.deck} / ${combo.stake}`)
-          .setStyle(ButtonStyle.Success);
-        const deckIcon = deckEmojiPartial(combo.deck);
-        if (deckIcon) btn.setEmoji({ id: deckIcon.id, name: deckIcon.name, animated: deckIcon.animated });
-        return btn;
-      }),
-    );
-    return { embeds: [embed], components: rows };
+    // Private dropdown, same as bans: the opponent sees the menu but not
+    // which one the picker is choosing until it's committed (Discord
+    // doesn't sync dropdown selection across viewers). Closing the
+    // dropdown commits.
+    const pickSelect = new StringSelectMenuBuilder()
+      .setCustomId(`match:pickselect:${s.id}`)
+      .setPlaceholder(`${picker.displayName}: pick your deck`)
+      .setMinValues(1)
+      .setMaxValues(1)
+      .addOptions(
+        sortedPickRemaining.map(({ idx, combo }) => {
+          const deckDesc = deckDescription(combo.deck);
+          const stakeDesc = stakeDescription(combo.stake);
+          let desc = deckDesc ?? "";
+          if (stakeDesc && desc.length + stakeDesc.length + 12 <= 100) {
+            desc = desc ? `${desc} · ${combo.stake}: ${stakeDesc}` : `${combo.stake}: ${stakeDesc}`;
+          }
+          return {
+            label: `${combo.deck} / ${combo.stake}`,
+            value: String(idx),
+            description: desc ? desc.slice(0, 100) : undefined,
+            emoji: deckEmojiPartial(combo.deck),
+          };
+        }),
+      );
+    return {
+      embeds: [embed],
+      components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(pickSelect)],
+    };
   }
 
   if (phase.kind === "PLAYING") {
@@ -567,52 +582,6 @@ function renderComplete(s: MatchSession, a: Player, b: Player, g1: GameState | n
     .setColor(0x2ecc71)
     .setFooter({ text: `Match ${s.id}` });
   return { embeds: [embed], components: [] };
-}
-
-// Build the EPHEMERAL confirm prompt shown only to the active banner
-// after they select from the public ban dropdown. This is the private
-// review surface: the banner sees exactly what they're about to ban and
-// commits with one click; the opponent never sees any of it. The chosen
-// indices ride in the Confirm button's customId, so there's no tentative
-// server state to store or leak.
-export function renderBanConfirmPrompt(args: {
-  sessionId: string;
-  gameNumber: 1 | 2 | 3;
-  pool: DeckEntry[];
-  selected: number[];
-}): { embeds: EmbedBuilder[]; components: ComponentRow[] } {
-  const { sessionId, gameNumber, pool, selected } = args;
-  const label = (idx: number): string | null => {
-    const combo = pool[idx];
-    if (!combo) return null;
-    const di = deckEmoji(combo.deck) ?? "";
-    const si = stakeEmoji(combo.stake) ?? "";
-    const icons = [di, si].filter(Boolean).join(" ");
-    return `${icons ? `${icons} ` : ""}${combo.deck} / ${combo.stake}`;
-  };
-  const selLabels = selected.map(label).filter((x): x is string => !!x);
-
-  const embed = new EmbedBuilder()
-    .setTitle(`🎯 Confirm your ban${selected.length > 1 ? "s" : ""} — Game ${gameNumber}`)
-    .setColor(0xe74c3c)
-    .setDescription(
-      `You're about to ban:\n${selLabels.map((l) => `• **${l}**`).join("\n")}`,
-    )
-    .setFooter({ text: `Match ${sessionId}` });
-
-  const idxStr = selected.join(".");
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`match:banconfirm:${sessionId}:${idxStr}`)
-      .setLabel(`Confirm ban${selected.length > 1 ? "s" : ""}`)
-      .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId(`match:bancancel:${sessionId}`)
-      .setLabel("Pick again")
-      .setStyle(ButtonStyle.Secondary),
-  );
-
-  return { embeds: [embed], components: [row] };
 }
 
 function renderCancelled(s: MatchSession, a: Player, b: Player) {
@@ -784,11 +753,3 @@ function renderProposal(
   return { embeds: [embed], components: [actions] };
 }
 
-function chunkButtons(buttons: ButtonBuilder[]): ActionRowBuilder<ButtonBuilder>[] {
-  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
-  for (let i = 0; i < buttons.length; i += 5) {
-    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons.slice(i, i + 5)));
-    if (rows.length >= 5) break; // Discord max 5 rows per message
-  }
-  return rows;
-}
