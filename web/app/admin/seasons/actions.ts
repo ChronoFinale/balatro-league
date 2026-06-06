@@ -15,8 +15,7 @@ import {
   type MessageEmbed,
 } from "@/lib/discord";
 import { enqueueDm, enqueueLeagueInfoRefresh, enqueueMmrSnapshot } from "@/lib/queue";
-import { computeRatingDeltas, type DivisionForRating } from "@/lib/end-season";
-import { computeStandings } from "@/lib/standings";
+import { endSeasonCore } from "@/lib/end-season";
 
 interface TierConfig {
   name: string;
@@ -405,92 +404,17 @@ export async function endSeason(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
 
-  const season = await prisma.season.findUnique({
-    where: { id },
-    include: {
-      tiers: { orderBy: { position: "asc" } },
-      divisions: {
-        orderBy: [{ tier: { position: "asc" } }, { groupNumber: "asc" }],
-        include: {
-          tier: true,
-          members: {
-            include: { player: true },
-          },
-          pairings: { where: { status: "CONFIRMED" } },
-        },
-      },
-    },
-  });
-  if (!season) return;
+  const result = await endSeasonCore(id, actorFromAdminUser(user));
 
   // Double-end guard. If you genuinely need to recompute, hit unend
   // first — that gives you an explicit audit trail of the intent.
-  if (season.endedAt) {
-    const dateStr = season.endedAt.toISOString().slice(0, 10);
+  if (result.status === "already-ended") {
     redirect(
       `/admin/seasons?err=${encodeURIComponent(
-        `${formatSeasonLabel(season)} already ended on ${dateStr}. Unend it first if you really mean to recompute ratings.`,
+        `${result.seasonLabel} already ended. Unend it first if you really mean to recompute ratings.`,
       )}`,
     );
   }
-
-  const divisionsForRating: DivisionForRating[] = season.divisions.map((d) => {
-    const players = d.members.map((m) => m.player);
-    return {
-      tierPosition: d.tier.position,
-      divisionGroupNumber: d.groupNumber,
-      members: d.members.map((m) => ({
-        playerId: m.playerId,
-        status: m.status,
-        currentRating: m.player.rating,
-      })),
-      standings: computeStandings(players, d.pairings),
-    };
-  });
-
-  const numTiers = season.tiers.length;
-  const deltas = computeRatingDeltas(numTiers, divisionsForRating);
-
-  // Build a lookup from playerId → newRating so we can snapshot each
-  // ACTIVE member's finalGlobalRank in the same transaction as the
-  // Player.rating updates. DROPPED members are not in the deltas list
-  // (computeRatingDeltas skips them), so they get null finalGlobalRank
-  // — accurate, since they didn't actually finish the season.
-  const newRatingByPlayer = new Map(deltas.map((d) => [d.playerId, d.newRating]));
-
-  // Apply rating updates in a single transaction so partial failure doesn't
-  // leave the league half-rated.
-  await prisma.$transaction([
-    ...deltas.map((d) =>
-      prisma.player.update({
-        where: { id: d.playerId },
-        data: { rating: d.newRating },
-      }),
-    ),
-    ...Array.from(newRatingByPlayer.entries()).map(([playerId, rank]) =>
-      prisma.divisionMember.updateMany({
-        where: { seasonId: season.id, playerId, status: "ACTIVE" },
-        data: { finalGlobalRank: rank },
-      }),
-    ),
-    prisma.season.update({
-      where: { id: season.id },
-      data: { isActive: false, endedAt: new Date() },
-    }),
-  ]);
-  recordAudit({
-    actor: actorFromAdminUser(user),
-    action: "season.end",
-    targetType: "Season",
-    targetId: season.id,
-    summary: `Ended season "${formatSeasonLabel(season)}" (${season.divisions.length} divisions, ${deltas.length} rating updates)`,
-    metadata: { divisionCount: season.divisions.length, ratingUpdateCount: deltas.length },
-  });
-
-  // Refresh #league-info so the "Season N ended" block appears.
-  await enqueueLeagueInfoRefresh().catch((err) =>
-    console.warn("[season.end] league-info refresh enqueue failed:", err),
-  );
 
   revalidatePath("/admin/seasons");
   revalidatePath("/admin/players");

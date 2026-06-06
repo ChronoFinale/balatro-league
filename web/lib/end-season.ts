@@ -12,6 +12,12 @@
 // integers 1..N over ACTIVE players only.
 
 import type { StandingRow } from "./standings";
+import { prisma } from "./prisma";
+import { computeStandings } from "./standings";
+import { recordAudit, type AuditActor } from "./audit";
+import { enqueueLeagueInfoRefresh } from "./queue";
+import { formatSeasonLabel } from "./format-season";
+import { deleteChannel, deleteGuildRole } from "./discord";
 
 export interface DivisionForRating {
   tierPosition: number; // 1 = top tier
@@ -136,4 +142,180 @@ export function computeRatingDeltas(
       divisionSize: e.divisionSize,
     };
   });
+}
+
+export interface DiscordTeardownResult {
+  channelsDeleted: number;
+  rolesDeleted: number;
+  categoryDeleted: boolean;
+}
+
+// DELETE a season's Discord footprint — every division channel + division
+// role and the season category — then null out the columns that pointed at
+// them. Champion roles (🏆 …) are deliberately KEPT: they're keepsakes
+// players hang onto across seasons, so we neither delete the role nor clear
+// championRoleId. Best-effort: deleteChannel/deleteGuildRole are
+// 404-tolerant and never throw, so a stale id just no-ops. Returns null
+// when there's no guild configured (local/test without DISCORD_GUILD_ID).
+export async function teardownSeasonDiscord(seasonId: string): Promise<DiscordTeardownResult | null> {
+  const guildId = process.env.DISCORD_GUILD_ID;
+  if (!guildId) return null;
+
+  const season = await prisma.season.findUnique({
+    where: { id: seasonId },
+    select: {
+      discordCategoryId: true,
+      divisions: {
+        select: { discordChannelId: true, discordRoleId: true },
+      },
+    },
+  });
+  if (!season) return null;
+
+  let channelsDeleted = 0;
+  let rolesDeleted = 0;
+
+  // Channels first — a category can't be deleted while it still has children.
+  for (const div of season.divisions) {
+    if (div.discordChannelId && (await deleteChannel(div.discordChannelId).catch(() => false))) {
+      channelsDeleted++;
+    }
+  }
+  // Division roles only — champion roles are left untouched as keepsakes.
+  for (const div of season.divisions) {
+    if (div.discordRoleId && (await deleteGuildRole(guildId, div.discordRoleId).catch(() => false))) {
+      rolesDeleted++;
+    }
+  }
+  let categoryDeleted = false;
+  if (season.discordCategoryId) {
+    categoryDeleted = await deleteChannel(season.discordCategoryId).catch(() => false);
+  }
+
+  // Null out the now-dangling references so re-running (or re-bootstrapping)
+  // starts clean. championRoleId is left as-is (the role still exists).
+  await prisma.division.updateMany({
+    where: { seasonId },
+    data: { discordChannelId: null, discordRoleId: null },
+  });
+  await prisma.season.update({ where: { id: seasonId }, data: { discordCategoryId: null } });
+
+  return { channelsDeleted, rolesDeleted, categoryDeleted };
+}
+
+export interface EndSeasonResult {
+  status: "ended" | "already-ended" | "not-found";
+  seasonId: string;
+  seasonLabel?: string;
+  divisionCount: number;
+  ratingUpdateCount: number;
+  discordTeardown?: DiscordTeardownResult | null;
+}
+
+// Core of ending a season — re-rank via computeRatingDeltas, write
+// Player.rating + DivisionMember.finalGlobalRank, mark the season
+// ended/inactive. Extracted from the endSeason server action so it can
+// run from BOTH the admin UI and the /api/admin/end-season endpoint
+// (and the multi-season e2e runner). No redirect/revalidate/auth here.
+export async function endSeasonCore(seasonId: string, actor: AuditActor): Promise<EndSeasonResult> {
+  const season = await prisma.season.findUnique({
+    where: { id: seasonId },
+    include: {
+      tiers: { orderBy: { position: "asc" } },
+      divisions: {
+        orderBy: [{ tier: { position: "asc" } }, { groupNumber: "asc" }],
+        include: {
+          tier: true,
+          members: { include: { player: true } },
+          pairings: { where: { status: "CONFIRMED" } },
+        },
+      },
+    },
+  });
+  if (!season) return { status: "not-found", seasonId, divisionCount: 0, ratingUpdateCount: 0 };
+  if (season.endedAt) {
+    return {
+      status: "already-ended",
+      seasonId,
+      seasonLabel: formatSeasonLabel(season),
+      divisionCount: season.divisions.length,
+      ratingUpdateCount: 0,
+    };
+  }
+
+  const divisionsForRating: DivisionForRating[] = season.divisions.map((d) => {
+    const players = d.members.map((m) => m.player);
+    return {
+      tierPosition: d.tier.position,
+      divisionGroupNumber: d.groupNumber,
+      members: d.members.map((m) => ({
+        playerId: m.playerId,
+        status: m.status,
+        currentRating: m.player.rating,
+      })),
+      standings: computeStandings(players, d.pairings),
+    };
+  });
+
+  const deltas = computeRatingDeltas(season.tiers.length, divisionsForRating);
+  const newRatingByPlayer = new Map(deltas.map((d) => [d.playerId, d.newRating]));
+
+  // Single transaction so a partial failure doesn't leave the league half-rated.
+  await prisma.$transaction([
+    ...deltas.map((d) =>
+      prisma.player.update({ where: { id: d.playerId }, data: { rating: d.newRating } }),
+    ),
+    ...Array.from(newRatingByPlayer.entries()).map(([playerId, rank]) =>
+      prisma.divisionMember.updateMany({
+        where: { seasonId: season.id, playerId, status: "ACTIVE" },
+        data: { finalGlobalRank: rank },
+      }),
+    ),
+    prisma.season.update({
+      where: { id: season.id },
+      data: { isActive: false, endedAt: new Date() },
+    }),
+  ]);
+
+  // Tear down the season's Discord channels + roles. Best-effort — a
+  // Discord/API failure must not undo the rating work above, so swallow it.
+  let discordTeardown: DiscordTeardownResult | null = null;
+  try {
+    discordTeardown = await teardownSeasonDiscord(season.id);
+  } catch (err) {
+    console.warn("[season.end] Discord teardown failed:", err);
+  }
+
+  recordAudit({
+    actor,
+    action: "season.end",
+    targetType: "Season",
+    targetId: season.id,
+    summary:
+      `Ended season "${formatSeasonLabel(season)}" (${season.divisions.length} divisions, ${deltas.length} rating updates` +
+      (discordTeardown
+        ? `, deleted ${discordTeardown.channelsDeleted} channels + ${discordTeardown.rolesDeleted} roles`
+        : "") +
+      ")",
+    metadata: {
+      divisionCount: season.divisions.length,
+      ratingUpdateCount: deltas.length,
+      channelsDeleted: discordTeardown?.channelsDeleted ?? null,
+      rolesDeleted: discordTeardown?.rolesDeleted ?? null,
+      categoryDeleted: discordTeardown?.categoryDeleted ?? null,
+    },
+  });
+
+  await enqueueLeagueInfoRefresh().catch((err) =>
+    console.warn("[season.end] league-info refresh enqueue failed:", err),
+  );
+
+  return {
+    status: "ended",
+    seasonId: season.id,
+    seasonLabel: formatSeasonLabel(season),
+    divisionCount: season.divisions.length,
+    ratingUpdateCount: deltas.length,
+    discordTeardown,
+  };
 }

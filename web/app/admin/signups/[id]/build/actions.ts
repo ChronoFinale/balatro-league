@@ -4,101 +4,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
-import { actorFromAdminUser, recordAudit } from "@/lib/audit";
+import { actorFromAdminUser } from "@/lib/audit";
 import { resolveDiscordIdToDisplayName } from "@/lib/add-player";
-import { placePlayerInDivision } from "@/lib/division-membership";
 import { enqueueMmrSnapshot } from "@/lib/queue";
-import { formatSeasonLabel, nextSeasonNumber } from "@/lib/format-season";
-
-interface TierConfig {
-  name: string;
-  divisionCount: number;
-}
-
-function parseTierConfig(json: string): TierConfig[] {
-  try {
-    const arr = JSON.parse(json);
-    if (!Array.isArray(arr)) return [];
-    return arr
-      .map((e) => ({
-        name: String(e?.name ?? "").trim(),
-        divisionCount: Math.max(1, Math.min(50, Math.floor(Number(e?.divisionCount)))) || 1,
-      }))
-      .filter((t) => t.name.length > 0);
-  } catch {
-    return [];
-  }
-}
-
-// Distribute ranked players top-down into tiers, filling each division
-// in rank order. Rare 1 takes the top 5 Rare ranks, Rare 2 the next 5,
-// ..., Rare 6 the bottom 5. (Previously snake-drafted to balance skill
-// across same-tier divisions, but that made entering rank diverge wildly
-// from ending rank since the per-division end-season recompute reranks
-// every player to their division's rank slot.)
-//
-// Filling strategy: every division ends up with either `base` or `base+1`
-// players, where base = floor(N / totalDivs). Extras (the `N mod totalDivs`
-// players who push some divisions to base+1) go to UPPER tiers first —
-// Legendary/Rare fill before Common takes leftovers. No special case for
-// the top tier — it's just another tier in the math.
-function planByRating(
-  ranked: Array<{ id: string; discordId: string; displayName: string; rating: number | null }>,
-  tiers: TierConfig[],
-  targetGroupSize: number,
-): Array<{ tier: TierConfig; position: number; divisions: string[][] /* signup discordIds per division */ }> {
-  void targetGroupSize; // kept on signature for caller compat; new alg derives sizes dynamically
-  // Sort by rating ASC (rating = rank, 1 = best player). null
-  // (unrated) sorts AFTER ranked players via Infinity sentinel.
-  const sorted = [...ranked].sort((a, b) => {
-    const ra = a.rating ?? Number.POSITIVE_INFINITY;
-    const rb = b.rating ?? Number.POSITIVE_INFINITY;
-    if (ra !== rb) return ra - rb;
-    return a.displayName.localeCompare(b.displayName);
-  });
-
-  if (sorted.length === 0 || tiers.length === 0) {
-    return tiers.map((tier, i) => ({
-      tier,
-      position: i + 1,
-      divisions: Array.from({ length: Math.max(1, tier.divisionCount) }, () => []),
-    }));
-  }
-
-  const totalDivs = tiers.reduce((sum, t) => sum + Math.max(1, t.divisionCount), 0);
-  const base = totalDivs === 0 ? 0 : Math.floor(sorted.length / totalDivs);
-  let extras = totalDivs === 0 ? 0 : sorted.length - base * totalDivs;
-  const divisionSizes: number[][] = tiers.map((t) => {
-    const numDivs = Math.max(1, t.divisionCount);
-    return Array.from({ length: numDivs }, () => {
-      const extra = extras > 0 ? 1 : 0;
-      if (extras > 0) extras--;
-      return base + extra;
-    });
-  });
-
-  const plan: ReturnType<typeof planByRating> = [];
-  let cursor = 0;
-  for (let i = 0; i < tiers.length; i++) {
-    const tier = tiers[i]!;
-    const numDivs = Math.max(1, tier.divisionCount);
-    const sizes = divisionSizes[i]!;
-
-    // Sequential fill: division 0 takes the next `sizes[0]` players in
-    // rank order, division 1 takes the next `sizes[1]`, etc. So Rare 1
-    // gets the strongest Rare players, Rare 6 gets the weakest.
-    const divisions: string[][] = [];
-    for (let d = 0; d < numDivs; d++) {
-      const size = sizes[d]!;
-      const slice = sorted.slice(cursor, cursor + size).map((p) => p.discordId);
-      cursor += size;
-      divisions.push(slice);
-    }
-
-    plan.push({ tier, position: i + 1, divisions });
-  }
-  return plan;
-}
+import { buildSeasonFromRound } from "@/lib/build-season";
 
 // Bulk-update ratings for signed-up players. Creates Player rows for new
 // signups so the rating sticks before we build the season.
@@ -324,196 +233,19 @@ export async function buildSeason(formData: FormData) {
   const roundId = String(formData.get("roundId") ?? "");
   if (!roundId) return;
 
-  const round = await prisma.signupRound.findUnique({
-    where: { id: roundId },
-    include: { signups: { where: { withdrawn: false } } },
-  });
-  if (!round) return;
+  const subtitleRaw = String(formData.get("subtitle") ?? "").trim();
+  const matchConfigPresetIdRaw = String(formData.get("matchConfigPresetId") ?? "");
 
-  const players = await Promise.all(
-    round.signups.map((s) =>
-      prisma.player.upsert({
-        where: { discordId: s.discordId },
-        create: { discordId: s.discordId, displayName: s.displayName },
-        update: { displayName: s.displayName },
-      }),
-    ),
-  );
-  const playerByDiscordId = new Map(players.map((p) => [p.discordId, p]));
-
-  let targetSeasonId: string;
-
-  if (round.resultingSeasonId) {
-    // Populate-existing mode
-    const existing = await prisma.season.findUnique({
-      where: { id: round.resultingSeasonId },
-      include: {
-        tiers: { orderBy: { position: "asc" } },
-        divisions: { orderBy: [{ tier: { position: "asc" } }, { groupNumber: "asc" }], include: { tier: true } },
-      },
-    });
-    if (!existing) return;
-
-    // Apply a subtitle edit from the build form (the page pre-fills the
-    // existing subtitle; the admin can rename here).
-    const subtitleRaw = String(formData.get("subtitle") ?? "").trim();
-    const subtitle = subtitleRaw.length > 0 ? subtitleRaw : null;
-    if (subtitle !== existing.subtitle) {
-      await prisma.season.update({ where: { id: existing.id }, data: { subtitle } });
-    }
-
-    // If the season has no tiers yet (admin deferred shape until after
-    // signups closed), create them now from the build form's tier config.
-    if (existing.tiers.length === 0) {
-      const formTiers = parseTierConfig(String(formData.get("config") ?? ""));
-      if (formTiers.length === 0) {
-        // No shape supplied — caller should re-submit the build form with one.
-        return;
-      }
-      for (let i = 0; i < formTiers.length; i++) {
-        const c = formTiers[i]!;
-        const tier = await prisma.tier.create({
-          data: { seasonId: existing.id, position: i + 1, name: c.name },
-        });
-        for (let g = 1; g <= c.divisionCount; g++) {
-          const divisionName = c.divisionCount === 1 ? c.name : `${c.name} ${g}`;
-          await prisma.division.create({
-            data: { seasonId: existing.id, tierId: tier.id, groupNumber: g, name: divisionName },
-          });
-        }
-      }
-      // Re-fetch so the placement loop below sees the freshly-created tiers
-      const refetched = await prisma.season.findUnique({
-        where: { id: existing.id },
-        include: {
-          tiers: { orderBy: { position: "asc" } },
-          divisions: { orderBy: [{ tier: { position: "asc" } }, { groupNumber: "asc" }], include: { tier: true } },
-        },
-      });
-      if (refetched) {
-        existing.tiers = refetched.tiers;
-        existing.divisions = refetched.divisions;
-      }
-    }
-
-    const existingTierConfigs: TierConfig[] = existing.tiers.map((t) => ({
-      name: t.name,
-      divisionCount: existing.divisions.filter((d) => d.tierId === t.id).length,
-    }));
-
-    const plan = planByRating(
-      players.map((p) => ({ id: p.id, discordId: p.discordId, displayName: p.displayName, rating: p.rating })),
-      existingTierConfigs,
-      existing.targetGroupSize,
-    );
-
-    for (const planTier of plan) {
-      const dbTier = existing.tiers.find((t) => t.position === planTier.position);
-      if (!dbTier) continue;
-      const dbDivisions = existing.divisions
-        .filter((d) => d.tierId === dbTier.id)
-        .sort((a, b) => a.groupNumber - b.groupNumber);
-      for (let gi = 0; gi < planTier.divisions.length && gi < dbDivisions.length; gi++) {
-        const division = dbDivisions[gi]!;
-        for (const discordId of planTier.divisions[gi]!) {
-          const player = playerByDiscordId.get(discordId);
-          if (!player) continue;
-          await placePlayerInDivision(division.id, player.id);
-        }
-      }
-    }
-    targetSeasonId = existing.id;
-  } else {
-    // Create-new mode (original behavior)
-    const subtitleRaw = String(formData.get("subtitle") ?? "").trim();
-    const subtitle = subtitleRaw.length > 0 ? subtitleRaw : null;
-    const tiersJson = String(formData.get("config") ?? "");
-    const tiers = parseTierConfig(tiersJson);
-    if (tiers.length === 0) return;
-
-    const targetGroupSize = Math.max(2, parseInt(String(formData.get("targetGroupSize")), 10) || 5);
-    const minGroupSize = Math.max(2, parseInt(String(formData.get("minGroupSize")), 10) || 3);
-    const matchConfigPresetIdRaw = String(formData.get("matchConfigPresetId") ?? "");
-    const matchConfigPresetId = matchConfigPresetIdRaw === "" ? null : matchConfigPresetIdRaw;
-
-
-    const plan = planByRating(
-      players.map((p) => ({ id: p.id, discordId: p.discordId, displayName: p.displayName, rating: p.rating })),
-      tiers,
-      targetGroupSize,
-    );
-
-    const number = await nextSeasonNumber(prisma);
-    const season = await prisma.season.create({
-      data: {
-        number,
-        subtitle,
-        isActive: false,
-        targetGroupSize,
-        minGroupSize,
-        matchConfigPresetId,
-      },
-    });
-
-    for (const planTier of plan) {
-      const tier = await prisma.tier.create({
-        data: { seasonId: season.id, position: planTier.position, name: planTier.tier.name },
-      });
-      for (let gi = 0; gi < planTier.divisions.length; gi++) {
-        const memberDiscordIds = planTier.divisions[gi]!;
-        const divisionName =
-          planTier.tier.divisionCount === 1 && gi === 0
-            ? planTier.tier.name
-            : `${planTier.tier.name} ${gi + 1}`;
-        const division = await prisma.division.create({
-          data: {
-            seasonId: season.id,
-            tierId: tier.id,
-            groupNumber: gi + 1,
-            name: divisionName,
-          },
-        });
-        for (const discordId of memberDiscordIds) {
-          const player = playerByDiscordId.get(discordId);
-          if (!player) continue;
-          await placePlayerInDivision(division.id, player.id);
-        }
-      }
-    }
-    targetSeasonId = season.id;
-  }
-
-  await prisma.signupRound.update({
-    where: { id: roundId },
-    data: { status: "BUILT", resultingSeasonId: targetSeasonId },
-  });
-  // Snapshot the final shape for the audit log so we can see what was
-  // built without diffing against the now-mutable season state.
-  const finalShape = await prisma.season.findUnique({
-    where: { id: targetSeasonId },
-    select: {
-      number: true,
-      subtitle: true,
-      divisions: {
-        select: {
-          name: true,
-          _count: { select: { members: { where: { status: "ACTIVE" } } } },
-        },
-      },
-    },
-  });
-  recordAudit({
+  const result = await buildSeasonFromRound({
+    roundId,
+    subtitle: subtitleRaw.length > 0 ? subtitleRaw : null,
+    config: String(formData.get("config") ?? ""),
+    targetGroupSize: parseInt(String(formData.get("targetGroupSize")), 10) || undefined,
+    minGroupSize: parseInt(String(formData.get("minGroupSize")), 10) || undefined,
+    matchConfigPresetId: matchConfigPresetIdRaw === "" ? null : matchConfigPresetIdRaw,
     actor: actorFromAdminUser(user),
-    action: "season.build",
-    targetType: "Season",
-    targetId: targetSeasonId,
-    summary: `Built season "${finalShape ? formatSeasonLabel(finalShape) : targetSeasonId}" (${finalShape?.divisions.length ?? 0} divisions, ${players.length} signups placed)`,
-    metadata: {
-      roundId,
-      signupCount: players.length,
-      divisions: finalShape?.divisions.map((d) => ({ name: d.name, memberCount: d._count.members })) ?? [],
-    },
   });
+  if (!result) return;
 
   revalidatePath("/admin/signups");
   revalidatePath("/admin/seasons");
@@ -521,5 +253,5 @@ export async function buildSeason(formData: FormData) {
   // the seasons index. The detail page is where admin reviews and
   // tweaks division placements before activating — that's the natural
   // next step in the workflow.
-  redirect(`/seasons/${targetSeasonId}?just-built=1`);
+  redirect(`/seasons/${result.seasonId}?just-built=1`);
 }
