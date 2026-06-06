@@ -197,9 +197,9 @@ function withHelperRow(
 ): { embeds: EmbedBuilder[]; components: ComponentRow[] } {
   if (rendered.components.length >= 5) return rendered;
   const extras: ButtonBuilder[] = [];
-  // Cancel is universal — any non-terminal, non-paused state. Confirms
-  // via an ephemeral menu to avoid accidental clicks. Label flips when
-  // a vote is already in flight so the action is obvious.
+  // Cancel is universal — any non-terminal, non-paused state. It's a
+  // two-click mutual vote (one votes, the other confirms), so a single
+  // click is safe. Styled Danger so it clearly reads as the stop button.
   if (
     session.state !== "WAITING_ACCEPT" &&
     session.state !== "COMPLETE" &&
@@ -209,8 +209,8 @@ function withHelperRow(
     extras.push(
       new ButtonBuilder()
         .setCustomId(`match:cancelmatch:${session.id}`)
-        .setLabel(session.cancelInitiatorPlayerId ? "⛔ Cancel match (1/2)" : "⛔ Cancel match")
-        .setStyle(session.cancelInitiatorPlayerId ? ButtonStyle.Danger : ButtonStyle.Secondary),
+        .setLabel(session.cancelInitiatorPlayerId ? "⛔ Confirm cancel (1/2)" : "⛔ Cancel match")
+        .setStyle(ButtonStyle.Danger),
     );
   }
   // Pause is offered any time after game 1's winner is recorded — i.e.
@@ -315,14 +315,20 @@ function renderWaitingAccept(s: MatchSession, a: Player, b: Player) {
   return { embeds: [embed], components: [row] };
 }
 
-function renderChooseFirst(s: MatchSession, a: Player, b: Player, g1: GameState | null) {
-  if (!g1?.winnerId) return renderError(s, a, b, "Game 1 winner missing");
-  const loserId = g1.winnerId === a.id ? b.id : a.id;
+function renderChooseFirst(s: MatchSession, a: Player, b: Player, prevGame: GameState | null) {
+  if (!prevGame?.winnerId) return renderError(s, a, b, "Previous game winner missing");
+  const nextGameNum = s.state === "GAME_3_CHOOSE_FIRST" ? 3 : 2;
+  const loserId = prevGame.winnerId === a.id ? b.id : a.id;
   const loser = loserId === a.id ? a : b;
   const embed = new EmbedBuilder()
-    .setTitle("🎯 Game 2 — choose who bans first")
-    .setDescription(`${mention(loser)} lost game 1. They pick who bans first in game 2.`)
-    .setColor(0xf1c40f);
+    .setTitle(`🎯 Game ${nextGameNum} — choose who bans first`)
+    .setColor(0xf1c40f)
+    .setDescription(
+      `${mention(loser)} lost game ${nextGameNum - 1} — you pick who bans first.\n\n` +
+        `⚠️ **This also decides who picks the deck.** Whoever bans first shapes the pool, ` +
+        `but the **other** player makes the final pick:\n` +
+        `_first bans 1 → other bans 3 → first bans 3 → **other picks 1 of the last 2**._`,
+    );
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`match:choosefirst:${s.id}:${a.id}`)
