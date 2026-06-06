@@ -72,6 +72,10 @@ async function loadSession(id: string) {
   return prisma.matchSession.findUnique({ where: { id } });
 }
 
+// How long after a helper call before the Call helper button works again.
+// Stops accidental double-pings without permanently locking the button.
+const HELPER_CALL_COOLDOWN_MS = 5 * 60 * 1000;
+
 // In-flight customCombo negotiation: one player proposes a deck+stake,
 // the other can accept / counter / cancel. Stored as JSON on
 // session.customComboProposal. Cleared once accepted (moves into
@@ -1106,10 +1110,14 @@ async function handleWinner(interaction: ButtonInteraction, session: MatchSessio
 // surface as the /helper slash command, just one click away from
 // inside the match flow.
 async function handleCallHelper(interaction: ButtonInteraction, session: MatchSession) {
-  // One helper call per match — don't even open the modal on a re-click.
-  // (A simultaneous double-click is caught atomically at submit time.)
-  if (session.helperCalledAt) {
-    return reply(interaction, "A helper has already been called for this match — they're on the way.");
+  // Cooldown, not a permanent lock: stops accidental double-pings of the
+  // helper role without wedging the button forever (a one-shot lock left
+  // people stuck if the first summon didn't actually reach anyone). After
+  // the window you can call again. A simultaneous double-click is still
+  // caught atomically at submit time.
+  if (session.helperCalledAt && Date.now() - session.helperCalledAt.getTime() < HELPER_CALL_COOLDOWN_MS) {
+    const when = `<t:${Math.floor(session.helperCalledAt.getTime() / 1000)}:R>`;
+    return reply(interaction, `A helper was already called ${when} — give them a few minutes before calling again.`);
   }
   const modal = new ModalBuilder()
     .setCustomId(`match-helper-modal:${session.id}`)
@@ -1135,19 +1143,23 @@ export const callHelperModal = {
       await interaction.reply({ content: "Run this in a server channel, not DMs.", flags: MessageFlags.Ephemeral });
       return;
     }
-    // Atomically claim the one-call slot: the conditional update only
-    // succeeds for the FIRST submit (helperCalledAt still null), so two
+    // Atomically claim the call slot: the conditional update only succeeds
+    // if no helper was called within the cooldown window, so two
     // simultaneous submits can't both ping the helper role. We roll the
     // claim back if the summon itself fails so they can retry.
     const sessionId = interaction.customId.split(":")[1];
     if (sessionId) {
+      const cutoff = new Date(Date.now() - HELPER_CALL_COOLDOWN_MS);
       const claim = await prisma.matchSession.updateMany({
-        where: { id: sessionId, helperCalledAt: null },
+        where: {
+          id: sessionId,
+          OR: [{ helperCalledAt: null }, { helperCalledAt: { lt: cutoff } }],
+        },
         data: { helperCalledAt: new Date() },
       });
       if (claim.count === 0) {
         await interaction.reply({
-          content: "A helper has already been called for this match — they're on the way.",
+          content: "A helper was just called for this match — give them a few minutes before calling again.",
           flags: MessageFlags.Ephemeral,
         });
         return;
