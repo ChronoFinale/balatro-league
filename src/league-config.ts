@@ -103,6 +103,10 @@ export const LeagueConfigKey = {
   // Persisted from /league bootstrap-server; the refresh worker
   // re-edits the pinned message on signup/season events.
   LeagueInfoChannelId: "league_info_channel_id",
+  // Message id of the self-updating league-info message. We edit THIS
+  // message on every refresh (regardless of whether it's currently
+  // pinned) so a lost/removed pin can't make the worker post duplicates.
+  LeagueInfoMessageId: "league_info_message_id",
 } as const;
 
 export type LeagueConfigKey = (typeof LeagueConfigKey)[keyof typeof LeagueConfigKey];

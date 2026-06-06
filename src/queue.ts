@@ -589,27 +589,43 @@ async function refreshLeagueInfoPinned(): Promise<void> {
     return;
   }
   const content = await composeLeagueInfoContent();
+  const botId = client.user?.id;
+  type MiniMsg = { id: string; author: { id: string }; edit: (o: { content: string }) => Promise<unknown>; pin: () => Promise<unknown> };
+  const messages = (channel as {
+    messages: {
+      fetch: (id: string) => Promise<MiniMsg>;
+      fetchPinned: () => Promise<{ values: () => Iterable<MiniMsg> }>;
+    };
+    send: (o: { content: string }) => Promise<MiniMsg>;
+  });
   try {
-    const pinned = await (channel as { messages: { fetchPinned: () => Promise<Map<string, { id: string; author: { id: string }; edit: (o: { content: string }) => Promise<unknown>; }> | unknown> } }).messages.fetchPinned();
-    // discord.js returns a Collection (Map-like). Find the bot's own
-    // pinned message — that's the one to edit.
-    let botMessage: { edit: (o: { content: string }) => Promise<unknown> } | null = null;
-    if (pinned && typeof (pinned as { values?: () => Iterable<unknown> }).values === "function") {
-      for (const msg of (pinned as { values: () => Iterable<{ author: { id: string }; edit: (o: { content: string }) => Promise<unknown> }> }).values()) {
-        if (msg.author.id === client.user?.id) {
-          botMessage = msg;
-          break;
+    // 1. Edit the remembered message if it still exists — keyed on a stored
+    //    id, NOT on pin state, so an unpinned message can't cause a dupe.
+    const storedId = await getConfig(LeagueConfigKey.LeagueInfoMessageId);
+    if (storedId) {
+      const existing = await messages.messages.fetch(storedId).catch(() => null);
+      if (existing && existing.author.id === botId) {
+        await existing.edit({ content });
+        return;
+      }
+    }
+    // 2. No stored id (or it's gone) — adopt an existing pinned bot message
+    //    if there is one (migration path), so we don't post a duplicate.
+    const pinned = await messages.messages.fetchPinned().catch(() => null);
+    if (pinned) {
+      for (const msg of pinned.values()) {
+        if (msg.author.id === botId) {
+          await msg.edit({ content });
+          await setConfig(LeagueConfigKey.LeagueInfoMessageId, msg.id, "league-info.refresh");
+          return;
         }
       }
     }
-    if (botMessage) {
-      await botMessage.edit({ content });
-      console.log(`[league-info.refresh] edited pinned message in ${channelId}`);
-    } else {
-      const sent = await (channel as { send: (o: { content: string }) => Promise<{ id: string; pin: () => Promise<unknown> }> }).send({ content });
-      await sent.pin().catch((err: unknown) => console.warn("[league-info.refresh] pin failed:", err));
-      console.log(`[league-info.refresh] posted + pinned new message in ${channelId}`);
-    }
+    // 3. Nothing to edit — post + pin a new one and remember its id.
+    const sent = await messages.send({ content });
+    await sent.pin().catch((err: unknown) => console.warn("[league-info.refresh] pin failed:", err));
+    await setConfig(LeagueConfigKey.LeagueInfoMessageId, sent.id, "league-info.refresh");
+    console.log(`[league-info.refresh] posted + pinned new message in ${channelId}`);
   } catch (err) {
     console.warn(`[league-info.refresh] failed: ${(err as Error).message}`);
   }
