@@ -17,3 +17,6 @@ prisma/migrations/dev/
 # Claude Code session state
 .claude/
 scripts/out/
+
+# Local DB backups / exports (npm run backup:db / export:full)
+backups/
