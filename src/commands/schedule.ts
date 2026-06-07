@@ -31,7 +31,8 @@ export const schedule: SlashCommand = {
         division: {
           include: {
             members: { include: { player: true } },
-            pairings: {
+            matches: {
+              where: { format: "LEAGUE_BO2" },
               include: { playerA: true, playerB: true },
             },
           },
@@ -58,7 +59,7 @@ export const schedule: SlashCommand = {
     const done: Item[] = [];
 
     for (const opp of opponents) {
-      const p = div.pairings.find(
+      const p = div.matches.find(
         (pr) =>
           (pr.playerAId === me.id && pr.playerBId === opp.id) ||
           (pr.playerAId === opp.id && pr.playerBId === me.id),

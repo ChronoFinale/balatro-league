@@ -61,8 +61,8 @@ async function renderSingleDivision(
       where: { divisionId: division.id },
       include: { player: true },
     }),
-    prisma.pairing.findMany({
-      where: { divisionId: division.id, status: "CONFIRMED" },
+    prisma.match.findMany({
+      where: { divisionId: division.id, status: "CONFIRMED", format: "LEAGUE_BO2" },
       select: { playerAId: true, playerBId: true, gamesWonA: true, gamesWonB: true },
     }),
   ]);
@@ -90,8 +90,8 @@ async function renderAllDivisions(
         orderBy: { groupNumber: "asc" },
         include: {
           members: { include: { player: true } },
-          pairings: {
-            where: { status: "CONFIRMED" },
+          matches: {
+            where: { status: "CONFIRMED", format: "LEAGUE_BO2" },
             select: { playerAId: true, playerBId: true, gamesWonA: true, gamesWonB: true },
           },
         },
@@ -121,12 +121,12 @@ async function renderAllDivisions(
       );
       const rows = computeStandings(
         div.members.map((m) => m.player),
-        div.pairings,
+        div.matches,
       ).map((r) => ({ ...r, dropped: droppedIds.has(r.player.id) }));
       // Compact progress bar: matches played vs expected round-robin total.
       const activeCount = div.members.filter((m) => m.status === "ACTIVE").length;
       const expectedMatches = activeCount < 2 ? 0 : (activeCount * (activeCount - 1)) / 2;
-      const playedMatches = div.pairings.length;
+      const playedMatches = div.matches.length;
       const barWidth = 12;
       const pct = expectedMatches === 0 ? 0 : playedMatches / expectedMatches;
       const filled = Math.round(pct * barWidth);

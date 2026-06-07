@@ -206,7 +206,7 @@ export async function loadEndSeasonPreview(seasonId: string): Promise<EndSeasonP
         include: {
           tier: true,
           members: { include: { player: true } },
-          pairings: { where: { status: "CONFIRMED" } },
+          matches: { where: { status: "CONFIRMED", format: "LEAGUE_BO2" } },
         },
       },
     },
@@ -223,7 +223,7 @@ export async function loadEndSeasonPreview(seasonId: string): Promise<EndSeasonP
         status: m.status,
         currentRating: m.player.rating,
       })),
-      standings: computeStandings(players, d.pairings),
+      standings: computeStandings(players, d.matches),
     };
   });
   const deltas = computeRatingDeltas(season.tiers.length, divisionsForRating);
@@ -231,7 +231,7 @@ export async function loadEndSeasonPreview(seasonId: string): Promise<EndSeasonP
 
   const unfinishedPairings = season.divisions.reduce((sum, d) => {
     const expected = (d.members.length * (d.members.length - 1)) / 2;
-    return sum + Math.max(0, expected - d.pairings.length);
+    return sum + Math.max(0, expected - d.matches.length);
   }, 0);
 
   const divisions: EndSeasonDivisionRow[] = season.divisions.map((d, i): EndSeasonDivisionRow => ({
@@ -422,8 +422,8 @@ export async function loadAdminPlayersDivisionView(
       season: { select: { id: true, number: true, subtitle: true } },
       tier: { select: { name: true, position: true } },
       members: { include: { player: true } },
-      pairings: {
-        where: { status: "CONFIRMED" },
+      matches: {
+        where: { status: "CONFIRMED", format: "LEAGUE_BO2" },
         select: { playerAId: true, playerBId: true, gamesWonA: true, gamesWonB: true },
       },
     },
@@ -432,7 +432,7 @@ export async function loadAdminPlayersDivisionView(
 
   const standings = computeStandings(
     division.members.map((m) => m.player),
-    division.pairings,
+    division.matches,
   );
   const standingByPlayer = new Map(
     standings.map((r, i) => [r.player.id, { rank: i + 1, points: r.points, wins: r.wins, draws: r.draws, losses: r.losses }]),
@@ -442,7 +442,7 @@ export async function loadAdminPlayersDivisionView(
   const rowFor = (m: typeof division.members[number]): AdminDivisionMemberRow => {
     const s = standingByPlayer.get(m.playerId);
     const playedThisPlayer = new Set(
-      division.pairings
+      division.matches
         .filter((p) => p.playerAId === m.playerId || p.playerBId === m.playerId)
         .map((p) => (p.playerAId === m.playerId ? p.playerBId : p.playerAId)),
     );
@@ -781,8 +781,8 @@ export async function loadBuildSeasonPage(roundId: string): Promise<BuildSeasonR
           tier: true,
           season: { select: { id: true, number: true, subtitle: true, startedAt: true } },
           members: { where: { status: "ACTIVE" }, include: { player: true } },
-          pairings: {
-            where: { status: "CONFIRMED" },
+          matches: {
+            where: { status: "CONFIRMED", format: "LEAGUE_BO2" },
             select: { playerAId: true, playerBId: true, gamesWonA: true, gamesWonB: true },
           },
         },
@@ -802,7 +802,7 @@ export async function loadBuildSeasonPage(roundId: string): Promise<BuildSeasonR
     const div = m.division;
     let rows = standingsByDivisionId.get(div.id);
     if (!rows) {
-      rows = computeStandings(div.members.map((mm) => mm.player), div.pairings);
+      rows = computeStandings(div.members.map((mm) => mm.player), div.matches);
       standingsByDivisionId.set(div.id, rows);
     }
     const rank = rows.findIndex((r) => r.player.id === m.playerId) + 1;
@@ -920,7 +920,7 @@ async function fetchAdminSeasonDetail(id: string) {
             include: { player: true },
             orderBy: [{ draftOrder: "asc" }, { joinedAt: "asc" }],
           },
-          pairings: { where: { status: "CONFIRMED" } },
+          matches: { where: { status: "CONFIRMED", format: "LEAGUE_BO2" } },
         },
       },
       matchConfigPreset: true,
@@ -981,7 +981,7 @@ export async function loadAdminSeasonDetail(
   }));
   const initialTiers = lastUsed ? parseTemplateConfig(lastUsed.config) : DEFAULT_TIERS_FALLBACK;
   const totalMembers = season.divisions.reduce((sum, d) => sum + d.members.length, 0);
-  const totalConfirmed = season.divisions.reduce((sum, d) => sum + d.pairings.length, 0);
+  const totalConfirmed = season.divisions.reduce((sum, d) => sum + d.matches.length, 0);
   const totalExpected = season.divisions.reduce((sum, d) => {
     const n = d.members.filter((m) => m.status === "ACTIVE").length;
     return sum + (n < 2 ? 0 : (n * (n - 1)) / 2);

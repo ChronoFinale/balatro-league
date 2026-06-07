@@ -58,9 +58,9 @@ export async function loadPlayerHistory(playerId: string): Promise<PlayerHistory
           season: true,
           tier: true,
           members: { include: { player: true } },
-          // Full pairings (for match list rendering); we still filter to CONFIRMED below
-          pairings: {
-            where: { status: "CONFIRMED" },
+          // Confirmed BO2 matches (for the match list); shootouts excluded.
+          matches: {
+            where: { status: "CONFIRMED", format: "LEAGUE_BO2" },
             include: { playerA: true, playerB: true },
             orderBy: { confirmedAt: "asc" },
           },
@@ -74,7 +74,7 @@ export async function loadPlayerHistory(playerId: string): Promise<PlayerHistory
   for (const m of memberships) {
     const rows = computeStandings(
       m.division.members.map((mm) => mm.player),
-      m.division.pairings.map((p) => ({
+      m.division.matches.map((p) => ({
         playerAId: p.playerAId,
         playerBId: p.playerBId,
         gamesWonA: p.gamesWonA,
@@ -86,7 +86,7 @@ export async function loadPlayerHistory(playerId: string): Promise<PlayerHistory
 
     // Per-set list for THIS player in THIS division
     const myMatches: MatchEntry[] = [];
-    for (const p of m.division.pairings) {
+    for (const p of m.division.matches) {
       if (p.playerAId !== playerId && p.playerBId !== playerId) continue;
       const meIsA = p.playerAId === playerId;
       const opponent = meIsA ? p.playerB : p.playerA;

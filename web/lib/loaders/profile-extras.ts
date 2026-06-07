@@ -265,7 +265,10 @@ async function loadAdminRecordContext(playerId: string): Promise<AdminRecordCont
       division: {
         include: {
           members: { where: { status: "ACTIVE" }, include: { player: true } },
-          pairings: { where: { status: "CONFIRMED" }, select: { playerAId: true, playerBId: true } },
+          matches: {
+            where: { status: "CONFIRMED", format: "LEAGUE_BO2" },
+            select: { playerAId: true, playerBId: true },
+          },
         },
       },
     },
@@ -273,7 +276,7 @@ async function loadAdminRecordContext(playerId: string): Promise<AdminRecordCont
   if (!membership) return null;
   const div = membership.division;
   const played = new Set(
-    div.pairings
+    div.matches
       .filter((p) => p.playerAId === playerId || p.playerBId === playerId)
       .map((p) => (p.playerAId === playerId ? p.playerBId : p.playerAId)),
   );
