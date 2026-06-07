@@ -12,7 +12,7 @@ import { prisma } from "../db.js";
 import { getLeagueSettingsForSeason } from "../league-settings.js";
 import { bootstrapPresetsAndPointers, presetForSeason } from "../match-config.js";
 import { renderMatch } from "../match-render.js";
-import { getOrCreatePlayer } from "../players.js";
+import { getOrCreatePlayer, guildDisplayName } from "../players.js";
 import type { SlashCommand } from "./types.js";
 
 const MODE_CHOICES = [
@@ -61,7 +61,7 @@ export const startMatch: SlashCommand = {
       return;
     }
 
-    const me = await getOrCreatePlayer(interaction.user);
+    const me = await getOrCreatePlayer(interaction.user, guildDisplayName(interaction));
     const opp = await getOrCreatePlayer(opponentUser);
 
     // Both must be in the same division this season

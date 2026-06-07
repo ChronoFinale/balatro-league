@@ -15,7 +15,7 @@ import { enqueueAnnounceResult } from "../queue.js";
 import { CANONICAL_DECKS, CANONICAL_STAKES } from "../balatro-info.js";
 import { prisma } from "../db.js";
 import { spawnDisputeThread } from "../dispute-thread.js";
-import { getOrCreatePlayer } from "../players.js";
+import { getOrCreatePlayer, guildDisplayName } from "../players.js";
 import { enqueueReportAutoConfirm } from "../queue.js";
 import { buildReportEmbed, postPendingReport } from "../report-flow.js";
 import { confirmSet, disputeSet, reportSet } from "../reporting.js";
@@ -82,7 +82,7 @@ export const report: SlashCommand = {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const reporter = await getOrCreatePlayer(interaction.user);
+    const reporter = await getOrCreatePlayer(interaction.user, guildDisplayName(interaction));
     const opponent = await getOrCreatePlayer(opponentUser);
 
     const r = await reportSet({
@@ -165,7 +165,7 @@ export const reportButtons: ButtonHandler = {
       return;
     }
 
-    const actor = await getOrCreatePlayer(interaction.user);
+    const actor = await getOrCreatePlayer(interaction.user, guildDisplayName(interaction));
     const r = await confirmSet(pairingId, actor.id);
     if (!r.ok) {
       await interaction.reply({ content: r.reason, flags: MessageFlags.Ephemeral });
@@ -273,13 +273,13 @@ export const disputeModal: ModalHandler = {
         await interaction.reply({ content: "Match not found.", flags: MessageFlags.Ephemeral });
         return;
       }
-      const actor = await getOrCreatePlayer(interaction.user);
+      const actor = await getOrCreatePlayer(interaction.user, guildDisplayName(interaction));
       const actorIsA = p.playerAId === actor.id;
       proposedGamesWonA = actorIsA ? fromActorPov.a : fromActorPov.b;
       proposedGamesWonB = actorIsA ? fromActorPov.b : fromActorPov.a;
     }
 
-    const actor = await getOrCreatePlayer(interaction.user);
+    const actor = await getOrCreatePlayer(interaction.user, guildDisplayName(interaction));
     const r = await disputeSet(pairingId, actor.id, {
       reason: reason || undefined,
       proposedGamesWonA,

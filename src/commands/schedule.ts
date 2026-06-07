@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import { activePublicSeason } from "../active-season.js";
 import { prisma } from "../db.js";
-import { getOrCreatePlayer } from "../players.js";
+import { getOrCreatePlayer, guildDisplayName } from "../players.js";
 import { formatSeasonLabel } from "../format-season.js";
 import type { SlashCommand } from "./types.js";
 
@@ -18,7 +18,7 @@ export const schedule: SlashCommand = {
   async execute(interaction: ChatInputCommandInteraction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const me = await getOrCreatePlayer(interaction.user);
+    const me = await getOrCreatePlayer(interaction.user, guildDisplayName(interaction));
     const activeSeason = await activePublicSeason();
     if (!activeSeason) {
       await interaction.editReply("No active season right now.");

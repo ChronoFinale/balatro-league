@@ -15,7 +15,7 @@ import { resolveChallengesChannelId } from "../challenges-channel.js";
 import { prisma } from "../db.js";
 import { getLeagueSettings } from "../league-settings.js";
 import { renderMatch } from "../match-render.js";
-import { getOrCreatePlayer } from "../players.js";
+import { getOrCreatePlayer, guildDisplayName } from "../players.js";
 import type { SlashCommand } from "./types.js";
 
 const BO_CHOICES = [
@@ -61,7 +61,7 @@ export const challenge: SlashCommand = {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const me = await getOrCreatePlayer(interaction.user);
+    const me = await getOrCreatePlayer(interaction.user, guildDisplayName(interaction));
     const opp = await getOrCreatePlayer(opponentUser);
 
     // Refuse if there's an in-flight session between them (league OR casual)

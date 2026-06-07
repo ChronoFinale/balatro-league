@@ -5,7 +5,7 @@ import {
   type ChatInputCommandInteraction,
 } from "discord.js";
 import { prisma } from "../db.js";
-import { getOrCreatePlayer } from "../players.js";
+import { getOrCreatePlayer, guildDisplayName } from "../players.js";
 import { loadPlayerHistory } from "../profile.js";
 import type { SlashCommand } from "./types.js";
 
@@ -34,7 +34,7 @@ export const profile: SlashCommand = {
     if (!player) {
       // Auto-create from Discord if it's the caller looking up themselves
       if (user.id === interaction.user.id) {
-        await getOrCreatePlayer(user);
+        await getOrCreatePlayer(user, guildDisplayName(interaction));
       } else {
         await interaction.editReply(`${user.username} isn't registered in the league.`);
         return;
