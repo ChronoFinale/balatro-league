@@ -54,8 +54,15 @@ export async function reportSet(input: ReportInput): Promise<ReportResult> {
   const gamesWonA = reporterIsA ? games.a : games.b;
   const gamesWonB = reporterIsA ? games.b : games.a;
 
-  const existing = await prisma.pairing.findUnique({
-    where: { divisionId_playerAId_playerBId: { divisionId: division.id, playerAId, playerBId } },
+  const existing = await prisma.match.findUnique({
+    where: {
+      divisionId_playerAId_playerBId_format: {
+        divisionId: division.id,
+        playerAId,
+        playerBId,
+        format: "LEAGUE_BO2",
+      },
+    },
   });
 
   if (existing && existing.status === "CONFIRMED") {
@@ -79,7 +86,7 @@ export async function reportSet(input: ReportInput): Promise<ReportResult> {
   const reportedDeck = input.deck?.trim() || null;
   const reportedStake = input.stake?.trim() || null;
   const pairing = existing
-    ? await prisma.pairing.update({
+    ? await prisma.match.update({
         where: { id: existing.id },
         data: {
           gamesWonA,
@@ -92,11 +99,12 @@ export async function reportSet(input: ReportInput): Promise<ReportResult> {
           reportedStake,
         },
       })
-    : await prisma.pairing.create({
+    : await prisma.match.create({
         data: {
           divisionId: division.id,
           playerAId,
           playerBId,
+          format: "LEAGUE_BO2",
           gamesWonA,
           gamesWonB,
           status: "PENDING",
@@ -116,7 +124,7 @@ export type ResolveResult =
 
 // confirmSet / disputeSet: actor must be the OPPONENT (not the reporter)
 export async function confirmSet(pairingId: string, actorPlayerId: string): Promise<ResolveResult> {
-  const pairing = await prisma.pairing.findUnique({
+  const pairing = await prisma.match.findUnique({
     where: { id: pairingId },
     include: { playerA: true, playerB: true },
   });
@@ -130,7 +138,7 @@ export async function confirmSet(pairingId: string, actorPlayerId: string): Prom
   if (pairing.playerAId !== actorPlayerId && pairing.playerBId !== actorPlayerId) {
     return { ok: false, reason: "You're not part of this match." };
   }
-  await prisma.pairing.update({
+  await prisma.match.update({
     where: { id: pairingId },
     data: { status: "CONFIRMED", confirmedAt: new Date() },
   });
@@ -160,7 +168,7 @@ export async function disputeSet(
   actorPlayerId: string,
   opts: DisputeOptions = {},
 ): Promise<ResolveResult> {
-  const pairing = await prisma.pairing.findUnique({ where: { id: pairingId } });
+  const pairing = await prisma.match.findUnique({ where: { id: pairingId } });
   if (!pairing) return { ok: false, reason: "Match not found." };
   if (pairing.status === "CANCELLED") {
     return { ok: false, reason: "This match was cancelled — nothing to dispute." };
@@ -189,7 +197,7 @@ export async function disputeSet(
     }
   }
 
-  await prisma.pairing.update({
+  await prisma.match.update({
     where: { id: pairingId },
     data: {
       status: "DISPUTED",
