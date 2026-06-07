@@ -15,10 +15,10 @@
 // the 🎲 random buttons (so the Rando Brando trait can surface), and a few
 // drawn pairs also get a Shootout row. Deterministic (seeded RNG).
 
-import { MatchSessionState } from "@prisma/client";
 import { prisma } from "./db.js";
 import { generatePool, presetForSeason } from "./match-config.js";
 import { recomputeDivisionStandings } from "./standings-cache.js";
+import { writeMatchGames } from "./match-write.js";
 import defaults from "./data/match-defaults.json" with { type: "json" };
 import type { GameState } from "./match-session.js";
 import type { DeckEntry } from "./match-config.js";
@@ -264,8 +264,7 @@ export async function seedTestMatches(opts: SeedMatchesOptions): Promise<SeedMat
   if (opts.reset) {
     const divIds = divisions.map((d) => d.id);
     await prisma.matchSession.deleteMany({ where: { divisionId: { in: divIds } } });
-    await prisma.pairing.deleteMany({ where: { divisionId: { in: divIds } } });
-    await prisma.shootout.deleteMany({ where: { divisionId: { in: divIds } } });
+    await prisma.match.deleteMany({ where: { divisionId: { in: divIds } } });
   }
 
   // Deck/stake pool source: the season's preset, else the canonical defaults.
@@ -360,20 +359,21 @@ export async function seedTestMatches(opts: SeedMatchesOptions): Promise<SeedMat
     }
   }
 
-  // Phase B — parallel writes. Each prepared match is an independent
-  // pairing(+session+shootout) triple, so we fan them out with a bounded
-  // concurrency (keeps the Prisma connection pool from being swamped).
-  // Pairing is created first so the session can link pairingId on create —
-  // no second UPDATE round-trip.
+  // Phase B — parallel writes. Each prepared match becomes a Match (+ its
+  // Game/GameDeck rows via writeMatchGames), plus an optional shootout Match.
+  // Bounded concurrency keeps the Prisma connection pool from being swamped.
   const shootoutsMade = prepared.filter((p) => p.shootoutWinnerId).length;
   await runWithConcurrency(prepared, WRITE_CONCURRENCY, async (p) => {
-    const pairing = await prisma.pairing.create({
+    const winnerId = p.winsA > p.winsB ? p.canonA : p.winsB > p.winsA ? p.canonB : null;
+    const match = await prisma.match.create({
       data: {
         divisionId: p.divisionId,
         playerAId: p.canonA,
         playerBId: p.canonB,
+        format: "LEAGUE_BO2",
         gamesWonA: p.winsA,
         gamesWonB: p.winsB,
+        winnerId,
         status: "CONFIRMED",
         reporterId: p.canonA,
         reportedAt: p.playedAt,
@@ -381,30 +381,26 @@ export async function seedTestMatches(opts: SeedMatchesOptions): Promise<SeedMat
         hadDc: p.hadDc,
       },
     });
-    await prisma.matchSession.create({
-      data: {
-        divisionId: p.divisionId,
-        playerAId: p.pA,
-        playerBId: p.pB,
-        state: MatchSessionState.COMPLETE,
-        bestOf: 2,
-        game1: JSON.stringify(p.games[0]),
-        game2: JSON.stringify(p.games[1]),
-        completedAt: p.playedAt,
-        pairingId: pairing.id,
-      },
-    });
+    await writeMatchGames(match.id, p.canonA, p.canonB, p.games);
     if (p.shootoutWinnerId) {
-      await prisma.shootout.create({
+      const sWinA = p.shootoutWinnerId === p.canonA ? 1 : 0;
+      const sWinB = p.shootoutWinnerId === p.canonB ? 1 : 0;
+      const shootout = await prisma.match.create({
         data: {
           divisionId: p.divisionId,
           playerAId: p.canonA,
           playerBId: p.canonB,
+          format: "SHOOTOUT_BO1",
+          gamesWonA: sWinA,
+          gamesWonB: sWinB,
           winnerId: p.shootoutWinnerId,
+          status: "CONFIRMED",
+          reportedAt: p.playedAt,
+          confirmedAt: p.playedAt,
           recordedBy: "seed-test-matches",
-          game: p.shootoutGame ? JSON.stringify(p.shootoutGame) : undefined,
         },
       });
+      if (p.shootoutGame) await writeMatchGames(shootout.id, p.canonA, p.canonB, [p.shootoutGame]);
     }
   });
   const pairingsMade = prepared.length;

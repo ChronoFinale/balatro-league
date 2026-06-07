@@ -10,7 +10,6 @@
 
 import { prisma } from "./db.js";
 import { getLeagueSettingsForSeason } from "./league-settings.js";
-import { projectDivisionMatches } from "./match-projection.js";
 import { computeStandings, type StandingRow } from "./standings.js";
 
 interface CachedRow {
@@ -28,13 +27,6 @@ interface CachedRow {
 }
 
 export async function recomputeDivisionStandings(divisionId: string): Promise<void> {
-  // Transitional projection: keep the unified Match model current FIRST (it's
-  // still derived from Pairing/Shootout until the writers cut over), THEN
-  // compute standings from it. Best-effort — a projection failure must never
-  // break the standings cache. Removed once writers populate Match directly.
-  await projectDivisionMatches(divisionId).catch((err) =>
-    console.warn(`[match-projection] division ${divisionId} failed:`, err),
-  );
   const div = await prisma.division.findUnique({
     where: { id: divisionId },
     include: {
@@ -83,9 +75,7 @@ export async function loadDivisionStandings(divisionId: string): Promise<Standin
   const cached = await prisma.divisionStandings.findUnique({ where: { divisionId } });
   if (!cached) {
     // Cold cache: compute + populate, return the freshly computed rows.
-    // Skips the inevitable double-read by computing locally first. Project
-    // first so Match is current (transitional — see recompute).
-    await projectDivisionMatches(divisionId).catch(() => {});
+    // Skips the inevitable double-read by computing locally first.
     const div = await prisma.division.findUnique({
       where: { id: divisionId },
       include: {

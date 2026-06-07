@@ -108,8 +108,7 @@ async function resetDemos(): Promise<void> {
   const divIds = seasons.flatMap((s) => s.divisions.map((d) => d.id));
   if (divIds.length) {
     await prisma.matchSession.deleteMany({ where: { divisionId: { in: divIds } } });
-    await prisma.pairing.deleteMany({ where: { divisionId: { in: divIds } } });
-    await prisma.shootout.deleteMany({ where: { divisionId: { in: divIds } } });
+    await prisma.match.deleteMany({ where: { divisionId: { in: divIds } } });
     await prisma.divisionStandings.deleteMany({ where: { divisionId: { in: divIds } } });
   }
   if (seasonIds.length) {
