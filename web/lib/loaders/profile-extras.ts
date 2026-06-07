@@ -42,7 +42,11 @@ export interface ProfileBmpSnapshot {
 export interface AdminRecordContext {
   divisionId: string;
   divisionName: string;
+  // Unplayed opponents — for the quick "record a set" form.
   opponents: Array<{ playerId: string; displayName: string }>;
+  // Every active opponent (played or not) — for the DQ tool, which upserts
+  // and so can overwrite an already-recorded result in place.
+  allOpponents: Array<{ playerId: string; displayName: string }>;
 }
 
 // Active-season division context for the profile OWNER — drives the
@@ -284,5 +288,8 @@ async function loadAdminRecordContext(playerId: string): Promise<AdminRecordCont
   const opponents = div.members
     .filter((m) => m.playerId !== playerId && !played.has(m.playerId))
     .map((m) => ({ playerId: m.playerId, displayName: m.player.displayName }));
-  return { divisionId: div.id, divisionName: div.name, opponents };
+  const allOpponents = div.members
+    .filter((m) => m.playerId !== playerId)
+    .map((m) => ({ playerId: m.playerId, displayName: m.player.displayName }));
+  return { divisionId: div.id, divisionName: div.name, opponents, allOpponents };
 }

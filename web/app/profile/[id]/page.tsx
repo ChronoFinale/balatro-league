@@ -373,44 +373,56 @@ export default async function ProfilePage({
           </div>
         )}
 
-        {adminCtx && adminCtx.opponents.length > 0 && (
+        {adminCtx && adminCtx.allOpponents.length > 0 && (
           <div className="card" style={{ borderColor: "#f1c40f" }}>
             <strong style={{ color: "#f1c40f" }}>⚙ Admin: record a match for {profile.player.displayName}</strong>
-            <p className="muted" style={{ fontSize: 12 }}>
-              In <strong>{adminCtx.divisionName}</strong>. Only unplayed opponents shown — to override
-              an already-recorded set, use the division admin page.
-            </p>
-            <form action={recordSetForPlayer} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <input type="hidden" name="divisionId" value={adminCtx.divisionId} />
-              <input type="hidden" name="playerId" value={profile.player.id} />
-              <select name="opponentId" required style={{ flex: "1 1 200px" }}>
-                <option value="">— pick opponent —</option>
-                {adminCtx.opponents.map((o) => (
-                  <option key={o.playerId} value={o.playerId}>{o.displayName}</option>
-                ))}
-              </select>
-              <select name="result" defaultValue="2-0">
-                <option value="2-0">{profile.player.displayName} won 2-0</option>
-                <option value="1-1">1-1 draw</option>
-                <option value="0-2">{profile.player.displayName} lost 0-2</option>
-              </select>
-              <button type="submit">Record</button>
-            </form>
+            {adminCtx.opponents.length > 0 ? (
+              <>
+                <p className="muted" style={{ fontSize: 12 }}>
+                  In <strong>{adminCtx.divisionName}</strong>. Only unplayed opponents shown — to override
+                  an already-recorded set, use the DQ tool below or the division admin page.
+                </p>
+                <form action={recordSetForPlayer} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <input type="hidden" name="divisionId" value={adminCtx.divisionId} />
+                  <input type="hidden" name="playerId" value={profile.player.id} />
+                  <select name="opponentId" required style={{ flex: "1 1 200px" }}>
+                    <option value="">— pick opponent —</option>
+                    {adminCtx.opponents.map((o) => (
+                      <option key={o.playerId} value={o.playerId}>{o.displayName}</option>
+                    ))}
+                  </select>
+                  <select name="result" defaultValue="2-0">
+                    <option value="2-0">{profile.player.displayName} won 2-0</option>
+                    <option value="1-1">1-1 draw</option>
+                    <option value="0-2">{profile.player.displayName} lost 0-2</option>
+                  </select>
+                  <button type="submit">Record</button>
+                </form>
+              </>
+            ) : (
+              <p className="muted" style={{ fontSize: 12 }}>
+                In <strong>{adminCtx.divisionName}</strong>. All opponents played — use the DQ tool below
+                to record or fix a forfeit.
+              </p>
+            )}
 
-            {/* Forfeit / DQ — a 2-0 win awarded without playing it out. Public
-                UI shows "by DQ"; the reason here is admin-only. */}
-            <details style={{ marginTop: 10 }}>
-              <summary style={{ cursor: "pointer", fontSize: 13 }}>⚖ Record a forfeit / DQ (2-0)</summary>
+            {/* Forfeit / DQ — a 2-0 win awarded without playing it out. Lists
+                ALL opponents (played or not) and upserts, so it both records a
+                new DQ and FIXES a wrong one in place. Public UI shows "by DQ";
+                the reason here is admin-only. */}
+            <details style={{ marginTop: 10 }} open={adminCtx.opponents.length === 0}>
+              <summary style={{ cursor: "pointer", fontSize: 13 }}>⚖ Record / fix a forfeit / DQ (2-0)</summary>
               <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>
-                Awards a 2-0 win by default (no-show, drop-out, rule violation). The reason is
-                <strong> admin-only</strong> — other players only see &ldquo;by DQ&rdquo;.
+                Awards a 2-0 win by default (no-show, drop-out, rule violation). Works on any opponent —
+                played or not — so to fix a wrong DQ just pick the right winner and submit again. The
+                reason is <strong>admin-only</strong> — other players only see &ldquo;by DQ&rdquo;.
               </p>
               <form action={recordForfeitForPlayer} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 <input type="hidden" name="divisionId" value={adminCtx.divisionId} />
                 <input type="hidden" name="playerId" value={profile.player.id} />
                 <select name="opponentId" required style={{ flex: "1 1 180px" }}>
                   <option value="">— pick opponent —</option>
-                  {adminCtx.opponents.map((o) => (
+                  {adminCtx.allOpponents.map((o) => (
                     <option key={o.playerId} value={o.playerId}>{o.displayName}</option>
                   ))}
                 </select>
