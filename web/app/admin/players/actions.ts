@@ -8,6 +8,7 @@ import { requireAdmin } from "@/lib/admin";
 import { enqueueAnnounceResult, enqueueMmrSnapshot } from "@/lib/queue";
 import { placePlayerInDivision } from "@/lib/division-membership";
 import { recomputeDivisionStandings } from "@/lib/standings-cache";
+import { actorFromAdminUser, recordAudit } from "@/lib/audit";
 
 type Result = "2-0" | "1-1" | "0-2";
 
@@ -92,6 +93,78 @@ export async function recordSetForPlayer(formData: FormData) {
       adminOverrideBy: "admin-players-page",
       adminOverrideReason: "recorded via /admin/players (overwrite)",
     },
+  });
+  enqueueAnnounceResult(recorded.id).catch(() => {});
+  recomputeDivisionStandings(divisionId).catch(() => {});
+  revalidatePath("/admin/players");
+  revalidatePath(`/divisions/${divisionId}`);
+}
+
+// Award a 2-0 win by forfeit / DQ between this player and an opponent. Same
+// upsert as recordSetForPlayer, but forces 2-0 to the chosen winner and flags
+// the match as a forfeit. `reason` is admin-only (stored on forfeitReason +
+// audit) — never shown to other players; the public UI only shows "by DQ".
+export async function recordForfeitForPlayer(formData: FormData) {
+  const { user } = await requireAdmin();
+  const divisionId = String(formData.get("divisionId") ?? "");
+  const playerId = String(formData.get("playerId") ?? "");
+  const opponentId = String(formData.get("opponentId") ?? "");
+  const side = String(formData.get("winner") ?? ""); // "self" | "opponent"
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!divisionId || !playerId || !opponentId || playerId === opponentId) return;
+  if (side !== "self" && side !== "opponent") return;
+  if (!reason) return;
+
+  const winnerId = side === "self" ? playerId : opponentId;
+  const [canonA, canonB] = playerId < opponentId ? [playerId, opponentId] : [opponentId, playerId];
+  const winnerIsA = winnerId === canonA;
+  const gamesWonA = winnerIsA ? 2 : 0;
+  const gamesWonB = winnerIsA ? 0 : 2;
+
+  const recorded = await prisma.match.upsert({
+    where: {
+      divisionId_playerAId_playerBId_format: {
+        divisionId,
+        playerAId: canonA,
+        playerBId: canonB,
+        format: "LEAGUE_BO2",
+      },
+    },
+    create: {
+      divisionId,
+      playerAId: canonA,
+      playerBId: canonB,
+      format: "LEAGUE_BO2",
+      gamesWonA,
+      gamesWonB,
+      winnerId,
+      status: "CONFIRMED",
+      reportedAt: new Date(),
+      confirmedAt: new Date(),
+      adminOverrideBy: "admin-profile-page",
+      adminOverrideReason: "forfeit / DQ",
+      forfeit: true,
+      forfeitReason: reason,
+    },
+    update: {
+      gamesWonA,
+      gamesWonB,
+      winnerId,
+      status: "CONFIRMED",
+      confirmedAt: new Date(),
+      adminOverrideBy: "admin-profile-page",
+      adminOverrideReason: "forfeit / DQ",
+      forfeit: true,
+      forfeitReason: reason,
+    },
+  });
+  recordAudit({
+    actor: actorFromAdminUser(user),
+    action: "match.forfeit",
+    targetType: "Match",
+    targetId: recorded.id,
+    summary: `Forfeit win recorded (2-0 by DQ), winner ${winnerId}`,
+    metadata: { winnerId, loserId: winnerId === playerId ? opponentId : playerId, reason, divisionId },
   });
   enqueueAnnounceResult(recorded.id).catch(() => {});
   recomputeDivisionStandings(divisionId).catch(() => {});

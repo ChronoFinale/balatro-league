@@ -82,6 +82,19 @@ export const admin: SlashCommand = {
     )
     .addSubcommand((sub) =>
       sub
+        .setName("forfeit")
+        .setDescription("Award a 2-0 win by forfeit / DQ (no-show, drop-out, rule violation).")
+        .addUserOption((opt) => opt.setName("winner").setDescription("Player who wins by default").setRequired(true))
+        .addUserOption((opt) => opt.setName("loser").setDescription("Player who forfeited / was DQ'd").setRequired(true))
+        .addStringOption((opt) =>
+          opt
+            .setName("reason")
+            .setDescription("Admin-only reason (recorded for audit, NOT shown to other players)")
+            .setRequired(true),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub
         .setName("join-match")
         .setDescription("Add yourself to a private match channel to mediate a dispute.")
         .addStringOption((opt) =>
@@ -166,6 +179,7 @@ export const admin: SlashCommand = {
     // confirmed pairing or dump league state.
     if (!(await requireAdmin(interaction))) return;
     if (sub === "override-result") return forceResult(interaction);
+    if (sub === "forfeit") return recordForfeit(interaction);
     if (sub === "export-results") return exportResults(interaction);
     if (sub === "reload-emojis") return reloadEmojis(interaction);
     if (sub === "cancel-match") return cancelMatch(interaction);
@@ -686,6 +700,102 @@ async function recordPairing(interaction: ChatInputCommandInteraction) {
     `Recorded: **${p1User.username} ${games.a}-${games.b} ${p2User.username}** in **${division.name}**.` +
       (reason ? `\nReason: ${reason}` : "") +
       (liveSession ? `\nClosed the in-progress match${closedThread ? " and its thread" : ""}.` : ""),
+  );
+}
+
+// Award a 2-0 win by forfeit / DQ. Same write as a record-set, but forces
+// the score to 2-0 for the winner and flags the match as a forfeit. The
+// reason is admin-only (stored on forfeitReason / audit) — the public
+// announce + standings just show "by DQ", never the reason.
+async function recordForfeit(interaction: ChatInputCommandInteraction) {
+  const winnerUser = interaction.options.getUser("winner", true);
+  const loserUser = interaction.options.getUser("loser", true);
+  const reason = interaction.options.getString("reason", true).trim();
+  if (winnerUser.id === loserUser.id) {
+    await interaction.reply({ content: "Winner and loser must be different players.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const activeSeason = await prisma.season.findFirst({ where: { isActive: true } });
+  if (!activeSeason) {
+    await interaction.editReply("No active season.");
+    return;
+  }
+
+  const winner = await getOrCreatePlayer(winnerUser);
+  const loser = await getOrCreatePlayer(loserUser);
+
+  const shared = await prisma.divisionMember.findFirst({
+    where: { playerId: winner.id, division: { seasonId: activeSeason.id } },
+    include: { division: { include: { members: { where: { playerId: loser.id } } } } },
+  });
+  if (!shared || shared.division.members.length === 0) {
+    await interaction.editReply(
+      `${winnerUser.username} and ${loserUser.username} aren't in the same division this season.`,
+    );
+    return;
+  }
+  const division = shared.division;
+
+  const [playerAId, playerBId] = winner.id < loser.id ? [winner.id, loser.id] : [loser.id, winner.id];
+  const winnerIsA = winner.id === playerAId;
+  const gamesWonA = winnerIsA ? 2 : 0;
+  const gamesWonB = winnerIsA ? 0 : 2;
+
+  const upserted = await prisma.match.upsert({
+    where: {
+      divisionId_playerAId_playerBId_format: {
+        divisionId: division.id,
+        playerAId,
+        playerBId,
+        format: "LEAGUE_BO2",
+      },
+    },
+    create: {
+      divisionId: division.id,
+      playerAId,
+      playerBId,
+      format: "LEAGUE_BO2",
+      gamesWonA,
+      gamesWonB,
+      winnerId: winner.id,
+      status: "CONFIRMED",
+      reporterId: null,
+      reportedAt: new Date(),
+      confirmedAt: new Date(),
+      adminOverrideBy: interaction.user.id,
+      adminOverrideReason: "forfeit / DQ",
+      forfeit: true,
+      forfeitReason: reason,
+    },
+    update: {
+      gamesWonA,
+      gamesWonB,
+      winnerId: winner.id,
+      status: "CONFIRMED",
+      confirmedAt: new Date(),
+      adminOverrideBy: interaction.user.id,
+      adminOverrideReason: "forfeit / DQ",
+      forfeit: true,
+      forfeitReason: reason,
+    },
+  });
+  enqueueAnnounceResult(upserted.id).catch(() => {});
+  recomputeDivisionStandings(division.id).catch(() => {});
+  recordAudit({
+    actor: actorFromInteractionUser(interaction.user),
+    action: "match.forfeit",
+    targetType: "Match",
+    targetId: upserted.id,
+    summary: `Forfeit: ${winner.displayName} def. ${loser.displayName} 2-0 by DQ in ${division.name}`,
+    metadata: { winnerId: winner.id, loserId: loser.id, reason, divisionId: division.id, seasonId: activeSeason.id },
+  });
+
+  await interaction.editReply(
+    `✅ Recorded **${winner.displayName}** def. **${loser.displayName}** — **2-0 by DQ** in **${division.name}**.\n` +
+      `Reason (admin-only): _${reason}_`,
   );
 }
 

@@ -32,6 +32,7 @@ export interface DivisionRecentPairing {
   playerB: { id: string; displayName: string };
   gamesWonA: number;
   gamesWonB: number;
+  forfeit: boolean;
 }
 
 // One row per shootout in this division. Surfaced as its own list on
@@ -120,6 +121,7 @@ export async function loadDivisionPageData(divisionId: string): Promise<Division
       playerBId: true,
       gamesWonA: true,
       gamesWonB: true,
+      forfeit: true,
       playerA: { select: { id: true, displayName: true } },
       playerB: { select: { id: true, displayName: true } },
     },
@@ -134,6 +136,7 @@ export async function loadDivisionPageData(divisionId: string): Promise<Division
       playerB: p.playerB,
       gamesWonA: p.gamesWonA,
       gamesWonB: p.gamesWonB,
+      forfeit: p.forfeit,
     }));
 
   // Unplayed matchups across ACTIVE members. O(N^2) but N <= 10ish.

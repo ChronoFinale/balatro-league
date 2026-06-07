@@ -412,6 +412,11 @@ function PlayedTable({ rows }: { rows: DivisionRecentPairing[] }) {
                 <Link href={`/profile/${p.playerA.id}`} style={{ color: "var(--text)" }}>{p.playerA.displayName}</Link>
                 {" "}<strong>{p.gamesWonA}-{p.gamesWonB}</strong>{" "}
                 <Link href={`/profile/${p.playerB.id}`} style={{ color: "var(--text)" }}>{p.playerB.displayName}</Link>
+                {p.forfeit && (
+                  <span className="muted" style={{ fontSize: 10, marginLeft: 6 }} title="Win by forfeit / disqualification">
+                    by DQ
+                  </span>
+                )}
               </td>
             </tr>
           );
@@ -459,6 +464,11 @@ function YourPlayedTable({ rows, viewerPlayerId }: { rows: DivisionRecentPairing
                 <span className="pill" style={{ background: outcome.bg, color: outcome.fg }}>
                   {outcome.label}
                 </span>
+                {p.forfeit && (
+                  <span className="muted" style={{ fontSize: 10, marginLeft: 6 }} title="Win by forfeit / disqualification">
+                    by DQ
+                  </span>
+                )}
               </td>
             </tr>
           );

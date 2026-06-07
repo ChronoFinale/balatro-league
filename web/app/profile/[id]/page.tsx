@@ -9,7 +9,7 @@ import { getShowBmpMmr } from "@/lib/preferences";
 import { loadPlayerHistory } from "@/lib/profile";
 import { tierColors } from "@/lib/tier-colors";
 import { SiteNav } from "@/components/SiteNav";
-import { recordSetForPlayer } from "@/app/admin/players/actions";
+import { recordSetForPlayer, recordForfeitForPlayer } from "@/app/admin/players/actions";
 import { castEasterEggVote, reportFromProfileAction, submitProfileDispute } from "./actions";
 import {
   resetToDiscordNameAction,
@@ -396,6 +396,32 @@ export default async function ProfilePage({
               </select>
               <button type="submit">Record</button>
             </form>
+
+            {/* Forfeit / DQ — a 2-0 win awarded without playing it out. Public
+                UI shows "by DQ"; the reason here is admin-only. */}
+            <details style={{ marginTop: 10 }}>
+              <summary style={{ cursor: "pointer", fontSize: 13 }}>⚖ Record a forfeit / DQ (2-0)</summary>
+              <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+                Awards a 2-0 win by default (no-show, drop-out, rule violation). The reason is
+                <strong> admin-only</strong> — other players only see &ldquo;by DQ&rdquo;.
+              </p>
+              <form action={recordForfeitForPlayer} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <input type="hidden" name="divisionId" value={adminCtx.divisionId} />
+                <input type="hidden" name="playerId" value={profile.player.id} />
+                <select name="opponentId" required style={{ flex: "1 1 180px" }}>
+                  <option value="">— pick opponent —</option>
+                  {adminCtx.opponents.map((o) => (
+                    <option key={o.playerId} value={o.playerId}>{o.displayName}</option>
+                  ))}
+                </select>
+                <select name="winner" defaultValue="self">
+                  <option value="self">{profile.player.displayName} wins by DQ</option>
+                  <option value="opponent">opponent wins by DQ</option>
+                </select>
+                <input type="text" name="reason" required placeholder="Reason (admin-only)" style={{ flex: "1 1 200px" }} />
+                <button type="submit">Record DQ</button>
+              </form>
+            </details>
           </div>
         )}
         <div className="grid grid-3" style={{ marginTop: 16 }}>

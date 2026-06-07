@@ -738,6 +738,12 @@ model Match {
   disputedAt                DateTime?
   disputeThreadId           String?
   hadDc                     Boolean       @default(false)
+  // Forfeit / DQ: the win was awarded without playing it out (no-show,
+  // drop-out, rule violation, …). Scored as a normal result (typically 2-0)
+  // but flagged so the UI can render "W by DQ". forfeitReason is ADMIN-ONLY
+  // free text (who/why) — never shown to other players.
+  forfeit                   Boolean       @default(false)
+  forfeitReason             String?
   // Optional combo from a manual report with no per-game detail. When the
   // guided flow ran, per-game decks/stakes live on Game rows instead.
   reportedDeck              String?

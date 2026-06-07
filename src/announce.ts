@@ -49,13 +49,16 @@ export async function announceResult(pairingId: string): Promise<void> {
     env.RESULTS_CHANNEL_ID;
   if (!webhookUrl && !channelId) return;
 
+  // Forfeit/DQ wins are flagged publicly ("by DQ") but the reason stays
+  // admin-only — never surface pairing.forfeitReason here.
+  const dqSuffix = pairing.forfeit ? " — by DQ" : "";
   let title: string;
   let color: number;
   if (pairing.gamesWonA === 2 && pairing.gamesWonB === 0) {
-    title = `🏆 ${pairing.playerA.displayName} beats ${pairing.playerB.displayName}`;
+    title = `🏆 ${pairing.playerA.displayName} beats ${pairing.playerB.displayName}${dqSuffix}`;
     color = 0x2ecc71;
   } else if (pairing.gamesWonB === 2 && pairing.gamesWonA === 0) {
-    title = `🏆 ${pairing.playerB.displayName} beats ${pairing.playerA.displayName}`;
+    title = `🏆 ${pairing.playerB.displayName} beats ${pairing.playerA.displayName}${dqSuffix}`;
     color = 0x2ecc71;
   } else {
     title = `🤝 ${pairing.playerA.displayName} draws ${pairing.playerB.displayName}`;
@@ -66,7 +69,8 @@ export async function announceResult(pairingId: string): Promise<void> {
     .setTitle(title)
     .setDescription(
       `<@${pairing.playerA.discordId}> **${pairing.gamesWonA}–${pairing.gamesWonB}** <@${pairing.playerB.discordId}>\n` +
-        `Division: **${pairing.division.name}**`,
+        `Division: **${pairing.division.name}**` +
+        (pairing.forfeit ? `\n_Win by forfeit / DQ._` : ""),
     )
     .setColor(color)
     .setFooter({ text: `Match ${pairing.id}` })
