@@ -161,11 +161,13 @@ export async function initQueue(): Promise<void> {
     "notify.announce-result",
     { batchSize: 50, pollingIntervalSeconds: 1 },
     async (jobs: Job<AnnounceResultJob>[]) => {
-      // PREFLIGHT: if there's no results destination configured, DON'T drop
-      // the announces (or fire a flood of 404s — invalid-request ban risk).
-      // Alert devops (throttled) and re-queue each job with a delay so they
-      // post once ops fixes the config. Completing the batch here (no throw)
-      // means the originals ack cleanly — no duplicates.
+      // PREFLIGHT: no results destination configured → don't drop or fire a
+      // flood of 404s (invalid-request ban risk). Alert devops (throttled),
+      // then THROW so pg-boss holds the whole batch via its exponential
+      // backoff (no manual re-queue churn). Misconfig is global, so the whole
+      // batch fails uniformly — none succeed, so no duplicates on retry. The
+      // generous retryLimit on enqueue means they survive a long outage and
+      // post once ops sets the channel.
       if (!(await announceDestinationConfigured())) {
         const now = Date.now();
         if (now - lastAnnounceConfigAlert > ANNOUNCE_CONFIG_ALERT_COOLDOWN_MS) {
@@ -177,14 +179,7 @@ export async function initQueue(): Promise<void> {
             true,
           ).catch(() => {});
         }
-        await Promise.all(
-          jobs.map((job) =>
-            boss!
-              .send("notify.announce-result", job.data, { startAfter: 300, retryLimit: 100, retryBackoff: true })
-              .catch(() => {}),
-          ),
-        );
-        return;
+        throw new Error("results destination not configured — holding announces for retry");
       }
       await Promise.all(
         jobs.map((job) =>
@@ -417,10 +412,12 @@ export async function enqueueDm(job: DmJob): Promise<void> {
 
 export async function enqueueAnnounceResult(pairingId: string): Promise<void> {
   if (!boss) throw new Error("Queue not initialized — initQueue() must run first");
-  // Retry transient failures (network blips, Discord 5xx) twice with
-  // backoff. After that the announce is dropped — admin can manually
-  // re-trigger via overrideResult.
-  await boss.send("notify.announce-result", { pairingId }, { retryLimit: 2, retryBackoff: true });
+  // Generous retry with exponential backoff: covers both transient failures
+  // (network blips, Discord 5xx) AND a misconfigured-destination outage (the
+  // worker throws on no-destination → these back off and retry rather than
+  // drop). Exponential backoff means a long outage costs very few re-pulls,
+  // not constant churn; devops gets pinged so it's fixed fast either way.
+  await boss.send("notify.announce-result", { pairingId }, { retryLimit: 30, retryBackoff: true });
 }
 
 export async function enqueueReportPostPending(pairingId: string): Promise<void> {
