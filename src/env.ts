@@ -38,6 +38,11 @@ const schema = z.object({
   // category on startup if unset.
   ANNOUNCEMENTS_CHANNEL_ID: z.string().optional(),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  // Base URL of the web dashboard THIS bot instance should link to. Defaults
+  // to prod; the TEST bot service sets this to its own web URL so links it
+  // posts in the test Discord (division schedules, /league info, disputes)
+  // point at the test site instead of prod. No trailing slash needed.
+  WEB_BASE_URL: z.string().url().default("https://www.balatroleague.com"),
 });
 
 const parsed = schema.safeParse(process.env);

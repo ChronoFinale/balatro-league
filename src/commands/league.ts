@@ -13,6 +13,7 @@ import {
 import { PermissionTier } from "@prisma/client";
 import { prisma } from "../db.js";
 import { PERM_PRESETS } from "../discord-helpers.js";
+import { webUrl, WEB_HOST } from "../web-url.js";
 import { clearConfig, LeagueConfigKey, setConfig } from "../league-config.js";
 import { requireOwner } from "../permissions.js";
 import { enqueueLeagueInfoRefresh } from "../queue.js";
@@ -285,7 +286,7 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       "• `/report @opponent result:2-0` — log a played match (auto-confirmed)",
       "• `/help` — full command list",
       "",
-      "**Website:** <https://www.balatroleague.com> — standings, profiles, signup, settings.",
+      `**Website:** <${webUrl()}> — standings, profiles, signup, settings.`,
     ].join("\n");
     // Trigger the league-info pinned message refresh via the queue
     // worker (composes static intro + dynamic state). Falls back to a
@@ -487,7 +488,7 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       `• <@&${adminRole.id}> — League Admin (bound to ADMIN tier)`,
       `• <@&${helperRole.id}> — League Helper (bound to HELPER tier)`,
       ``,
-      `Assign Admin/Helper to staff in **Server Settings → Members** and they immediately get the matching permissions on www.balatroleague.com.`,
+      `Assign Admin/Helper to staff in **Server Settings → Members** and they immediately get the matching permissions on ${WEB_HOST}.`,
       ``,
       `**One-time per-server setup** — \`/admin\` and \`/league\` are hidden from non-server-admins in the slash-command picker. To let \`@League Admin\` see them without granting Discord Administrator:`,
       `  1. **Server Settings → Integrations → [bot] → Command Permissions**`,

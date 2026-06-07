@@ -13,6 +13,7 @@
 
 import { prisma } from "./db.js";
 import { formatSeasonLabel } from "./format-season.js";
+import { webUrl } from "./web-url.js";
 
 const STATIC_INTRO = [
   "# 🃏 Welcome to the league",
@@ -36,7 +37,7 @@ const STATIC_INTRO = [
   "• `/helper [reason]` — call a moderator into the current thread/channel",
   "• `/help` — full command list",
   "",
-  "**Website:** <https://www.balatroleague.com> — standings, profiles, signup, settings.",
+  `**Website:** <${webUrl()}> — standings, profiles, signup, settings.`,
 ].join("\n");
 
 export async function composeLeagueInfoContent(): Promise<string> {
@@ -76,7 +77,7 @@ async function composeDynamicBlock(): Promise<string> {
       `Click the **Sign Up** button in <#${openRound.channelId}> to register.`,
       `**${openRound.signups.length} signed up so far.**`,
       "",
-      "_Or sign up from <https://www.balatroleague.com/join>._",
+      `_Or sign up from <${webUrl("join")}>._`,
     ].join("\n");
   }
 
@@ -91,7 +92,7 @@ async function composeDynamicBlock(): Promise<string> {
       "─────────────────────",
       `## 🏆 ${label} is live!`,
       `Active since ${since}.`,
-      `**Standings:** <https://www.balatroleague.com/standings>`,
+      `**Standings:** <${webUrl("standings")}>`,
       "Use `/start-match @opponent` in your division channel to play.",
     ].join("\n");
   }
@@ -109,8 +110,8 @@ async function composeDynamicBlock(): Promise<string> {
       "─────────────────────",
       `## 🏁 ${label} ended on ${ended}`,
       `Next season's signups will be posted in this server when ready —` +
-        ` opt in for a DM on <https://www.balatroleague.com/me>.`,
-      `**Past standings:** <https://www.balatroleague.com/seasons>`,
+        ` opt in for a DM on <${webUrl("me")}>.`,
+      `**Past standings:** <${webUrl("seasons")}>`,
     ].join("\n");
   }
 
@@ -118,6 +119,6 @@ async function composeDynamicBlock(): Promise<string> {
     "─────────────────────",
     "## 🌱 No season running yet",
     "Sit tight — admin will open signups when the next season is ready.",
-    "Opt in for a DM on <https://www.balatroleague.com/me>.",
+    `Opt in for a DM on <${webUrl("me")}>.`,
   ].join("\n");
 }

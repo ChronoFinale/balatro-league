@@ -22,6 +22,7 @@ import { detectCurrentBmpSeason, fetchPlayerStats } from "./balatromp.js";
 import { spawnDisputeThread } from "./dispute-thread.js";
 import { resolveBackupChannelId } from "./backup-channel.js";
 import { resolveDevopsChannelId } from "./devops-channel.js";
+import { webUrl } from "./web-url.js";
 import { resolveBotCommandsChannelId } from "./bot-commands-channel.js";
 import { prisma } from "./db.js";
 import { composeLeagueInfoContent } from "./league-info-content.js";
@@ -927,7 +928,7 @@ async function bootstrapDivision({ divisionId, guildId }: BootstrapDivisionJob):
       `• Schedule in this channel. DMs work too.`,
       `• Use \`/start-match @opponent\` for the guided ban/pick flow — bot walks you both through banning and picking decks/stakes for each game. OR just play in Balatro on your own and use \`/report @opponent result:2-0|1-1|0-2\` to log it.`,
       ``,
-      `**Standings + your schedule:** <https://www.balatroleague.com/divisions/${div.id}>`,
+      `**Standings + your schedule:** <${webUrl(`divisions/${div.id}`)}>`,
       ``,
       `Good luck. 🎴`,
     ].join("\n");

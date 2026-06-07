@@ -11,6 +11,7 @@ import {
   type ChatInputCommandInteraction,
 } from "discord.js";
 import type { SlashCommand } from "./types.js";
+import { WEB_HOST } from "../web-url.js";
 
 const PLAYER_COMMANDS = [
   { cmd: "/standings", desc: "Current division standings" },
@@ -72,7 +73,7 @@ export const adminHelp: SlashCommand = {
       .setDescription(
         ADMIN_COMMANDS.map((c) => `• \`${c.cmd}\` — ${c.desc}`).join("\n"),
       )
-      .setFooter({ text: "Most admin work happens on www.balatroleague.com — these are the Discord-side conveniences." });
+      .setFooter({ text: `Most admin work happens on ${WEB_HOST} — these are the Discord-side conveniences.` });
 
     await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
   },

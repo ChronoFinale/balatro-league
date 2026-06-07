@@ -23,6 +23,7 @@ import { tryGetDiscordClient } from "./discord.js";
 import { getConfig, LeagueConfigKey } from "./league-config.js";
 import { buildReportEmbed } from "./report-flow.js";
 import { disputeThreadButtons } from "./commands/dispute-buttons.js";
+import { webUrl } from "./web-url.js";
 
 export async function spawnDisputeThread(
   pairingId: string,
@@ -137,7 +138,7 @@ export async function spawnDisputeThread(
         `\n\n**Proposed correction:** ${pairing.playerA.displayName} ` +
         `**${pairing.disputeProposedGamesWonA}-${pairing.disputeProposedGamesWonB}** ` +
         `${pairing.playerB.displayName}` +
-        `\n_Helper can one-click accept this from <https://www.balatroleague.com/admin/disputes>._`;
+        `\n_Helper can one-click accept this from <${webUrl("admin/disputes")}>._`;
     }
     const reasonLine = pairing.disputeReason
       ? `\n\n**Reason:** ${pairing.disputeReason}`
