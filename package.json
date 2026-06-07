@@ -19,6 +19,7 @@
     "export:full": "tsx src/scripts/export-full.ts",
     "import:full": "tsx src/scripts/import-full.ts",
     "backup:db": "tsx src/scripts/backup-db.ts",
+    "backup:bucket": "tsx src/scripts/backup-to-bucket.ts",
     "seed:returners-from": "tsx src/scripts/seed-returners-from.ts",
     "sim:season": "tsx src/scripts/sim-season.ts",
     "finish:season": "tsx src/scripts/finish-season.ts",
@@ -31,6 +32,7 @@
     "typecheck": "tsc -p . --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1063.0",
     "@prisma/client": "^6.0.0",
     "discord.js": "^14.16.3",
     "dotenv": "^16.4.7",
