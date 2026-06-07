@@ -12,8 +12,10 @@ import {
   type ChatInputCommandInteraction,
   type TextChannel,
 } from "discord.js";
+import { prisma } from "../db.js";
 import { getConfig, LeagueConfigKey } from "../league-config.js";
 import { logDiscordError } from "../log-discord-error.js";
+import { supportTicketButtons, supportTicketEmbed } from "../support-ticket.js";
 import { summonHelpers } from "./helper.js";
 import type { SlashCommand } from "./types.js";
 
@@ -56,10 +58,23 @@ export const support: SlashCommand = {
       return;
     }
 
+    // Create the tracked ticket first so it has a stable id (used in the
+    // thread name + embed); fill threadId in once the thread exists.
+    const ticket = await prisma.supportTicket.create({
+      data: {
+        guildId: interaction.guild.id,
+        channelId: supportChannelId,
+        threadId: "pending",
+        requesterId: interaction.user.id,
+        requesterName: interaction.user.username,
+        issue,
+      },
+    });
+
     let thread;
     try {
       thread = await (channel as TextChannel).threads.create({
-        name: `support-${interaction.user.username}`.slice(0, 90),
+        name: `ticket-${ticket.id.slice(-6)}-${interaction.user.username}`.slice(0, 90),
         type: ChannelType.PrivateThread,
         invitable: false,
         autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
@@ -67,13 +82,21 @@ export const support: SlashCommand = {
       await thread.members.add(interaction.user.id).catch(() => {});
     } catch (err) {
       logDiscordError("support.create-thread", err, { channelId: supportChannelId, userId: interaction.user.id });
+      await prisma.supportTicket.delete({ where: { id: ticket.id } }).catch(() => {});
       await interaction.editReply(
         "Couldn't open a ticket thread — the bot may be missing permission to create private threads in the support channel.",
       );
       return;
     }
 
-    await thread.send(`🎫 **Support ticket** from <@${interaction.user.id}>\n> ${issue}`).catch(() => {});
+    const saved = await prisma.supportTicket.update({
+      where: { id: ticket.id },
+      data: { threadId: thread.id },
+    });
+
+    await thread
+      .send({ embeds: [supportTicketEmbed(saved)], components: [supportTicketButtons(saved.id)] })
+      .catch(() => {});
 
     // Ping + pull in the helper role(s). If none is configured, the ticket
     // still exists — just leave a note so an admin can wire it up.
@@ -89,6 +112,6 @@ export const support: SlashCommand = {
       await thread.send(`⚠️ ${summoned.error}`).catch(() => {});
     }
 
-    await interaction.editReply(`🎫 Opened your ticket: ${thread.toString()}`);
+    await interaction.editReply(`🎫 Opened ticket **#${saved.id.slice(-6)}**: ${thread.toString()}`);
   },
 };

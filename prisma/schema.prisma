@@ -890,6 +890,30 @@ model AdminAuditEvent {
 // registry key. A null column means "use the code default". iconDataUrl holds
 // a small (~48px) client-resized data: URL that, when present, renders in
 // place of the emoji on the profile trait pill. Editable from /admin/traits.
+enum SupportTicketStatus {
+  OPEN
+  CLOSED
+}
+
+// A /support ticket: a private thread in the support channel + a tracked row
+// so it has a stable id, status, and an audit trail of who opened/closed it.
+model SupportTicket {
+  id            String              @id @default(cuid())
+  guildId       String
+  channelId     String              // the support channel the thread lives under
+  threadId      String              // the private ticket thread
+  requesterId   String              // Discord id of who opened it
+  requesterName String
+  issue         String
+  status        SupportTicketStatus @default(OPEN)
+  closedById    String?
+  closedAt      DateTime?
+  createdAt     DateTime            @default(now())
+
+  @@index([status])
+  @@index([requesterId])
+}
+
 model TraitOverride {
   key         String   @id // matches a TRAIT_REGISTRY key, e.g. "dr-spectred"
   label       String?
