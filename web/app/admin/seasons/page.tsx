@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/admin";
 import { loadAdminSeasonsIndex } from "@/lib/loaders/admin";
 import { SiteNav } from "@/components/SiteNav";
 import { AdminNav } from "@/components/AdminNav";
+import { LocalDateTimeField } from "@/components/LocalDateTimeField";
 import {
   activateSeason,
   archiveSeason,
@@ -449,10 +450,7 @@ function LifecycleActions({
             <option key={c.id} value={c.id}>#{c.name}</option>
           ))}
         </select>
-        <label style={{ fontSize: 11, display: "flex", flexDirection: "column", gap: 2 }}>
-          <span className="muted">Signups close (UTC, optional)</span>
-          <input type="datetime-local" name="closesAt" />
-        </label>
+        <LocalDateTimeField name="closesAt" label="Signups close (your time, optional)" />
         <button type="submit" disabled={channels.length === 0}>Open signups</button>
       </form>
       <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>

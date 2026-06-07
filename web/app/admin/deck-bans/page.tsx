@@ -58,7 +58,7 @@ export default async function DeckSelectionPage({
             — used by <code>/start-match</code> for any season that hasn&apos;t picked its own preset.
           </li>
           <li>
-            <strong>Casual</strong>{" "}
+            <strong>Challenge</strong>{" "}
             {casualName ? (
               <>→ <code>{casualName}</code></>
             ) : (
@@ -154,7 +154,7 @@ function PresetSidebar({
           const isActive = p.id === selectedId;
           const tags: string[] = [];
           if (p.id === seasonDefaultPresetId) tags.push("season default");
-          if (p.id === casualPresetId) tags.push("casual");
+          if (p.id === casualPresetId) tags.push("challenge");
           if (p.id === customComboPresetId) tags.push("custom-combo");
           return (
             <li key={p.id} style={{ marginBottom: 4 }}>
@@ -254,7 +254,7 @@ function PresetEditor({
             <input type="hidden" name="id" value={preset.id} />
             <input type="hidden" name="role" value={CASUAL_PRESET_ID_KEY} />
             <button type="submit" disabled={isCasual}>
-              {isCasual ? "✓ Used for casual /challenge" : "Use for casual /challenge"}
+              {isCasual ? "✓ Used for /challenge" : "Use for /challenge"}
             </button>
           </form>
           <form action={setPresetRole}>

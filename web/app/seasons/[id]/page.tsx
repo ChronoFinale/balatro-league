@@ -6,6 +6,7 @@ import { loadAdminSeasonDetail } from "@/lib/loaders/admin";
 import { prisma } from "@/lib/prisma";
 import { SiteNav } from "@/components/SiteNav";
 import { DraggableDivisionsEditor, type EditorMember, type EditorTier } from "@/components/DraggableDivisionsEditor";
+import { LocalDateTimeField } from "@/components/LocalDateTimeField";
 import { LocalDateTime } from "@/components/LocalDateTime";
 import { SeasonDeckPresetPicker } from "@/components/SeasonDeckPresetPicker";
 import { tierColors } from "@/lib/tier-colors";
@@ -714,10 +715,7 @@ function LifecycleActions({
             <option key={c.id} value={c.id}>#{c.name}</option>
           ))}
         </select>
-        <label style={{ fontSize: 11, display: "flex", flexDirection: "column", gap: 2 }}>
-          <span className="muted">Signups close (UTC, optional)</span>
-          <input type="datetime-local" name="closesAt" />
-        </label>
+        <LocalDateTimeField name="closesAt" label="Signups close (your time, optional)" />
         <button type="submit" disabled={channels.length === 0}>Open signups</button>
       </form>
     </details>
