@@ -7,6 +7,7 @@ import { ensureChallengesChannel } from "./challenges-channel.js";
 import { ensureSupportChannel } from "./support-channel.js";
 import { ensureDevopsChannel } from "./devops-channel.js";
 import { checkChannelScope } from "./command-channels.js";
+import { getConfig, LeagueConfigKey } from "./league-config.js";
 import { buttonHandlers, modalHandlers, selectMenuHandlers, slashCommands } from "./commands/index.js";
 import { setDiscordClient } from "./discord.js";
 import { env } from "./env.js";
@@ -78,6 +79,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
       return;
     }
+
+    // Sign-ups-only mode: keep the sign-up flow (the signup: buttons) + /help
+    // live, refuse everything else. Lets you soft-launch the bot in a new
+    // server with only sign-ups running until the season starts.
+    if ((await getConfig(LeagueConfigKey.SignupsOnlyMode)) === "true") {
+      const allowed =
+        (interaction.isButton() && interaction.customId.startsWith("signup:")) ||
+        (interaction.isChatInputCommand() && interaction.commandName === "help");
+      if (!allowed) {
+        if (interaction.isAutocomplete()) {
+          await interaction.respond([]);
+        } else if (interaction.isRepliable()) {
+          await interaction.reply({
+            content:
+              "🔒 The league bot is in **sign-ups-only mode** right now — only sign-ups are live. Full functionality opens when the season starts.",
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+        return;
+      }
+    }
+
     if (interaction.isChatInputCommand()) {
       const command = slashCommands.find((c) => c.data.name === interaction.commandName);
       if (!command) {

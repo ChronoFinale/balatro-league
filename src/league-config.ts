@@ -61,6 +61,12 @@ export const LeagueConfigKey = {
   // if the bot's auto-post ever has an issue.
   ResultsHumanChannelId: "results_human_channel_id",
 
+  // Sign-ups-only / soft-launch mode. Set to "true" to disable every slash
+  // command except /help while keeping the sign-up flow live. Use when the bot
+  // is freshly in a new server and you only want sign-ups running until the
+  // season actually starts; flip back to "false" (or clear it) on launch.
+  SignupsOnlyMode: "signups_only_mode",
+
   // ── Tunable league rules (all integers, stored as strings) ───────────
   // Scoring: points awarded per match outcome. Defaults 3/1/0 mirror the
   // current Dunk-original rules. Admin can change mid-season if needed —

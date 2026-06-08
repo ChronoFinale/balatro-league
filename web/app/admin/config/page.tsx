@@ -31,6 +31,10 @@ const CHANNEL_KEYS = [
   { key: "devops_channel_id", label: "DevOps channel ID", help: "Queue-stall + rate-limit alerts. Tech-only." },
 ];
 
+const MODE_KEYS = [
+  { key: "signups_only_mode", label: "Sign-ups-only mode", help: "Set to 'true' to disable every command except /help while keeping the sign-up flow live. Use for a soft launch in a new server; set to 'false' (or clear) when the season starts." },
+];
+
 const COMMUNITY_KEYS = [
   { key: "support_channel_id", label: "Support channel ID", help: "Where /support opens private ticket threads (pings helpers). Unset = /support is disabled." },
   { key: "admin_channel_id", label: "Admin channel ID", help: "League admin/staff chat. Stored so the bot/site can reference it. Optional." },
@@ -73,6 +77,7 @@ export default async function AdminConfigPage() {
         </p>
 
         <ConfigSection title="Channels & external" keys={CHANNEL_KEYS} valueByKey={valueByKey} />
+        <ConfigSection title="Mode" keys={MODE_KEYS} valueByKey={valueByKey} />
         <ConfigSection title="Community channels" keys={COMMUNITY_KEYS} valueByKey={valueByKey} />
         <ConfigSection title="Public / join page" keys={SITE_KEYS} valueByKey={valueByKey} />
         <ConfigSection title="BMP / balatromp.com" keys={BMP_KEYS} valueByKey={valueByKey} />
