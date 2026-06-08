@@ -1,11 +1,6 @@
 import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
-import { ensureAnnouncementsChannel } from "./announcements-channel.js";
 import { ensureBalatroEmojis } from "./balatro-emojis.js";
 import { ensureCommandsRegistered } from "./commands/register.js";
-import { ensureBotCommandsChannel } from "./bot-commands-channel.js";
-import { ensureChallengesChannel } from "./challenges-channel.js";
-import { ensureSupportChannel } from "./support-channel.js";
-import { ensureDevopsChannel } from "./devops-channel.js";
 import { checkChannelScope } from "./command-channels.js";
 import { getConfig, LeagueConfigKey } from "./league-config.js";
 import { buttonHandlers, modalHandlers, selectMenuHandlers, slashCommands } from "./commands/index.js";
@@ -196,12 +191,16 @@ initQueue().catch((err) => console.warn("[pg-boss] init failed:", err));
 // every boot (editing defaults + redeploying updates the live pool); the
 // others are seeded once, then admin-editable.
 bootstrapPresetsAndPointers().catch((err) => console.warn("[presets] bootstrap failed:", err));
-// Auto-create the bot-commands channel if neither env var nor LeagueConfig
-// has one already. Best-effort — admin can always pin manually later.
-ensureBotCommandsChannel().catch((err) => console.warn("[bot-commands] init failed:", err));
-// Upload any missing Balatro deck/stake PNGs to the bot's application
-// emojis. Self-healing: drop new PNGs in src/assets/balatro/ + restart,
-// it picks them up. Missing PNGs are silently skipped.
+// NOTE: league Discord CHANNELS (#bot-commands, #challenges, #support, #devops,
+// #announcements, results, …) are deliberately NOT auto-created on boot —
+// silently spawning channels in whatever server the bot is in is exactly the
+// kind of unacknowledged side-effect we want to avoid (especially when moving
+// servers). They're created only when an owner explicitly runs
+// `/league bootstrap-server`.
+//
+// Upload any missing Balatro deck/stake PNGs to the bot's APPLICATION emojis
+// (not server channels — global to the bot, harmless). Self-healing: drop new
+// PNGs in src/assets/balatro/ + restart; missing PNGs are silently skipped.
 ensureBalatroEmojis(env.DISCORD_CLIENT_ID).catch((err) =>
   console.warn("[balatro-emojis] init failed:", err),
 );
@@ -211,13 +210,3 @@ ensureBalatroEmojis(env.DISCORD_CLIENT_ID).catch((err) =>
 ensureCommandsRegistered().catch((err) =>
   console.warn("[register] auto-register failed:", err),
 );
-// Casual-challenges parent channel — invisible/empty for players,
-// only used as the parent for ephemeral /challenge private threads.
-ensureChallengesChannel().catch((err) => console.warn("[challenges-channel] init failed:", err));
-// Support channel — auto-create a public #support on first boot if unset, so
-// /support works out of the box. Admin can repoint it on /admin/config.
-ensureSupportChannel().catch((err) => console.warn("[support-channel] init failed:", err));
-// DevOps alert channel — infra-only, distinct from league admin. Used
-// by the queue-stall alarm; null is fine (alerts log to console).
-ensureDevopsChannel().catch((err) => console.warn("[devops-channel] init failed:", err));
-ensureAnnouncementsChannel().catch((err) => console.warn("[announcements-channel] init failed:", err));

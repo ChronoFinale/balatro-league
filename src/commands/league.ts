@@ -13,6 +13,7 @@ import {
 import { PermissionTier } from "@prisma/client";
 import { prisma } from "../db.js";
 import { PERM_PRESETS } from "../discord-helpers.js";
+import { ensureSupportChannel } from "../support-channel.js";
 import { webUrl, WEB_HOST } from "../web-url.js";
 import { clearConfig, LeagueConfigKey, setConfig } from "../league-config.js";
 import { requireOwner } from "../permissions.js";
@@ -429,6 +430,13 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       update: { value: devopsChan.id, updatedBy: interaction.user.id },
     });
 
+    // Support channel (#support, where /support opens ticket threads). Reuses
+    // the standalone helper — creates it + stores support_channel_id if unset.
+    // (No longer auto-created on boot, so it's set up here with everything else.)
+    await ensureSupportChannel().catch((err) =>
+      console.warn("[bootstrap] support-channel init failed:", err),
+    );
+
     // Casual matches get their own '🎴 Matches' category with a single
     // #challenges parent channel — /challenge threads spawn there.
     // Separate category from the league category so casual play has a
@@ -796,9 +804,8 @@ async function resetDiscordState(interaction: ChatInputCommandInteraction) {
     ``,
     `**Next steps**:`,
     `1. Delete the old Discord channels / roles / category if you haven't already`,
-    `2. Run \`/league bootstrap-server\` to recreate the staff scaffolding + RoleBindings`,
+    `2. Run \`/league bootstrap-server\` to recreate ALL the channels + staff scaffolding + RoleBindings (channels are no longer auto-created on boot — this is the one place they're made)`,
     `3. On each active season's \`/admin/seasons/[id]\` page, click "Set up Discord channels & roles" to recreate per-division channels`,
-    `4. (Optional) Restart the bot — \`ensureBotCommandsChannel\` + \`ensureBackupChannel\` will auto-create those on startup since their LeagueConfig keys are gone`,
   ];
   await interaction.editReply(lines.join("\n"));
 }
