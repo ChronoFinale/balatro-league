@@ -449,7 +449,10 @@ export async function unendSeason(formData: FormData) {
   revalidatePath("/admin/seasons");
 }
 
-function buildSignupPayload(round: { id: string; name: string; closesAt: Date | null }): {
+function buildSignupPayload(
+  round: { id: string; name: string; closesAt: Date | null },
+  signupCount = 0,
+): {
   embeds: MessageEmbed[];
   components: ComponentActionRow[];
 } {
@@ -462,7 +465,7 @@ function buildSignupPayload(round: { id: string; name: string; closesAt: Date | 
   const embed: MessageEmbed = {
     title: `🃏  ${round.name}`,
     description: `Click below to register. ${closeLine}`,
-    fields: [{ name: "Status", value: "**0 signed up**", inline: false }],
+    fields: [{ name: "Status", value: `**${signupCount} signed up**`, inline: false }],
     color: 0x5865f2,
     footer: { text: `Round ${round.id}` },
   };
@@ -535,7 +538,19 @@ export async function openSignupsForSeason(formData: FormData) {
     },
   });
 
-  const messageId = await postChannelMessage(channelId, buildSignupPayload(round));
+  // Auto-enroll players who opted into auto-sign-up (they can still withdraw).
+  const autoPlayers = await prisma.player.findMany({
+    where: { autoSignup: true },
+    select: { discordId: true, displayName: true },
+  });
+  if (autoPlayers.length > 0) {
+    await prisma.signup.createMany({
+      data: autoPlayers.map((p) => ({ roundId: round.id, discordId: p.discordId, displayName: p.displayName })),
+      skipDuplicates: true,
+    });
+  }
+
+  const messageId = await postChannelMessage(channelId, buildSignupPayload(round, autoPlayers.length));
   if (!messageId) {
     await prisma.signupRound.delete({ where: { id: round.id } });
     redirect("/admin/seasons?err=signup-post-failed");

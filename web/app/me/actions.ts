@@ -41,6 +41,19 @@ export async function resetToDiscordNameAction() {
   revalidatePath("/me");
 }
 
+// Toggle auto-sign-up: when ON, the player is automatically entered into the
+// next signup round the moment it opens (they can still withdraw). Lives on
+// the profile owner settings.
+export async function setAutoSignupAction(formData: FormData) {
+  const discordId = await currentDiscordId();
+  if (!discordId) return;
+  const next = String(formData.get("next") ?? "") === "1";
+  const player = await prisma.player.findUnique({ where: { discordId }, select: { id: true } });
+  if (!player) return;
+  await prisma.player.update({ where: { id: player.id }, data: { autoSignup: next } });
+  revalidatePath(`/profile/${player.id}`);
+}
+
 export async function subscribeNextSeasonAction() {
   const discordId = await currentDiscordId();
   if (!discordId) return;

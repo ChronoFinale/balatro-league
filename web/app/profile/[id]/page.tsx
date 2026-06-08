@@ -14,6 +14,7 @@ import { castEasterEggVote, reportFromProfileAction, submitProfileDispute } from
 import {
   resetToDiscordNameAction,
   setCustomNameAction,
+  setAutoSignupAction,
   subscribeNextSeasonAction,
   unsubscribeNextSeasonAction,
 } from "@/app/me/actions";
@@ -95,18 +96,20 @@ export default async function ProfilePage({
   const { isSanji, voterDiscordId, yesVotes, noVotes, myVote } = sanji;
   const traits = await loadPlayerTraits(profile.player.id);
   // Own-profile-only personal settings (folded in from the old /me page).
+  const myPrefs = isOwnProfile
+    ? await prisma.player.findUnique({
+        where: { id: profile.player.id },
+        select: { hasCustomDisplayName: true, autoSignup: true },
+      })
+    : null;
   const me = isOwnProfile
     ? {
         interest: await prisma.seasonInterest.findUnique({
           where: { discordId: profile.player.discordId },
           select: { subscribedAt: true },
         }),
-        hasCustomDisplayName: (
-          await prisma.player.findUnique({
-            where: { id: profile.player.id },
-            select: { hasCustomDisplayName: true },
-          })
-        )?.hasCustomDisplayName ?? false,
+        hasCustomDisplayName: myPrefs?.hasCustomDisplayName ?? false,
+        autoSignup: myPrefs?.autoSignup ?? false,
       }
     : null;
 
@@ -225,6 +228,18 @@ export default async function ProfilePage({
                   </form>
                 </>
               )}
+              <hr style={{ margin: "12px 0", border: "none", borderTop: "1px solid var(--border)" }} />
+              <p className="muted" style={{ fontSize: 12 }}>
+                {me.autoSignup
+                  ? "✓ Auto-sign-up is ON — you'll be entered into the next season's signups automatically the moment they open (you can still withdraw)."
+                  : "Auto-sign-up is off. Turn it on to be entered into the next season's signups automatically when they open."}
+              </p>
+              <form action={setAutoSignupAction}>
+                <input type="hidden" name="next" value={me.autoSignup ? "0" : "1"} />
+                <button type="submit" className={me.autoSignup ? "secondary" : ""}>
+                  {me.autoSignup ? "Turn off auto-sign-up" : "🔁 Auto-sign me up next season"}
+                </button>
+              </form>
             </div>
 
             <div className="card" style={{ marginTop: 16 }}>
