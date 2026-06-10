@@ -17,7 +17,7 @@ import type { SlashCommand } from "./types.js";
 
 const MODE_CHOICES = [
   { name: "League match (best of 2, default)", value: "league" },
-  { name: "Shootout (1 game — for when you're tied with the opponent)", value: "shootout" },
+  { name: "Showdown (1 game — for when you're tied with the opponent)", value: "shootout" },
 ] as const;
 
 export const startMatch: SlashCommand = {
@@ -31,7 +31,7 @@ export const startMatch: SlashCommand = {
     .addStringOption((opt) =>
       opt
         .setName("mode")
-        .setDescription("League match (BO2 default) or shootout tiebreaker (BO1)")
+        .setDescription("League match (BO2 default) or showdown tiebreaker (BO1)")
         .setRequired(false)
         .addChoices(...MODE_CHOICES),
     ),
@@ -230,7 +230,7 @@ export const startMatch: SlashCommand = {
       action: "match.create",
       targetType: "MatchSession",
       targetId: session.id,
-      summary: `Invited ${opp.displayName} to ${isShootout ? "a shootout" : "a league match"}`,
+      summary: `Invited ${opp.displayName} to ${isShootout ? "a showdown" : "a league match"}`,
       metadata: {
         isShootout,
         divisionId: division.id,

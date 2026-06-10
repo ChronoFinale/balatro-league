@@ -165,7 +165,7 @@ export default async function PublicDivisionPage({
 
         {shootouts.length > 0 && (
           <div className="card">
-            <strong>⚔ Shootouts ({shootouts.length})</strong>
+            <strong>⚔ Showdowns ({shootouts.length})</strong>
             <p className="muted" style={{ marginTop: 4, fontSize: 12 }}>
               1-game tiebreakers. Recorded when two players tied on points + drew their head-to-head.
             </p>
@@ -711,7 +711,7 @@ function AdminSection({
 
       {/* Shootouts admin controls */}
       <div className="card">
-        <strong>⚔ Shootouts ({shootouts.length})</strong>
+        <strong>⚔ Showdowns ({shootouts.length})</strong>
         <p className="muted" style={{ fontSize: 12 }}>
           Tiebreakers for players tied on points whose regular-season set was a 1-1 draw.
           Sort uses this between head-to-head and wins.
@@ -778,7 +778,7 @@ function AdminSection({
               <option key={`sw-${m.playerId}`} value={m.playerId}>{m.player.displayName}</option>
             ))}
           </select>
-          <button type="submit">Record shootout</button>
+          <button type="submit">Record showdown</button>
         </form>
       </div>
 

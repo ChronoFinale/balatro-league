@@ -19,7 +19,7 @@ const PLAYER_COMMANDS = [
   { cmd: "/schedule", desc: "Matches you still need to play this season" },
   { cmd: "/start-match @opponent", desc: "Guided best-of-2 match: bot walks you through ban/pick for each game" },
   { cmd: "/report @opponent result:2-0|1-1|0-2", desc: "Log a played match (auto-confirmed)" },
-  { cmd: "/report-shootout @opponent winner:@p", desc: "Log a 1-game tiebreaker shootout" },
+  { cmd: "/report-shootout @opponent winner:@p", desc: "Log a 1-game showdown (tiebreaker)" },
   { cmd: "/challenge @opponent", desc: "Casual match against anyone — not recorded to standings" },
   { cmd: "/helper [reason]", desc: "Call a moderator into the current thread/channel" },
   { cmd: "/random", desc: "Roll a random deck + stake (also /random-deck, /random-stake)" },

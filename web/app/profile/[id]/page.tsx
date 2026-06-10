@@ -717,9 +717,9 @@ export default async function ProfilePage({
                           <tr key={i} style={isDisputed ? { opacity: 0.7 } : undefined}>
                             <td>{date}</td>
                             <td>
-                              {isShootout && <span title="Shootout (1-game tiebreaker)" style={{ marginRight: 4 }}>⚔</span>}
+                              {isShootout && <span title="Showdown (1-game tiebreaker)" style={{ marginRight: 4 }}>⚔</span>}
                               <Link href={`/profile/${m.opponentPlayerId}`} style={{ color: "var(--text)" }}>{m.opponentDisplayName}</Link>
-                              {isShootout && <span className="muted" style={{ marginLeft: 6, fontSize: 11 }}>(shootout)</span>}
+                              {isShootout && <span className="muted" style={{ marginLeft: 6, fontSize: 11 }}>(showdown)</span>}
                             </td>
                             <td>
                               <strong>{m.myGames}–{m.opponentGames}</strong>

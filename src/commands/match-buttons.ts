@@ -737,7 +737,7 @@ async function handleAccept(interaction: ButtonInteraction, session: MatchSessio
     action: "match.start",
     targetType: "MatchSession",
     targetId: updated.id,
-    summary: `Match started: ${playerA.displayName} vs ${playerB.displayName}${session.isCasual ? " (casual)" : session.isShootout ? " (shootout)" : ""}`,
+    summary: `Match started: ${playerA.displayName} vs ${playerB.displayName}${session.isCasual ? " (casual)" : session.isShootout ? " (showdown)" : ""}`,
     metadata: {
       isCasual: session.isCasual,
       isShootout: session.isShootout,
@@ -1271,7 +1271,7 @@ async function handleDc(interaction: ButtonInteraction, session: MatchSession) {
   if (session.isShootout) {
     return reply(
       interaction,
-      "Shootout DCs need admin review — use `/helper` so a moderator can decide the outcome. The shootout rules don't auto-forfeit.",
+      "Showdown DCs need admin review — use `/helper` so a moderator can decide the outcome. The showdown rules don't auto-forfeit.",
     );
   }
 
@@ -1444,7 +1444,7 @@ async function finalizeMatch(
     action: "match.complete",
     targetType: "MatchSession",
     targetId: updated.id,
-    summary: `${playerA.displayName} ${aWins}-${bWins} ${playerB.displayName}${session.isCasual ? " (casual)" : session.isShootout ? " (shootout)" : ""}`,
+    summary: `${playerA.displayName} ${aWins}-${bWins} ${playerB.displayName}${session.isCasual ? " (casual)" : session.isShootout ? " (showdown)" : ""}`,
     metadata: {
       isCasual: session.isCasual,
       isShootout: session.isShootout,

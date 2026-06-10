@@ -60,7 +60,7 @@ export const admin: SlashCommand = {
         .addStringOption((opt) =>
           opt
             .setName("reason")
-            .setDescription("Why (e.g. 'agreed in DMs', 'shootout', 'dispute resolution')")
+            .setDescription("Why (e.g. 'agreed in DMs', 'showdown', 'dispute resolution')")
             .setRequired(false),
         ),
     )
@@ -119,7 +119,7 @@ export const admin: SlashCommand = {
     .addSubcommand((sub) =>
       sub
         .setName("record-shootout")
-        .setDescription("Record a shootout winner to break a tied promo/relegation position.")
+        .setDescription("Record a showdown winner to break a tied promo/relegation position.")
         .addStringOption((opt) => opt.setName("p1").setDescription("First tied player").setRequired(true).setAutocomplete(true))
         .addStringOption((opt) => opt.setName("p2").setDescription("Second tied player").setRequired(true).setAutocomplete(true))
         .addStringOption((opt) =>
@@ -393,7 +393,7 @@ async function persistShootout(args: {
     where: { playerId: p2.id, divisionId: member.divisionId },
   });
   if (!otherInSameDiv) {
-    return { ok: false, error: `${p1.displayName} and ${p2.displayName} aren't in the same division — shootout only makes sense for tied opponents.` };
+    return { ok: false, error: `${p1.displayName} and ${p2.displayName} aren't in the same division — a showdown only makes sense for tied opponents.` };
   }
 
   const [canonA, canonB] = p1.id < p2.id ? [p1.id, p2.id] : [p2.id, p1.id];
@@ -466,7 +466,7 @@ async function recordShootout(interaction: ChatInputCommandInteraction) {
     actor: actorFromInteractionUser(interaction.user),
     action: "shootout.record",
     targetType: "Shootout",
-    summary: `Shootout: ${result.winnerName} wins in ${result.divisionName}`,
+    summary: `Showdown: ${result.winnerName} wins in ${result.divisionName}`,
     metadata: {
       p1DiscordId,
       p2DiscordId,
@@ -477,7 +477,7 @@ async function recordShootout(interaction: ChatInputCommandInteraction) {
   });
   const loserDiscordId = winnerDiscordId === p1DiscordId ? p2DiscordId : p1DiscordId;
   await interaction.editReply(
-    `⚔ Shootout recorded — **${result.winnerName}** beats <@${loserDiscordId}> ` +
+    `⚔ Showdown recorded — **${result.winnerName}** beats <@${loserDiscordId}> ` +
       `in **${result.divisionName}**. Standings sort updated.` +
       (notes ? `\n_Notes: ${notes}_` : ""),
   );

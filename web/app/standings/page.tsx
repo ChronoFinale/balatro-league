@@ -175,7 +175,7 @@ export default async function StandingsPage() {
               <span><span style={{ color: "#e74c3c" }}>↓</span> relegation spot</span>
               <span><span style={{ color: "#2ecc71" }}>🔒↑</span> clinched — guaranteed up</span>
               <span><span style={{ color: "#e74c3c" }}>🔒↓</span> locked — guaranteed down</span>
-              <span><span style={{ color: "#f1c40f" }}>⚔</span> tied — needs a tiebreaker</span>
+              <span><span style={{ color: "#f1c40f" }}>⚔</span> tied — needs a showdown</span>
               <span><s>name</s> dropped out</span>
             </div>
             {data.tiers.filter((t) => t.divisions.length > 0).map((tier) => {
@@ -327,7 +327,7 @@ export default async function StandingsPage() {
                                     complete && (promoTieRowSet.has(i) || relegationTieRowSet.has(i));
                                   const shootoutMarker = shootoutNeeded ? (
                                     <span
-                                      title="Tied for promotion/relegation — play a shootout and /report-shootout"
+                                      title="Tied for promotion/relegation — play a showdown and /report-shootout"
                                       style={{ color: "#f1c40f", marginLeft: 4 }}
                                     >
                                       ⚔
@@ -362,7 +362,7 @@ export default async function StandingsPage() {
                           </div>
                           {div.shootouts.length > 0 && (
                             <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
-                              <strong style={{ color: "#f1c40f" }}>⚔ Shootout{div.shootouts.length === 1 ? "" : "s"}:</strong>{" "}
+                              <strong style={{ color: "#f1c40f" }}>⚔ Showdown{div.shootouts.length === 1 ? "" : "s"}:</strong>{" "}
                               {div.shootouts.map((s, i) => (
                                 <span key={s.id}>
                                   {i > 0 && " · "}
