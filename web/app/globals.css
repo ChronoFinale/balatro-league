@@ -67,6 +67,24 @@ tr:hover { background: var(--surface-2); }
   letter-spacing: 0.5px;
 }
 
+/* Jump-nav links on the /changes page — read as tappable chips, not bare text. */
+.jump-link {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.jump-link:hover {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  color: #fff;
+  text-decoration: none;
+}
+/* Brief highlight on the section you jumped to. */
+section[id]:target > h3 {
+  color: var(--accent);
+}
+
 .grid { display: grid; gap: 16px; }
 /* Cards in grid-2 hold standings tables. Standings has ~10 columns
    now (incl. Overall, Match W%, W/D/L%, Game W%), so we bumped the

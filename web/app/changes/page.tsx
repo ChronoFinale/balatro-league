@@ -50,14 +50,18 @@ export default function ChangesPage() {
           It covers ranked only and doesn&apos;t re-explain unchanged vanilla behavior.
         </p>
 
+        <Legend />
+
         <nav
           className="card"
           style={{
             marginTop: 12,
             marginBottom: 16,
+            padding: "10px 12px",
             display: "flex",
-            flexWrap: "wrap",
+            flexWrap: "nowrap",
             gap: 8,
+            overflowX: "auto",
             position: "sticky",
             top: 0,
             zIndex: 20,
@@ -67,7 +71,12 @@ export default function ChangesPage() {
           }}
         >
           {SECTIONS.map((s) => (
-            <a key={s.id} href={`#${s.id}`} className="pill" style={{ textDecoration: "none" }}>
+            <a
+              key={s.id}
+              href={`#${s.id}`}
+              className="pill jump-link"
+              style={{ textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0 }}
+            >
               {s.label}
             </a>
           ))}
@@ -317,16 +326,13 @@ export default function ChangesPage() {
           </Entry>
 
           <SubHeading>Banned in ranked</SubHeading>
-          <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
-            {["j_chicot", "j_matador", "j_mr_bones", "j_luchador"].map((s) => (
-              <Sprite key={s} id={s} height={56} />
-            ))}
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
+            <SpriteTile id="j_chicot" label="Chicot" banned />
+            <SpriteTile id="j_matador" label="Matador" banned />
+            <SpriteTile id="j_mr_bones" label="Mr. Bones" banned />
+            <SpriteTile id="j_luchador" label="Luchador" banned />
           </div>
-          <p>
-            <BannedPill>Chicot</BannedPill> <BannedPill>Matador</BannedPill>{" "}
-            <BannedPill>Mr. Bones</BannedPill> <BannedPill>Luchador</BannedPill>
-          </p>
-          <p className="muted">Banned for how they interact with the PvP blind.</p>
+          <p className="muted" style={{ marginTop: 8 }}>Banned for how they interact with the PvP blind.</p>
 
           <SubHeading>Vanilla jokers, changed</SubHeading>
           <Entry name="Hanging Chad" tag="Reworked" sprite="j_mp_hanging_chad">
@@ -486,16 +492,18 @@ export default function ChangesPage() {
 
         {/* ============================ VOUCHERS ============================ */}
         <Section id="vouchers" title="Vouchers">
-          <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
-            {["v_directors_cut", "v_retcon", "v_hieroglyph", "v_petroglyph"].map((s) => (
-              <Sprite key={s} id={s} height={56} />
-            ))}
-          </div>
-          <p>
-            <BannedPill>Director&apos;s Cut</BannedPill> <BannedPill>Retcon</BannedPill>{" "}
-            <BannedPill>Hieroglyph</BannedPill> <BannedPill>Petroglyph</BannedPill>
+          <p style={{ marginTop: 0 }}>
+            <strong>Banned in ranked:</strong>
           </p>
-          <p className="muted">Banned for how they interact with the PvP blind and gameplay generally.</p>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
+            <SpriteTile id="v_directors_cut" label="Director's Cut" banned />
+            <SpriteTile id="v_retcon" label="Retcon" banned />
+            <SpriteTile id="v_hieroglyph" label="Hieroglyph" banned />
+            <SpriteTile id="v_petroglyph" label="Petroglyph" banned />
+          </div>
+          <p className="muted" style={{ marginTop: 8 }}>
+            Banned for how they interact with the PvP blind and gameplay generally.
+          </p>
           <p>
             No voucher&apos;s effect is changed from vanilla — but <em>when</em> vouchers appear is governed by
             the voucher queue (see the shop-queue section).
@@ -542,6 +550,49 @@ const TAG_STYLE: Record<string, { bg: string; fg: string }> = {
   Banned: { bg: "rgba(231,76,60,0.15)", fg: "#e74c3c" },
   Order: { bg: "rgba(155,89,182,0.15)", fg: "#9b59b6" },
 };
+
+// What each tag means — shown as a legend up top so the colored pills are
+// self-explanatory (especially "Order").
+const TAG_LEGEND: { tag: keyof typeof TAG_STYLE; desc: string }[] = [
+  { tag: "MP exclusive", desc: "New to Multiplayer" },
+  { tag: "Reworked", desc: "Changed from vanilla" },
+  { tag: "Banned", desc: "Not allowed in ranked" },
+  { tag: "Order", desc: "Same effect, but a fixed RNG queue decides when/whether it appears" },
+];
+
+function Legend() {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", marginTop: 12 }}>
+      {TAG_LEGEND.map(({ tag, desc }) => {
+        const t = TAG_STYLE[tag]!;
+        return (
+          <span key={tag} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span
+              className="pill"
+              style={{ background: t.bg, color: t.fg, fontSize: 10, padding: "1px 8px" }}
+            >
+              {tag}
+            </span>
+            <span className="muted" style={{ fontSize: 12 }}>{desc}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+// A captioned sprite tile — used for the banned joker/voucher grids. Banned
+// items are slightly desaturated as a visual cue.
+function SpriteTile({ id, label, banned }: { id: string; label: string; banned?: boolean }) {
+  return (
+    <div style={{ textAlign: "center", width: 66 }}>
+      <span style={{ display: "inline-block", filter: banned ? "grayscale(0.45) brightness(0.92)" : undefined }}>
+        <Sprite id={id} height={64} />
+      </span>
+      <div style={{ fontSize: 11, marginTop: 2, color: banned ? "#e74c3c" : "var(--text)" }}>{label}</div>
+    </div>
+  );
+}
 
 function Entry({
   name,
@@ -595,17 +646,6 @@ function Callout({ title, children }: { title: string; children: React.ReactNode
       <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.6 }}>{title}</div>
       <div style={{ marginTop: 4 }}>{children}</div>
     </div>
-  );
-}
-
-function BannedPill({ children }: { children: React.ReactNode }) {
-  return (
-    <span
-      className="pill"
-      style={{ background: "rgba(231,76,60,0.15)", color: "#e74c3c", fontSize: 12, marginRight: 4 }}
-    >
-      {children}
-    </span>
   );
 }
 
