@@ -15,6 +15,9 @@ export const metadata = {
   title: "Multiplayer changes — Balatro League",
   description:
     "How Balatro Multiplayer's ranked ruleset differs from vanilla Balatro: the shop queue, consumables, jokers, packs, and more.",
+  // Unlisted for now: reachable by direct URL but kept out of nav and search
+  // engines until SurCats okays republishing the source doc.
+  robots: { index: false, follow: false },
 };
 
 const SECTIONS: { id: string; label: string }[] = [
