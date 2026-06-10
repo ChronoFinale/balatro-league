@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Command,
   CommandDialog,
   CommandInput,
   CommandList,
@@ -90,8 +91,9 @@ export function CommandPalette() {
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen} title="Jump to" description="Search pages">
-      <CommandInput placeholder="Jump to a page…" />
-      <CommandList>
+      <Command>
+        <CommandInput placeholder="Jump to a page…" />
+        <CommandList>
         <CommandEmpty>No results.</CommandEmpty>
         {GROUPS.map((g) => (
           <CommandGroup key={g.heading} heading={g.heading}>
@@ -111,7 +113,8 @@ export function CommandPalette() {
             ))}
           </CommandGroup>
         )}
-      </CommandList>
+        </CommandList>
+      </Command>
     </CommandDialog>
   );
 }
