@@ -57,9 +57,9 @@ export function ReportForm({
           ))}
         </select>
         <select name="result" required value={result} onChange={(e) => setResult(e.target.value)}>
-          <option value="2-0">2-0 — you won both</option>
-          <option value="1-1">1-1 — draw</option>
-          <option value="0-2">0-2 — you lost both</option>
+          <option value="2-0">{opponent ? `2-0 — you beat ${opponent.displayName}` : "2-0 — you won both"}</option>
+          <option value="1-1">{opponent ? `1-1 — you drew ${opponent.displayName}` : "1-1 — draw"}</option>
+          <option value="0-2">{opponent ? `0-2 — ${opponent.displayName} beat you` : "0-2 — you lost both"}</option>
         </select>
         <select name="deck" defaultValue="" title="Optional: deck played">
           <option value="">deck (optional)</option>

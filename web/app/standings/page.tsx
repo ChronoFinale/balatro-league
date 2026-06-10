@@ -166,6 +166,18 @@ export default async function StandingsPage() {
               <span><strong>{totalRemaining}</strong> remaining</span>
               <span className="muted" style={{ marginLeft: "auto" }}>{pctPlayed}% complete</span>
             </div>
+            <div
+              className="card"
+              style={{ marginBottom: 16, fontSize: 12, display: "flex", flexWrap: "wrap", gap: "4px 16px", alignItems: "center" }}
+            >
+              <span className="muted" style={{ textTransform: "uppercase", letterSpacing: 0.5, fontSize: 11 }}>Key</span>
+              <span><span style={{ color: "#2ecc71" }}>↑</span> promotion spot</span>
+              <span><span style={{ color: "#e74c3c" }}>↓</span> relegation spot</span>
+              <span><span style={{ color: "#2ecc71" }}>🔒↑</span> clinched — guaranteed up</span>
+              <span><span style={{ color: "#e74c3c" }}>🔒↓</span> locked — guaranteed down</span>
+              <span><span style={{ color: "#f1c40f" }}>⚔</span> tied — needs a tiebreaker</span>
+              <span><s>name</s> dropped out</span>
+            </div>
             {data.tiers.filter((t) => t.divisions.length > 0).map((tier) => {
               const isTopTier = tier.position === data.minTierPosition;
               const isBottomTier = tier.position === data.maxTierPosition;
