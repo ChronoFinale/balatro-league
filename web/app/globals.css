@@ -130,8 +130,7 @@ section[id]:target > h3 {
    `responsive-table` class to a <table>, a `data-label` to each <td>, and
    `card-header` to the cell that should be the card title (usually the name). */
 @media (max-width: 640px) {
-  /* AdminNav subnav wraps instead of overflowing (SiteNav is Tailwind now). */
-  .subnav nav { flex-wrap: wrap; gap: 8px; }
+  /* Both navs are Tailwind now; just tighten the main padding on phones. */
   main { padding: 0 16px; margin: 16px auto; }
 
   table.responsive-table thead { display: none; }
@@ -187,16 +186,6 @@ section[id]:target > h3 {
 .stat .value { font-size: 28px; font-weight: 600; margin-top: 4px; }
 
 main { max-width: 1100px; margin: 24px auto; padding: 0 24px; }
-
-.subnav {
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
-  padding: 8px 24px;
-}
-.subnav-inner { max-width: 1100px; margin: 0 auto; }
-.subnav nav { display: flex; gap: 12px; }
-.subnav nav a { color: var(--muted); padding: 4px 10px; border-radius: 4px; font-size: 13px; }
-.subnav nav a.active { color: var(--accent-2); background: var(--bg); }
 
 /* form bits */
 input[type="text"], input[type="number"], input[type="datetime-local"],
