@@ -2,6 +2,7 @@
 // server actions and pages can recompute/load without a cross-process
 // round trip. Same DB so writes from either side stay in sync.
 
+import type { Player } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getLeagueSettingsForSeason } from "@/lib/league-settings";
 import { computeStandings, type StandingRow } from "@/lib/standings";
@@ -115,6 +116,11 @@ export async function loadDivisionStandings(divisionId: string): Promise<Standin
     where: { id: { in: payload.map((r) => r.playerId) } },
   });
   const playerById = new Map(players.map((p) => [p.id, p]));
+  return hydrateRows(payload, playerById);
+}
+
+// Turn a cached payload + a player lookup into StandingRows. Pure — no DB.
+function hydrateRows(payload: CachedRow[], playerById: Map<string, Player>): StandingRow[] {
   return payload
     .map((r): StandingRow | null => {
       const player = playerById.get(r.playerId);
@@ -133,4 +139,40 @@ export async function loadDivisionStandings(divisionId: string): Promise<Standin
       return row;
     })
     .filter((r): r is StandingRow => r !== null);
+}
+
+// Batched version of loadDivisionStandings for the /standings page, which
+// needs every division at once. Collapses the per-division N+1 (one cache read
+// + one player fetch each) into TWO queries total: one findMany for all cached
+// payloads, one findMany for every referenced player. Cold-cache divisions
+// (rare — recompute runs on every write) fall back to the single-division path.
+export async function loadManyDivisionStandings(
+  divisionIds: string[],
+): Promise<Map<string, StandingRow[]>> {
+  const out = new Map<string, StandingRow[]>();
+  if (divisionIds.length === 0) return out;
+
+  const cached = await prisma.divisionStandings.findMany({
+    where: { divisionId: { in: divisionIds } },
+    select: { divisionId: true, rowsJson: true },
+  });
+
+  const parsedByDiv = new Map<string, CachedRow[]>();
+  const allPlayerIds = new Set<string>();
+  for (const c of cached) {
+    const payload = JSON.parse(c.rowsJson) as CachedRow[];
+    parsedByDiv.set(c.divisionId, payload);
+    for (const r of payload) allPlayerIds.add(r.playerId);
+  }
+
+  const players = allPlayerIds.size === 0 ? [] : await prisma.player.findMany({
+    where: { id: { in: [...allPlayerIds] } },
+  });
+  const playerById = new Map(players.map((p) => [p.id, p]));
+
+  for (const divisionId of divisionIds) {
+    const payload = parsedByDiv.get(divisionId);
+    out.set(divisionId, payload ? hydrateRows(payload, playerById) : await loadDivisionStandings(divisionId));
+  }
+  return out;
 }

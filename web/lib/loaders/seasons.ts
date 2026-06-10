@@ -9,7 +9,7 @@
 // neither isActive nor endedAt set.
 
 import { prisma } from "@/lib/prisma";
-import { loadDivisionStandings } from "@/lib/standings-cache";
+import { loadManyDivisionStandings } from "@/lib/standings-cache";
 import { formatSeasonLabel } from "@/lib/format-season";
 
 export interface SeasonIndexEntry {
@@ -124,12 +124,10 @@ export async function loadSeasonDetail(seasonId: string): Promise<SeasonDetailDa
   });
   if (!season) return null;
 
-  // Cached standings for every division in parallel.
+  // Cached standings for every division — two queries total (batched cache
+  // read + batched player hydration) rather than two per division.
   const allDivIds = season.tiers.flatMap((t) => t.divisions.map((d) => d.id));
-  const standingsRows = await Promise.all(
-    allDivIds.map(async (id) => [id, await loadDivisionStandings(id)] as const),
-  );
-  const byDiv = new Map(standingsRows);
+  const byDiv = await loadManyDivisionStandings(allDivIds);
 
   const tiers: SeasonDetailTier[] = season.tiers.map((t) => ({
     id: t.id,

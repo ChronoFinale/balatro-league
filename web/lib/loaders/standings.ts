@@ -11,7 +11,7 @@
 // divisions, so the first viewer pays the compute cost once.
 
 import { prisma } from "@/lib/prisma";
-import { loadDivisionStandings } from "@/lib/standings-cache";
+import { loadDivisionStandings, loadManyDivisionStandings } from "@/lib/standings-cache";
 import { formatSeasonLabel } from "@/lib/format-season";
 
 export type StandingsRowsForDivision = Awaited<ReturnType<typeof loadDivisionStandings>>;
@@ -117,13 +117,11 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
   const minTierPosition = tierPositions.length > 0 ? Math.min(...tierPositions) : 0;
   const maxTierPosition = tierPositions.length > 0 ? Math.max(...tierPositions) : 0;
 
-  // Load cached standings rows for every division in parallel.
+  // Load cached standings rows for every division in TWO queries total
+  // (batched cache read + batched player hydration), instead of one cache
+  // read + one player fetch per division.
   const allDivIds = season.tiers.flatMap((t) => t.divisions.map((d) => d.id));
-  const standingsByDivisionId = new Map<string, StandingsRowsForDivision>();
-  const results = await Promise.all(
-    allDivIds.map(async (id) => [id, await loadDivisionStandings(id)] as const),
-  );
-  for (const [id, rows] of results) standingsByDivisionId.set(id, rows);
+  const standingsByDivisionId = await loadManyDivisionStandings(allDivIds);
 
   // All shootouts across this season's divisions in one round-trip.
   // Shootout has no Player relation in the schema, so we batch the
