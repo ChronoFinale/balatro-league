@@ -5,6 +5,7 @@ import { SiteNav } from "@/components/SiteNav";
 import { AdminNav } from "@/components/AdminNav";
 import { TierEditor } from "@/components/TierEditor";
 import { saveTemplate, deleteTemplate } from "../actions";
+import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,7 @@ export default async function AdminTemplatesPage() {
               <input name="templateName" placeholder="e.g. Compact Pyramid" required />
             </label>
             <TierEditor initial={SEED} showTemplateLoader={false} />
-            <button type="submit" style={{ marginTop: 12 }}>Save template</button>
+            <Button type="submit" className="mt-3">Save template</Button>
           </form>
         </div>
 
@@ -84,12 +85,12 @@ export default async function AdminTemplatesPage() {
                           Name <input name="templateName" defaultValue={t.name} required />
                         </label>
                         <TierEditor initial={t.config} showTemplateLoader={false} />
-                        <button type="submit" style={{ marginTop: 8 }}>Save changes</button>
+                        <Button type="submit" className="mt-2">Save changes</Button>
                       </form>
                     </details>
                     <form action={deleteTemplate}>
                       <input type="hidden" name="id" value={t.id} />
-                      <button type="submit" className="danger">Delete</button>
+                      <Button type="submit" variant="destructive">Delete</Button>
                     </form>
                   </td>
                 </tr>

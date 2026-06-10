@@ -5,6 +5,7 @@ import { loadBulkImportSeasonContext } from "@/lib/loaders/admin";
 import { SiteNav } from "@/components/SiteNav";
 import { AdminNav } from "@/components/AdminNav";
 import { bulkImportSeason } from "./actions";
+import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
@@ -127,7 +128,7 @@ export default async function BulkImportPage({
             </p>
           </div>
 
-          <button type="submit">Import everything</button>
+          <Button type="submit">Import everything</Button>
         </form>
       </main>
     </>

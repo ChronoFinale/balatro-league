@@ -17,6 +17,7 @@ import { AdminNav } from "@/components/AdminNav";
 import { SiteNav } from "@/components/SiteNav";
 import { FlashToast } from "@/components/FlashToast";
 import { acceptDisputeProposal, rejectDispute, setDisputeResult } from "./actions";
+import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
@@ -114,16 +115,16 @@ export default async function AdminDisputesPage({
                   {hasProposal && (
                     <form action={acceptDisputeProposal}>
                       <input type="hidden" name="pairingId" value={d.pairingId} />
-                      <button type="submit" style={{ background: "#2ecc71", color: "#fff" }}>
+                      <Button type="submit" style={{ background: "#2ecc71", color: "#fff" }}>
                         ✓ Accept proposed
-                      </button>
+                      </Button>
                     </form>
                   )}
                   <form action={rejectDispute}>
                     <input type="hidden" name="pairingId" value={d.pairingId} />
-                    <button type="submit" className="secondary">
+                    <Button type="submit" variant="secondary">
                       Keep original
-                    </button>
+                    </Button>
                   </form>
                   {/* Set a different result than reported OR proposed. */}
                   <form action={setDisputeResult} style={{ display: "flex", gap: 4, alignItems: "center" }}>
@@ -134,7 +135,7 @@ export default async function AdminDisputesPage({
                       <option value="1-1">draw 1-1</option>
                       <option value="0-2">{d.playerB.displayName} won 2-0</option>
                     </select>
-                    <button type="submit" className="secondary">Apply</button>
+                    <Button type="submit" variant="secondary">Apply</Button>
                   </form>
                   {d.disputeThreadId && (
                     <span className="muted" style={{ fontSize: 11, alignSelf: "center" }}>

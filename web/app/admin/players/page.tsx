@@ -336,7 +336,7 @@ function PageHeader({
               </select>
             </label>
           )}
-          <button type="submit" className="secondary">Apply</button>
+          <Button type="submit" variant="secondary">Apply</Button>
           {(selectedSeasonId || selectedDivisionId) && (
             <Link href="/admin/players" style={{ fontSize: 12 }}>clear</Link>
           )}

@@ -9,6 +9,7 @@ import type { Prisma } from "@prisma/client";
 import { requireAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 import { SiteNav } from "@/components/SiteNav";
+import { Button } from "@/components/ui/button";
 import { AdminNav } from "@/components/AdminNav";
 
 export const dynamic = "force-dynamic";
@@ -182,7 +183,7 @@ export default async function AdminAuditPage({
             <input name="until" type="datetime-local" defaultValue={sp.until ?? ""} />
           </label>
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="submit">Apply</button>
+            <Button type="submit">Apply</Button>
             <Link href="/admin/audit" className="secondary" style={{ alignSelf: "center" }}>Reset</Link>
           </div>
           <div className="muted" style={{ textAlign: "right", fontSize: 12 }}>

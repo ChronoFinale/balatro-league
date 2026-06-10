@@ -10,6 +10,7 @@ import { loadReportPageData } from "@/lib/loaders/report";
 import { CANONICAL_DECKS, CANONICAL_STAKES } from "@/lib/balatro-info";
 import { tierColors } from "@/lib/tier-colors";
 import { SiteNav } from "@/components/SiteNav";
+import { Button } from "@/components/ui/button";
 import { ReportForm } from "@/components/ReportForm";
 import { submitReportFromReportPage, submitReportPageDispute } from "./actions";
 
@@ -156,9 +157,9 @@ export default async function ReportPage({
                               maxLength={500}
                               style={{ fontSize: 12 }}
                             />
-                            <button type="submit" className="secondary" style={{ fontSize: 11 }}>
+                            <Button type="submit" variant="secondary" style={{ fontSize: 11 }}>
                               Submit dispute
-                            </button>
+                            </Button>
                           </form>
                         </details>
                       </td>
