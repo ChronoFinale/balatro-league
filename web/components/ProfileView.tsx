@@ -35,10 +35,15 @@ function seasonRateTooltip(h: SeasonHistoryEntry): string {
 // (× plays, or W for wins). Combos carry "Deck · Stake" so we split + show both.
 function favRow(r: FavoriteEntry, kind: "deck" | "stake" | "combo", metric: "played" | "won") {
   const [deckName, stakeName] = kind === "combo" ? r.name.split(" · ") : [r.name, r.name];
-  // Clean count row — icon(s), name, and the raw count. No bars, no
-  // percentages (deck/stake win rates live in the performance cards above).
+  // Win RATE is the headline, with the wins/plays record next to it for
+  // context — never a bare play count. e.g. "3W/5  60%".
+  const winRate = r.gamesPlayed > 0 ? Math.round((r.gamesWon / r.gamesPlayed) * 100) : 0;
+  const title =
+    metric === "won"
+      ? `${r.gamesWon} wins across ${r.gamesPlayed} games`
+      : `${r.gamesPlayed} games played, ${r.gamesWon} won`;
   return (
-    <li key={r.name} style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0" }}>
+    <li key={r.name} title={title} style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0" }}>
       {(kind === "deck" || kind === "combo") && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={deckImage(deckName!)} alt="" width={16} height={16} style={{ borderRadius: 2 }} />
@@ -48,8 +53,20 @@ function favRow(r: FavoriteEntry, kind: "deck" | "stake" | "combo", metric: "pla
         <img src={stakeImage(kind === "combo" ? stakeName! : r.name)} alt="" width={16} height={16} style={{ borderRadius: 2 }} />
       )}
       <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</span>
-      <span style={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
-        {metric === "won" ? `${r.gamesWon}W` : `${r.gamesPlayed}×`}
+      <span className="muted" style={{ whiteSpace: "nowrap", fontSize: 11, fontVariantNumeric: "tabular-nums" }}>
+        {r.gamesWon}W/{r.gamesPlayed}
+      </span>
+      <span
+        style={{
+          whiteSpace: "nowrap",
+          fontVariantNumeric: "tabular-nums",
+          fontWeight: 600,
+          minWidth: 36,
+          textAlign: "right",
+          color: winRate >= 50 ? "#2ecc71" : "#e74c3c",
+        }}
+      >
+        {winRate}%
       </span>
     </li>
   );

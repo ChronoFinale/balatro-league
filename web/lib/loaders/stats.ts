@@ -33,6 +33,10 @@ export interface StatsComboRow {
   deck: string;
   stake: string;
   gamesTotal: number;
+  // Share of all played games that used this combo (pick rate). Win rate is
+  // meaningless league-wide — both players play the same combo each game — so
+  // "most played" is ranked + shown by pick share, not a 50% win rate.
+  sharePct: number;
   appearancesTotal: number;
   bansTotal: number;
   banRatePct: number;
@@ -187,8 +191,17 @@ async function computeStatsPageData(): Promise<StatsPageData> {
   const stakes = buildItemRows(pool.stakes, stakeGameMap, stakeBanMap);
 
   // ── Combos (deck × stake) ──────────────────────────────────────────
+  const totalComboGames = playedComboAgg.reduce((s, r) => s + r._count._all, 0);
   const mostPlayedCombos: StatsComboRow[] = playedComboAgg
-    .map((r) => ({ deck: r.deck, stake: r.stake, gamesTotal: r._count._all, appearancesTotal: 0, bansTotal: 0, banRatePct: 0 }))
+    .map((r) => ({
+      deck: r.deck,
+      stake: r.stake,
+      gamesTotal: r._count._all,
+      sharePct: totalComboGames === 0 ? 0 : Math.round((r._count._all / totalComboGames) * 100),
+      appearancesTotal: 0,
+      bansTotal: 0,
+      banRatePct: 0,
+    }))
     .sort((a, b) => b.gamesTotal - a.gamesTotal)
     .slice(0, 8);
   const mostBannedCombos: StatsComboRow[] = bannedComboAgg
@@ -197,6 +210,7 @@ async function computeStatsPageData(): Promise<StatsPageData> {
       deck: r.deck,
       stake: r.stake,
       gamesTotal: 0,
+      sharePct: 0,
       appearancesTotal: r._count._all,
       bansTotal: r._count.banOrdinal,
       banRatePct: r._count._all === 0 ? 0 : Math.round((r._count.banOrdinal / r._count._all) * 100),

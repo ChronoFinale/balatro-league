@@ -80,8 +80,9 @@ export default async function StatsPage() {
         <div className="grid grid-2">
           <ComboCard
             title="Most-played combos"
+            subtitle="Pick rate — share of all games played on this combo"
             rows={data.mostPlayedCombos}
-            valueLabel={(r) => `${r.gamesTotal} games`}
+            valueLabel={(r) => `${r.sharePct}% · ${r.gamesTotal}g`}
           />
           <ComboCard
             title="Most-banned combos"
