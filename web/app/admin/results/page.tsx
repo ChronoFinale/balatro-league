@@ -14,6 +14,7 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormSelect } from "@/components/FormSelect";
+import { DistinctMemberSelects } from "@/components/DistinctMemberSelects";
 import { loadResultsPage, type ResultsMember } from "@/lib/loaders/admin-results";
 import { recordResultAction, overrideResultAction, forfeitAction, showdownAction, undoAction } from "./actions";
 
@@ -91,9 +92,13 @@ export default async function ResultsPage({
               </p>
               <form action={recordResultAction} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 <input type="hidden" name="divisionId" value={sel.division.id} />
-                <MemberSelect name="playerAId" members={sel.members} label="A…" />
-                <span className="muted">vs</span>
-                <MemberSelect name="playerBId" members={sel.members} label="B…" />
+                <DistinctMemberSelects
+                  members={sel.members.map((m) => ({ playerId: m.playerId, displayName: m.displayName }))}
+                  nameA="playerAId"
+                  nameB="playerBId"
+                  placeholderA="A…"
+                  placeholderB="B…"
+                />
                 <FormSelect
                   name="result"
                   required
