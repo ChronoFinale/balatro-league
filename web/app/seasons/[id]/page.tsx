@@ -152,15 +152,20 @@ function PublicSummary({
               top {tier.promoteRelegateCount} ↑ promote · bottom {tier.promoteRelegateCount} ↓ relegate
             </span>
             {isAdmin && (
-              <form action={setTierPromoteRelegateCount} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 400 }}>
+              <form
+                action={setTierPromoteRelegateCount}
+                style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 400 }}
+                title="How many players move up/down between divisions when the season ends: the top N of each division promote a tier, the bottom N relegate a tier."
+              >
                 <input type="hidden" name="tierId" value={tier.id} />
-                <span className="muted">Edit:</span>
+                <span className="muted">Promote / relegate per division:</span>
                 <Input
                   type="number"
                   name="count"
                   min={0}
                   max={10}
                   defaultValue={tier.promoteRelegateCount}
+                  title="How many players move up/down between divisions when the season ends."
                   style={{ width: 48, fontSize: 11, padding: "1px 4px" }}
                 />
                 <Button type="submit" variant="secondary" size="sm">Save</Button>
