@@ -186,17 +186,31 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       name: string,
       topic: string,
       type: ChannelType.GuildText | ChannelType.GuildAnnouncement = ChannelType.GuildText,
+      aliases: string[] = [],
     ) {
+      // Match the canonical name first, then any legacy alias (e.g. a
+      // pre-prefix "results" when we now want "league-results"). Matching an
+      // alias renames the channel in place — same id, same history, no
+      // re-create — so re-running bootstrap to adopt the new naming never
+      // loses messages or invalidates a stored channel id.
       const existing = guild.channels.cache.find(
         (c) =>
           (c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement) &&
-          c.name === name &&
+          (c.name === name || aliases.includes(c.name)) &&
           c.parentId === categoryId,
       );
       if (
         existing &&
         (existing.type === ChannelType.GuildText || existing.type === ChannelType.GuildAnnouncement)
       ) {
+        const wasRenamed = existing.name !== name;
+        if (wasRenamed) {
+          const from = existing.name;
+          await existing.edit({ name }).then(
+            () => created.push(`#${from} → #${name} (renamed)`),
+            () => reused.push(`#${from} (couldn't rename to #${name} — rename it manually)`),
+          );
+        }
         // Convert in place if it's the wrong type (e.g. #announcements was made
         // as a plain text channel before this fix).
         if (existing.type !== type) {
@@ -207,7 +221,7 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
               ),
             () => reused.push(`#${name} (couldn't convert type — convert it manually in channel settings)`),
           );
-        } else {
+        } else if (!wasRenamed) {
           reused.push(`#${name}`);
         }
         return existing;
@@ -217,15 +231,26 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       justCreated.add(ch.id);
       return ch;
     }
+    // All public channels are "league-" prefixed so they don't collide with a
+    // server's own generic #results / #signups / #announcements when the bot
+    // joins an existing community. Legacy unprefixed names are passed as
+    // aliases so re-running bootstrap renames them in place (keeps history).
     const infoChan = await ensureChannel("league-info", "League rules, schedule, announcements. Read-only for most.");
-    const signupChan = await ensureChannel("signups", "Signup embeds posted here by the web admin. Players click the button to register.");
-    const resultsChan = await ensureChannel("results", "Auto-posted by the bot whenever a match is recorded.");
+    const signupChan = await ensureChannel("league-signups", "Signup embeds posted here by the web admin. Players click the button to register.", ChannelType.GuildText, ["signups"]);
+    const resultsChan = await ensureChannel("league-results", "Auto-posted by the bot whenever a match is recorded.", ChannelType.GuildText, ["results"]);
     const chatChan = await ensureChannel("league-chat", "General league chat. Match scheduling, banter, etc.");
-    const botCmdChan = await ensureChannel("bot-commands", "General bot commands: /random, /profile, /standings, etc. Most replies are private (only you see them) so you can run commands from any channel.");
+    const botCmdChan = await ensureChannel("league-bot-commands", "General bot commands: /random, /profile, /standings, etc. Most replies are private (only you see them) so you can run commands from any channel.", ChannelType.GuildText, ["bot-commands"]);
     const announcementsChan = await ensureChannel(
-      "announcements",
+      "league-announcements",
       "League-wide announcements: season starts, recaps, league news. Bot-posted, read-only for members.",
       ChannelType.GuildAnnouncement,
+      ["announcements"],
+    );
+    const feedbackChan = await ensureChannel(
+      "league-feedback",
+      "Player feedback, suggestions, and bug reports for the league. Everyone can post.",
+      ChannelType.GuildText,
+      ["feedback"],
     );
 
     // Persist channel ids in LeagueConfig so the bot's per-channel
@@ -252,6 +277,11 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       where: { key: "league_info_channel_id" },
       create: { key: "league_info_channel_id", value: infoChan.id, updatedBy: interaction.user.id },
       update: { value: infoChan.id, updatedBy: interaction.user.id },
+    });
+    await prisma.leagueConfig.upsert({
+      where: { key: "feedback_channel_id" },
+      create: { key: "feedback_channel_id", value: feedbackChan.id, updatedBy: interaction.user.id },
+      update: { value: feedbackChan.id, updatedBy: interaction.user.id },
     });
 
     // Auto-create a Match Results webhook on #results so the announce
@@ -424,14 +454,24 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
     // and don't bother league admins who can't act on tech issues.
     async function ensureDevopsChan() {
       const existing = guild.channels.cache.find(
-        (c) => c.type === ChannelType.GuildText && c.name === "devops" && c.parentId === categoryId,
+        (c) =>
+          c.type === ChannelType.GuildText &&
+          (c.name === "league-devops" || c.name === "devops") &&
+          c.parentId === categoryId,
       );
       if (existing && existing.type === ChannelType.GuildText) {
-        reused.push(`#devops`);
+        if (existing.name !== "league-devops") {
+          await existing.edit({ name: "league-devops" }).then(
+            () => created.push(`#devops → #league-devops (renamed)`),
+            () => reused.push(`#devops (couldn't rename to #league-devops — rename it manually)`),
+          );
+        } else {
+          reused.push(`#league-devops`);
+        }
         return existing;
       }
       const ch = await guild.channels.create({
-        name: "devops",
+        name: "league-devops",
         type: ChannelType.GuildText,
         parent: categoryId,
         topic: "🔧 Infra alerts: queue stalls, rate-limit floods, anything tech. DevOps-only.",
@@ -443,7 +483,7 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
           { id: interaction.client.user.id, allow: [...PERM_PRESETS.BOT_ALLOW] },
         ],
       });
-      created.push(`#devops (private, DevOps-only)`);
+      created.push(`#league-devops (private, DevOps-only)`);
       return ch;
     }
     const devopsChan = await ensureDevopsChan();
@@ -451,6 +491,52 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       where: { key: "devops_channel_id" },
       create: { key: "devops_channel_id", value: devopsChan.id, updatedBy: interaction.user.id },
       update: { value: devopsChan.id, updatedBy: interaction.user.id },
+    });
+
+    // Admin chat — private coordination channel for league staff (admins +
+    // helpers + owners). The bot doesn't post here; it's stored as
+    // admin_channel_id so the site/bot can reference it. Staff-only via
+    // overwrites, same shape as #league-backups.
+    async function ensureAdminChan() {
+      const existing = guild.channels.cache.find(
+        (c) =>
+          c.type === ChannelType.GuildText &&
+          (c.name === "league-admin" || c.name === "admin-chat") &&
+          c.parentId === categoryId,
+      );
+      if (existing && existing.type === ChannelType.GuildText) {
+        if (existing.name !== "league-admin") {
+          await existing.edit({ name: "league-admin" }).then(
+            () => created.push(`#admin-chat → #league-admin (renamed)`),
+            () => reused.push(`#admin-chat (couldn't rename to #league-admin — rename it manually)`),
+          );
+        } else {
+          reused.push(`#league-admin`);
+        }
+        return existing;
+      }
+      const ownerBindings = await prisma.roleBinding.findMany({ where: { tier: "OWNER" } });
+      const ch = await guild.channels.create({
+        name: "league-admin",
+        type: ChannelType.GuildText,
+        parent: categoryId,
+        topic: "🛠️ League staff chat — admins & helpers coordinate here. Staff-only.",
+        permissionOverwrites: [
+          { id: guild.roles.everyone.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+          { id: adminRole.id, allow: [...PERM_PRESETS.MEMBER_ALLOW] },
+          { id: helperRole.id, allow: [...PERM_PRESETS.MEMBER_ALLOW] },
+          ...ownerBindings.map((b) => ({ id: b.discordRoleId, allow: [...PERM_PRESETS.MEMBER_ALLOW] })),
+          { id: interaction.client.user.id, allow: [...PERM_PRESETS.BOT_ALLOW] },
+        ],
+      });
+      created.push(`#league-admin (private, staff-only)`);
+      return ch;
+    }
+    const adminChan = await ensureAdminChan();
+    await prisma.leagueConfig.upsert({
+      where: { key: "admin_channel_id" },
+      create: { key: "admin_channel_id", value: adminChan.id, updatedBy: interaction.user.id },
+      update: { value: adminChan.id, updatedBy: interaction.user.id },
     });
 
     // Support channel (#support, where /support opens ticket threads). Reuses
@@ -502,16 +588,19 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       created.length > 0 ? `  Created: ${created.join(", ")}` : `  (nothing new — everything already existed)`,
       reused.length > 0 ? `  Reused: ${reused.join(", ")}` : null,
       webhookWarning
-        ? `\n⚠️ **Match Results webhook didn't get created** — the bot probably needs **Manage Webhooks** in <#${resultsChan.id}>. Either:\n  • Grant the bot Manage Webhooks at the channel or category level, OR\n  • Create the webhook manually in **#results → Edit Channel → Integrations → Webhooks**, then paste the URL via \`/league set-results-webhook url:<url>\`\n  Error: \`${webhookWarning}\``
+        ? `\n⚠️ **Match Results webhook didn't get created** — the bot probably needs **Manage Webhooks** in <#${resultsChan.id}>. Either:\n  • Grant the bot Manage Webhooks at the channel or category level, OR\n  • Create the webhook manually in **#league-results → Edit Channel → Integrations → Webhooks**, then paste the URL via \`/league set-results-webhook url:<url>\`\n  Error: \`${webhookWarning}\``
         : null,
       ``,
       `📌 <#${infoChan.id}> — league-info`,
-      `📝 <#${signupChan.id}> — signups`,
-      `🏆 <#${resultsChan.id}> — results (auto-announce target)`,
+      `📝 <#${signupChan.id}> — league-signups`,
+      `🏆 <#${resultsChan.id}> — league-results (auto-announce target)`,
+      `📣 <#${announcementsChan.id}> — league-announcements (season starts, recaps)`,
       `💬 <#${chatChan.id}> — league-chat`,
-      `🤖 <#${botCmdChan.id}> — bot-commands (casual /challenge, /report)`,
+      `🗣️ <#${feedbackChan.id}> — league-feedback (player suggestions + bug reports)`,
+      `🤖 <#${botCmdChan.id}> — league-bot-commands (casual /challenge, /report)`,
       `📦 <#${backupChan.id}> — league-backups (staff-only, daily snapshots)`,
-      `🔧 <#${devopsChan.id}> — devops (DevOps-only, queue stalls + infra alerts)`,
+      `🔧 <#${devopsChan.id}> — league-devops (DevOps-only, queue stalls + infra alerts)`,
+      `🛠️ <#${adminChan.id}> — league-admin (staff-only chat)`,
       `🎴 <#${challengesChan.id}> — challenges (parent for casual /challenge threads, under 🎴 Matches)`,
       ``,
       `🎭 Roles:`,

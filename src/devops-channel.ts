@@ -39,7 +39,7 @@ export async function ensureDevopsChannel(): Promise<void> {
   });
   const devopsRoleIds = devopsBindings.map((b) => b.discordRoleId);
   const category = await ensureGuildCategory(env.DISCORD_GUILD_ID, "🃏 Balatro League");
-  const channel = await createGuildTextChannel(env.DISCORD_GUILD_ID, "devops", {
+  const channel = await createGuildTextChannel(env.DISCORD_GUILD_ID, "league-devops", {
     parentId: category?.id,
     topic: "🔧 Infra alerts: queue stalls, rate-limit floods, anything tech. DevOps-only.",
     visibleToRoleIds: devopsRoleIds,

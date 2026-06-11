@@ -29,7 +29,7 @@ export async function ensureBotCommandsChannel(): Promise<void> {
   // Nest under the same '🃏 Balatro League' style category as everything
   // else for tidiness. Fall back to top-level if category creation fails.
   const category = await ensureGuildCategory(env.DISCORD_GUILD_ID, "🃏 Balatro League");
-  const channel = await createGuildTextChannel(env.DISCORD_GUILD_ID, "bot-commands", {
+  const channel = await createGuildTextChannel(env.DISCORD_GUILD_ID, "league-bot-commands", {
     parentId: category?.id,
     topic: "Use match flow commands here when you're not in a division channel.",
   });

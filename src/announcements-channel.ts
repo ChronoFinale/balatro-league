@@ -32,7 +32,7 @@ export async function ensureAnnouncementsChannel(): Promise<void> {
     return;
   }
   const category = await ensureGuildCategory(env.DISCORD_GUILD_ID, "🃏 Balatro League");
-  const channel = await createGuildTextChannel(env.DISCORD_GUILD_ID, "announcements", {
+  const channel = await createGuildTextChannel(env.DISCORD_GUILD_ID, "league-announcements", {
     parentId: category?.id,
     topic: "League-wide announcements: season starts, recaps, league news. Bot-posted, read-only for members.",
   });
