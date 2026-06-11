@@ -164,7 +164,7 @@ export default async function AdminAuditPage({
           you can bookmark / share a specific view.
         </p>
 
-        <form method="get" action="/admin/audit" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, alignItems: "end", marginBottom: 16 }}>
+        <form method="get" action="/admin/audit" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8, alignItems: "end", marginBottom: 16 }}>
           <label>
             <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Actor</div>
             <FormSelect

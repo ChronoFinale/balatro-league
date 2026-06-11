@@ -190,8 +190,10 @@ section[id]:target > h3 {
    now (incl. Overall, Match W%, W/D/L%, Game W%), so we bumped the
    minimum so each card has room to render without squeezing every
    column to ~50px. Below this width the grid stacks to one column. */
-.grid-2 { grid-template-columns: repeat(auto-fit, minmax(540px, 1fr)); }
-.grid-3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+/* min(…, 100%) so a single column never forces the grid wider than the
+   viewport on a phone (a bare minmax(540px,…) overflows below 540px). */
+.grid-2 { grid-template-columns: repeat(auto-fit, minmax(min(540px, 100%), 1fr)); }
+.grid-3 { grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); }
 
 .stat { background: var(--surface-2); padding: 16px; border-radius: 8px; }
 .stat .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
