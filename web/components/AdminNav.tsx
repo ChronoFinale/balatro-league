@@ -40,7 +40,7 @@ export async function AdminNav({ activePath }: { activePath: string }) {
   const showDevOps = await canSeeDevOpsLinks();
   return (
     <div className="border-b border-border bg-secondary px-4 py-2 md:px-6">
-      <nav className="mx-auto flex max-w-[1100px] flex-wrap gap-2 md:gap-3">
+      <nav className="pixel mx-auto flex max-w-[1100px] flex-wrap gap-2 md:gap-3">
         {ADMIN_LINKS.filter((l) => !l.devOpsOnly || showDevOps).map((link) => {
           const isActive = link.exact
             ? activePath === link.href
