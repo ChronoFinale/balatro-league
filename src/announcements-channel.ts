@@ -12,7 +12,7 @@
 //   - any future broadcast that's bigger than a single division
 
 import { env } from "./env.js";
-import { ensureGuildCategory, createGuildTextChannel } from "./discord-helpers.js";
+import { resolveConfiguredCategory, createGuildTextChannel } from "./discord-helpers.js";
 import { getConfig, setConfig, LeagueConfigKey } from "./league-config.js";
 
 export async function resolveAnnouncementsChannelId(): Promise<string | null> {
@@ -31,7 +31,7 @@ export async function ensureAnnouncementsChannel(): Promise<void> {
     console.warn("[announcements] DISCORD_GUILD_ID not set; skipping auto-create");
     return;
   }
-  const category = await ensureGuildCategory(env.DISCORD_GUILD_ID, "🃏 Balatro League");
+  const category = await resolveConfiguredCategory(env.DISCORD_GUILD_ID, LeagueConfigKey.LeagueCategoryId, "🃏 Balatro League");
   const channel = await createGuildTextChannel(env.DISCORD_GUILD_ID, "league-announcements", {
     parentId: category?.id,
     topic: "League-wide announcements: season starts, recaps, league news. Bot-posted, read-only for members.",

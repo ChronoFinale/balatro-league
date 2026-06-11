@@ -12,7 +12,7 @@
 
 import { ChannelType } from "discord.js";
 import { env } from "./env.js";
-import { createGuildTextChannel, ensureGuildCategory } from "./discord-helpers.js";
+import { createGuildTextChannel, resolveConfiguredCategory } from "./discord-helpers.js";
 import { getConfig, setConfig, LeagueConfigKey } from "./league-config.js";
 import { prisma } from "./db.js";
 
@@ -38,7 +38,7 @@ export async function ensureDevopsChannel(): Promise<void> {
     where: { tier: "DEVOPS" },
   });
   const devopsRoleIds = devopsBindings.map((b) => b.discordRoleId);
-  const category = await ensureGuildCategory(env.DISCORD_GUILD_ID, "🃏 Balatro League");
+  const category = await resolveConfiguredCategory(env.DISCORD_GUILD_ID, LeagueConfigKey.LeagueCategoryId, "🃏 Balatro League");
   const channel = await createGuildTextChannel(env.DISCORD_GUILD_ID, "league-devops", {
     parentId: category?.id,
     topic: "🔧 Infra alerts: queue stalls, rate-limit floods, anything tech. DevOps-only.",

@@ -143,6 +143,17 @@ export const LeagueConfigKey = {
   // message on every refresh (regardless of whether it's currently
   // pinned) so a lost/removed pin can't make the worker post duplicates.
   LeagueInfoMessageId: "league_info_message_id",
+
+  // Discord category IDs the bot creates its channels under. Resolved
+  // config-first (so an admin can point the bot at an existing category on
+  // a server it didn't create) → find-or-create by name fallback. Bootstrap
+  // and the per-channel auto-create helpers both honor these and write the
+  // resolved id back here.
+  //   LeagueCategoryId  — the main "🃏 Balatro League" category (info,
+  //                       signups, results, announcements, bot-commands, …).
+  //   MatchesCategoryId — the "🎴 Matches" category that holds #challenges.
+  LeagueCategoryId: "league_category_id",
+  MatchesCategoryId: "matches_category_id",
 } as const;
 
 export type LeagueConfigKey = (typeof LeagueConfigKey)[keyof typeof LeagueConfigKey];

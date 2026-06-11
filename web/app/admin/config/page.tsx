@@ -36,6 +36,11 @@ const CHANNEL_KEYS = [
   { key: "devops_channel_id", label: "DevOps channel ID", help: "Queue-stall + rate-limit alerts. Tech-only." },
 ];
 
+const CATEGORY_KEYS = [
+  { key: "league_category_id", label: "League category ID", help: "The Discord CATEGORY the bot creates its channels under (info, signups, results, announcements, bot-commands, …). Right-click the category → Copy ID. Set this to drop the league into an existing category on a server the bot didn't create — bootstrap + auto-create honor it. Auto-filled when /league setup runs." },
+  { key: "matches_category_id", label: "Matches category ID", help: "The category that holds #challenges (casual /challenge match threads). Defaults to a '🎴 Matches' category created on bootstrap; set an ID here to use an existing one." },
+];
+
 const MODE_KEYS = [
   { key: "signups_only_mode", label: "Sign-ups-only mode", help: "Set to 'true' to disable every command except /help while keeping the sign-up flow live. Use for a soft launch in a new server; set to 'false' (or clear) when the season starts." },
   { key: "division_channels_disabled", label: "Disable division channels", help: "Set to 'true' for a lightweight league: activating a season won't auto-create per-division channels/roles. Matches run in #bot-commands, results post to the Results channel, standings are on the web. You can still create channels later from the season page." },
@@ -82,6 +87,7 @@ export default async function AdminConfigPage() {
           cache on the bot side, so rules tweaks take up to that long to propagate).
         </p>
 
+        <ConfigSection title="Categories" keys={CATEGORY_KEYS} valueByKey={valueByKey} />
         <ConfigSection title="Channels & external" keys={CHANNEL_KEYS} valueByKey={valueByKey} />
         <ConfigSection title="Mode" keys={MODE_KEYS} valueByKey={valueByKey} />
         <ConfigSection title="Community channels" keys={COMMUNITY_KEYS} valueByKey={valueByKey} />

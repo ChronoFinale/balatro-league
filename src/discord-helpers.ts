@@ -8,6 +8,7 @@
 // so callers (workers, sweepers) decide whether to retry vs continue.
 
 import { ChannelType, PermissionFlagsBits, type CategoryChannel, type Guild } from "discord.js";
+import { getConfig, setConfig, type LeagueConfigKey } from "./league-config.js";
 
 // Permission sets used by the bootstrap. Granting these explicitly via
 // overwrite means league functionality doesn't quietly break when the
@@ -134,6 +135,35 @@ export async function ensureGuildCategory(
     console.warn(`[bot] ensureGuildCategory(${name}) failed:`, err);
     return null;
   }
+}
+
+// Resolve the category the bot should put its channels under, config-first:
+//   1. If `configKey` holds an id that still resolves to a category, use it.
+//      (Lets an admin point the bot at an existing category on a server it
+//      didn't create, via /admin/config.)
+//   2. Otherwise find-or-create one named `fallbackName` and persist its id
+//      back to `configKey` so later auto-creates + the web reference the same
+//      category.
+export async function resolveConfiguredCategory(
+  guildId: string,
+  configKey: LeagueConfigKey,
+  fallbackName: string,
+): Promise<{ id: string } | null> {
+  const configured = await getConfig(configKey);
+  if (configured) {
+    try {
+      const guild = await getGuild(guildId);
+      const ch = await guild.channels.fetch(configured).catch(() => null);
+      if (ch && ch.type === ChannelType.GuildCategory) return { id: configured };
+    } catch {
+      // fall through to name-based find-or-create
+    }
+  }
+  const cat = await ensureGuildCategory(guildId, fallbackName);
+  if (cat && cat.id !== configured) {
+    await setConfig(configKey, cat.id, "category-auto-resolve").catch(() => {});
+  }
+  return cat;
 }
 
 export async function createGuildTextChannel(

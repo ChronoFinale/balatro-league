@@ -15,7 +15,7 @@ import { prisma } from "../db.js";
 import { PERM_PRESETS } from "../discord-helpers.js";
 import { ensureSupportChannel } from "../support-channel.js";
 import { webUrl, WEB_HOST } from "../web-url.js";
-import { clearConfig, LeagueConfigKey, setConfig } from "../league-config.js";
+import { clearConfig, getConfig, LeagueConfigKey, setConfig } from "../league-config.js";
 import { requireOwner } from "../permissions.js";
 import { enqueueLeagueInfoRefresh } from "../queue.js";
 import type { SlashCommand } from "./types.js";
@@ -167,16 +167,30 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
     const created: string[] = [];
     const reused: string[] = [];
 
-    let category = guild.channels.cache.find(
-      (c) => c.type === ChannelType.GuildCategory && c.name === categoryName,
-    );
-    if (!category) {
-      category = await guild.channels.create({ name: categoryName, type: ChannelType.GuildCategory });
-      created.push(`category "${categoryName}"`);
+    // Honor a pre-configured league category id (set in /admin/config) when it
+    // still resolves — lets bootstrap target an existing category on a server
+    // the bot didn't create. Otherwise find-or-create by the (option) name.
+    const configuredCatId = await getConfig(LeagueConfigKey.LeagueCategoryId);
+    let category = configuredCatId
+      ? guild.channels.cache.find((c) => c.id === configuredCatId && c.type === ChannelType.GuildCategory)
+      : undefined;
+    if (category) {
+      reused.push(`category "${category.name}" (from config)`);
     } else {
-      reused.push(`category "${categoryName}"`);
+      category = guild.channels.cache.find(
+        (c) => c.type === ChannelType.GuildCategory && c.name === categoryName,
+      );
+      if (!category) {
+        category = await guild.channels.create({ name: categoryName, type: ChannelType.GuildCategory });
+        created.push(`category "${categoryName}"`);
+      } else {
+        reused.push(`category "${categoryName}"`);
+      }
     }
     const categoryId = category.id;
+    // Persist the resolved id so the per-channel auto-create helpers + the web
+    // all reference the same league category.
+    await setConfig(LeagueConfigKey.LeagueCategoryId, categoryId, interaction.user.id);
 
     // Tracks whether each ensured channel was newly created — used below
      // to decide whether to seed it with onboarding messages (we don't want
@@ -565,15 +579,24 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
     // Separate category from the league category so casual play has a
     // visually distinct home (and matches don't clutter the bot-commands
     // channel where the invite is posted).
-    let matchesCategory = guild.channels.cache.find(
-      (c) => c.type === ChannelType.GuildCategory && c.name === "🎴 Matches",
-    );
-    if (!matchesCategory) {
-      matchesCategory = await guild.channels.create({ name: "🎴 Matches", type: ChannelType.GuildCategory });
-      created.push(`category "🎴 Matches"`);
+    const configuredMatchesCatId = await getConfig(LeagueConfigKey.MatchesCategoryId);
+    let matchesCategory = configuredMatchesCatId
+      ? guild.channels.cache.find((c) => c.id === configuredMatchesCatId && c.type === ChannelType.GuildCategory)
+      : undefined;
+    if (matchesCategory) {
+      reused.push(`category "${matchesCategory.name}" (from config)`);
     } else {
-      reused.push(`category "🎴 Matches"`);
+      matchesCategory = guild.channels.cache.find(
+        (c) => c.type === ChannelType.GuildCategory && c.name === "🎴 Matches",
+      );
+      if (!matchesCategory) {
+        matchesCategory = await guild.channels.create({ name: "🎴 Matches", type: ChannelType.GuildCategory });
+        created.push(`category "🎴 Matches"`);
+      } else {
+        reused.push(`category "🎴 Matches"`);
+      }
     }
+    await setConfig(LeagueConfigKey.MatchesCategoryId, matchesCategory.id, interaction.user.id);
     let challengesChan = guild.channels.cache.find(
       (c) =>
         c.type === ChannelType.GuildText &&

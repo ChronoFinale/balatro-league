@@ -12,7 +12,7 @@
 
 import { ChannelType } from "discord.js";
 import { env } from "./env.js";
-import { createGuildTextChannel, ensureGuildCategory } from "./discord-helpers.js";
+import { createGuildTextChannel, resolveConfiguredCategory } from "./discord-helpers.js";
 import { getConfig, setConfig, LeagueConfigKey } from "./league-config.js";
 import { prisma } from "./db.js";
 
@@ -41,7 +41,7 @@ export async function ensureBackupChannel(): Promise<void> {
     where: { tier: { in: ["ADMIN", "HELPER"] } },
   });
   const staffRoleIds = staffBindings.map((b) => b.discordRoleId);
-  const category = await ensureGuildCategory(env.DISCORD_GUILD_ID, "🃏 Balatro League");
+  const category = await resolveConfiguredCategory(env.DISCORD_GUILD_ID, LeagueConfigKey.LeagueCategoryId, "🃏 Balatro League");
   const channel = await createGuildTextChannel(env.DISCORD_GUILD_ID, "league-backups", {
     parentId: category?.id,
     topic: "📦 Daily JSON snapshots of restorable league state. Staff-only.",

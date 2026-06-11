@@ -11,7 +11,7 @@
 // /start-match threads live).
 
 import { getConfig, setConfig, LeagueConfigKey } from "./league-config.js";
-import { ensureGuildCategory, createGuildTextChannel } from "./discord-helpers.js";
+import { resolveConfiguredCategory, createGuildTextChannel } from "./discord-helpers.js";
 import { env } from "./env.js";
 
 export async function resolveChallengesChannelId(): Promise<string | null> {
@@ -28,7 +28,7 @@ export async function ensureChallengesChannel(): Promise<void> {
   // Dedicated 🎴 Matches category. Public by default — anyone can see
   // the channel + browse the thread list (private-thread membership
   // still keeps the match contents to the two players + bot).
-  const category = await ensureGuildCategory(env.DISCORD_GUILD_ID, "🎴 Matches");
+  const category = await resolveConfiguredCategory(env.DISCORD_GUILD_ID, LeagueConfigKey.MatchesCategoryId, "🎴 Matches");
   const channel = await createGuildTextChannel(env.DISCORD_GUILD_ID, "challenges", {
     parentId: category?.id,
     topic: "Casual /challenge matches spawn private threads here. Browse the thread list for active games.",
