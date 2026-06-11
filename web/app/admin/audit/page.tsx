@@ -228,7 +228,8 @@ export default async function AdminAuditPage({
         {pageRows.length === 0 ? (
           <p className="muted">No audit events match your filters.</p>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <div className="table-scroll">
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 560 }}>
             <thead>
               <tr style={{ borderBottom: "1px solid #444", textAlign: "left" }}>
                 <th style={{ padding: "8px 4px", whiteSpace: "nowrap" }}>When</th>
@@ -275,6 +276,7 @@ export default async function AdminAuditPage({
               ))}
             </tbody>
           </table>
+          </div>
         )}
 
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>

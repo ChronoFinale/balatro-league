@@ -9,7 +9,10 @@ const PHONE = { width: 375, height: 812 };
 
 async function expectNoHorizontalOverflow(page: Page, path: string): Promise<void> {
   await page.setViewportSize(PHONE);
-  await page.goto(path);
+  await page.goto(path, { waitUntil: "networkidle" });
+  // Let layout settle (async content, fonts, reflow) before measuring so we
+  // don't catch a transient mid-render width.
+  await page.waitForTimeout(200);
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );

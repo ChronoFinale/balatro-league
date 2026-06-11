@@ -133,6 +133,10 @@ section[id]:target > h3 {
   /* Both navs are Tailwind now; just tighten the main padding on phones. */
   main { padding: 0 16px; margin: 16px auto; }
 
+  /* Grids go single-column on phones — bulletproof vs minmax/intrinsic-sizing
+     edge cases that let a 2-up grid push the page wider than the viewport. */
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+
   /* Safety net: any wide table that didn't opt into the card layout
      (.responsive-table) becomes its own horizontal-scroll container on phones,
      so a many-column admin table scrolls instead of forcing the whole page
@@ -194,6 +198,10 @@ section[id]:target > h3 {
    viewport on a phone (a bare minmax(540px,…) overflows below 540px). */
 .grid-2 { grid-template-columns: repeat(auto-fit, minmax(min(540px, 100%), 1fr)); }
 .grid-3 { grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); }
+/* Grid items default to min-width:auto (= min-content), so a card won't shrink
+   below a wide table it contains — the table then can't scroll and pushes the
+   page wide. Let them shrink; the inner .table-scroll handles the overflow. */
+.grid > * { min-width: 0; }
 
 .stat { background: var(--surface-2); padding: 16px; border-radius: 8px; }
 .stat .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
