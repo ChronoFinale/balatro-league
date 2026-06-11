@@ -40,8 +40,23 @@ function seasonRateTooltip(h: SeasonHistoryEntry): string {
 
 // One "favourite" row — deck and/or stake thumbnail + name + a count
 // (× plays, or W for wins). Combos carry "Deck · Stake" so we split + show both.
-function favRow(r: FavoriteEntry, kind: "deck" | "stake" | "combo", metric: "played" | "won") {
+function favRow(r: FavoriteEntry, kind: "deck" | "stake" | "combo", metric: "played" | "won", totalGames: number) {
   const [deckName, stakeName] = kind === "combo" ? r.name.split(" · ") : [r.name, r.name];
+  // Show a percentage next to the raw count: most-played = this item's share
+  // of all the player's games; most-won = the win rate on it. Gives the "4×
+  // (12%)" / "3W (60%)" read instead of a bare count.
+  const pct =
+    metric === "won"
+      ? r.gamesPlayed > 0
+        ? Math.round((r.gamesWon / r.gamesPlayed) * 100)
+        : null
+      : totalGames > 0
+        ? Math.round((r.gamesPlayed / totalGames) * 100)
+        : null;
+  const pctTitle =
+    metric === "won"
+      ? `Won ${r.gamesWon} of ${r.gamesPlayed} games on this — ${pct ?? 0}% win rate`
+      : `${r.gamesPlayed} of ${totalGames} career games — ${pct ?? 0}% of your play`;
   return (
     <li key={r.name} style={{ display: "flex", alignItems: "center", gap: 5, padding: "1px 0" }}>
       {(kind === "deck" || kind === "combo") && (
@@ -53,17 +68,20 @@ function favRow(r: FavoriteEntry, kind: "deck" | "stake" | "combo", metric: "pla
         <img src={stakeImage(kind === "combo" ? stakeName! : r.name)} alt="" width={15} height={15} style={{ borderRadius: 2 }} />
       )}
       <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</span>
-      <span className="muted">{metric === "won" ? `${r.gamesWon}W` : `${r.gamesPlayed}×`}</span>
+      <span className="muted" style={{ whiteSpace: "nowrap" }} title={pctTitle}>
+        {metric === "won" ? `${r.gamesWon}W` : `${r.gamesPlayed}×`}
+        {pct != null && <span style={{ fontSize: 11, opacity: 0.75, marginLeft: 4 }}>{pct}%</span>}
+      </span>
     </li>
   );
 }
-function favBlock(title: string, rows: FavoriteEntry[], kind: "deck" | "stake" | "combo", metric: "played" | "won") {
+function favBlock(title: string, rows: FavoriteEntry[], kind: "deck" | "stake" | "combo", metric: "played" | "won", totalGames: number) {
   if (rows.length === 0) return null;
   return (
     <div style={{ marginBottom: 8 }}>
       <div className="muted" style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>{title}</div>
       <ul style={{ listStyle: "none", padding: 0, margin: "2px 0 0", fontSize: 12 }}>
-        {rows.map((r) => favRow(r, kind, metric))}
+        {rows.map((r) => favRow(r, kind, metric, totalGames))}
       </ul>
     </div>
   );
@@ -574,18 +592,18 @@ export default async function ProfilePage({
               <p className="muted" style={{ fontSize: 11, marginTop: 4, marginBottom: 8 }}>
                 Top decks, stakes &amp; combos by games played.
               </p>
-              {favBlock("Decks", profile.favorites.mostPlayed.decks, "deck", "played")}
-              {favBlock("Stakes", profile.favorites.mostPlayed.stakes, "stake", "played")}
-              {favBlock("Combos", profile.favorites.mostPlayed.combos, "combo", "played")}
+              {favBlock("Decks", profile.favorites.mostPlayed.decks, "deck", "played", t.totalGames)}
+              {favBlock("Stakes", profile.favorites.mostPlayed.stakes, "stake", "played", t.totalGames)}
+              {favBlock("Combos", profile.favorites.mostPlayed.combos, "combo", "played", t.totalGames)}
             </div>
             <div className="card">
               <strong>🏆 Most won</strong>
               <p className="muted" style={{ fontSize: 11, marginTop: 4, marginBottom: 8 }}>
                 Top decks, stakes &amp; combos by games won.
               </p>
-              {favBlock("Decks", profile.favorites.mostWon.decks, "deck", "won")}
-              {favBlock("Stakes", profile.favorites.mostWon.stakes, "stake", "won")}
-              {favBlock("Combos", profile.favorites.mostWon.combos, "combo", "won")}
+              {favBlock("Decks", profile.favorites.mostWon.decks, "deck", "won", t.totalGames)}
+              {favBlock("Stakes", profile.favorites.mostWon.stakes, "stake", "won", t.totalGames)}
+              {favBlock("Combos", profile.favorites.mostWon.combos, "combo", "won", t.totalGames)}
             </div>
           </div>
         )}
@@ -609,7 +627,11 @@ export default async function ProfilePage({
                   {h.status === "DROPPED" && (
                     <span className="pill" style={{ background: "rgba(231,76,60,0.2)", color: "#e74c3c" }}>DROPPED</span>
                   )}
-                  <span style={{ marginLeft: "auto" }} className="muted">
+                </div>
+                {/* Stat summary on its own line directly under the title —
+                    keeps the numbers close to the season name instead of
+                    flung to the far-right edge, and wraps cleanly on phones. */}
+                <div className="muted" style={{ fontSize: 13, marginBottom: 8, lineHeight: 1.7 }}>
                     Rank {rankStr} · {h.points} pts ·{" "}
                     <span title={seasonRateTooltip(h)}>
                       {h.wins}-{h.draws}-{h.losses}
@@ -654,7 +676,6 @@ export default async function ProfilePage({
                         )}
                       </span>
                     )}
-                  </span>
                 </div>
                 <table className="responsive-table">
                   <thead>
