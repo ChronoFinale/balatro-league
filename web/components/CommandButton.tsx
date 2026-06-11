@@ -5,8 +5,18 @@
 // the keyboard shortcut). Icon-only on phones; full label + ⌘K hint on sm+.
 
 import { Search } from "lucide-react";
+import { useEffect, useState } from "react";
 
 export function CommandButton() {
+  // ⌘ is a Mac key; everywhere else the shortcut is Ctrl. Detect client-side
+  // (null until mounted, so server + first client render match — no hydration
+  // mismatch — then the correct hint fills in).
+  const [isMac, setIsMac] = useState<boolean | null>(null);
+  useEffect(() => {
+    setIsMac(/Mac|iPhone|iPad|iPod/i.test(navigator.platform) || /Mac OS X/i.test(navigator.userAgent));
+  }, []);
+  const hint = isMac === null ? null : isMac ? "⌘K" : "Ctrl K";
+
   return (
     <button
       type="button"
@@ -17,7 +27,9 @@ export function CommandButton() {
     >
       <Search className="size-3.5" />
       <span className="hidden sm:inline">Search</span>
-      <kbd className="hidden rounded bg-[var(--bg)] px-1 text-[10px] leading-none sm:inline-flex">⌘K</kbd>
+      {hint && (
+        <kbd className="hidden rounded bg-[var(--bg)] px-1 text-[10px] leading-none sm:inline-flex">{hint}</kbd>
+      )}
     </button>
   );
 }
