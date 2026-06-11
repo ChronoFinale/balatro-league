@@ -28,8 +28,6 @@ const PUBLIC_PAGES: Item[] = [
   { label: "Stats", href: "/stats" },
   { label: "Traits", href: "/traits" },
   { label: "Past seasons", href: "/seasons" },
-  { label: "MP Changes", href: "/changes" },
-  { label: "How to play", href: "/how-to-play" },
   { label: "Join the league", href: "/join" },
 ];
 
@@ -49,6 +47,9 @@ const ADMIN_PAGES: Item[] = [
   { label: "Divisions", href: "/admin/divisions" },
   { label: "Config", href: "/admin/config" },
   { label: "Audit log", href: "/admin/audit" },
+  // WIP draft pages — admin-only (the pages themselves 404 for non-admins).
+  { label: "MP Changes (WIP)", href: "/changes" },
+  { label: "How to play (WIP)", href: "/how-to-play" },
 ];
 
 interface Ctx {

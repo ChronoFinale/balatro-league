@@ -51,6 +51,19 @@ test("FormSelect (shadcn Select) renders, opens, and submits the chosen value", 
   await expect(page).toHaveURL(/sort=rating-desc/);
 });
 
+test("WIP pages (/changes, /how-to-play) are admin-only (404 for anon)", async ({ page }) => {
+  // Anonymous must not be able to reach them at all — not even by direct URL.
+  for (const path of ["/changes", "/how-to-play"]) {
+    const res = await page.goto(path);
+    expect(res?.status(), `${path} should 404 for anon`).toBe(404);
+  }
+  // Admin sees them, flagged WIP.
+  await loginAsAdmin(page);
+  const res = await page.goto("/changes");
+  expect(res?.status()).toBe(200);
+  await expect(page.getByText(/WIP — admin-only preview/)).toBeVisible();
+});
+
 test("⌘K palette hides Admin from anon, shows it to admins", async ({ page }) => {
   // Anonymous — Admin group must not appear.
   await page.goto("/standings");
