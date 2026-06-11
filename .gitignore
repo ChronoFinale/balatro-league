@@ -26,3 +26,8 @@ backups/
 
 # Next.js build artifacts (stray root-level traces)
 .next/
+
+# Playwright run output
+test-results/
+web/test-results/
+web/playwright-report/
