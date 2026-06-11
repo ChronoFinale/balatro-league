@@ -282,6 +282,42 @@ export async function recordShowdown(args: {
   return { ok: true, matchId: match.id, divisionId };
 }
 
+// Resolve a tie of ANY size by writing the round-robin of showdowns that
+// encodes the given finishing order: each earlier-placed player is recorded as
+// beating every later-placed one. The standings shootout tiebreaker then orders
+// the group exactly as specified — so a 3-way+ tie the single p1-vs-p2 showdown
+// can't express is handled by listing the players in order. A bit heavy-handed
+// (N*(N-1)/2 showdown rows for an N-way tie) but it reuses the existing pairwise
+// machinery with no schema or scoring changes. Idempotent (recordShowdown
+// upserts on the canonical pair), so re-submitting a new order overwrites.
+export async function resolveTieWithShowdowns(args: {
+  divisionId: string;
+  orderedPlayerIds: string[]; // finishing order, best first
+  actor: AuditActor;
+}): Promise<MatchAdminOutcome> {
+  const { divisionId, orderedPlayerIds, actor } = args;
+  // Drop blanks + dupes, preserving order.
+  const ids = orderedPlayerIds.filter((v, i) => v && orderedPlayerIds.indexOf(v) === i);
+  if (ids.length < 2) {
+    return { ok: false, reason: "Pick at least two distinct players, in finishing order." };
+  }
+  let last: MatchAdminOutcome | null = null;
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      last = await recordShowdown({
+        divisionId,
+        p1Id: ids[i]!,
+        p2Id: ids[j]!,
+        winnerId: ids[i]!,
+        actor,
+        notes: "manual tie resolution",
+      });
+      if (!last.ok) return last;
+    }
+  }
+  return last ?? { ok: false, reason: "Nothing recorded." };
+}
+
 // Delete a match outright (undo a result/DQ/showdown). Standings fall back to
 // the next tiebreaker. Returns the affected division so the caller can recompute.
 export async function undoResult(args: {

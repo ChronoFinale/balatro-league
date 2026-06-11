@@ -30,6 +30,7 @@ import {
   recordShootout,
   removeDivisionMember,
   reportFromDivisionAction,
+  resolveTieAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -802,6 +803,34 @@ function AdminSection({
             options={members.map((m) => ({ value: m.playerId, label: m.player.displayName }))}
           />
           <Button type="submit">Record showdown</Button>
+        </form>
+      </div>
+
+      {/* Resolve a tie of ANY size (3-way+) — lists the tied players in
+          finishing order and writes the round-robin of showdowns for it. */}
+      <div className="card">
+        <strong>⚖ Resolve a tie (any size)</strong>
+        <p className="muted" style={{ fontSize: 12 }}>
+          For a 3-way+ tie the single showdown above can&apos;t express: list the tied players in
+          finishing order (best first) and we&apos;ll record the showdowns that order them. Leave
+          the rest blank. Re-submitting overwrites.
+        </p>
+        <form action={resolveTieAction} style={{ display: "grid", gap: 6, maxWidth: 340 }}>
+          <input type="hidden" name="divisionId" value={division.id} />
+          {Array.from({ length: Math.min(members.length, 8) }, (_, k) => (
+            <div key={k} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <span className="muted" style={{ width: 64, fontSize: 12 }}>
+                {["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th"][k]} place
+              </span>
+              <FormSelect
+                name={`place${k + 1}`}
+                placeholder="— skip —"
+                triggerClassName="flex-1 min-w-[160px]"
+                options={members.map((m) => ({ value: m.playerId, label: m.player.displayName }))}
+              />
+            </div>
+          ))}
+          <Button type="submit" variant="secondary" style={{ marginTop: 4 }}>Resolve tie</Button>
         </form>
       </div>
 

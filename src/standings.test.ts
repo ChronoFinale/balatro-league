@@ -105,4 +105,21 @@ describe("computeStandings — sort & tiebreakers", () => {
     const rows = computeStandings([P("b", "Bravo"), P("a", "Alpha")], []);
     expect(ids(rows)).toEqual(["a", "b"]); // Alpha before Bravo
   });
+
+  it("resolves a 3-way tie via a round-robin of showdowns (manual tie resolution)", () => {
+    // Three players each drew the other two 1-1 → all tied on points, every
+    // head-to-head a draw. The manual tie tool writes the round-robin of
+    // showdowns encoding the desired order z > m > x; the pairwise shootout
+    // tiebreaker must compose them into that exact finishing order — NOT the
+    // alphabetical fallback (which would be m, x, z).
+    const players = [P("x", "Mike"), P("m", "Nate"), P("z", "Owen")];
+    const pairings = [M("x", "m", 1, 1), M("x", "z", 1, 1), M("m", "z", 1, 1)];
+    const shootouts: ShootoutInput[] = [
+      { playerAId: "z", playerBId: "m", winnerId: "z" },
+      { playerAId: "z", playerBId: "x", winnerId: "z" },
+      { playerAId: "m", playerBId: "x", winnerId: "m" },
+    ];
+    const rows = computeStandings(players, pairings, shootouts);
+    expect(ids(rows)).toEqual(["z", "m", "x"]);
+  });
 });

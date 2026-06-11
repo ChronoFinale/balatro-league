@@ -8,7 +8,7 @@ import { actorFromAdminUser, recordAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { enqueueAnnounceResult } from "@/lib/queue";
 import { reportSetFromWeb, type ReportResultStr } from "@/lib/report";
-import { recordResult, overrideResult, forfeitResult, recordShowdown, undoResult } from "@/lib/match-admin";
+import { recordResult, overrideResult, forfeitResult, recordShowdown, resolveTieWithShowdowns, undoResult } from "@/lib/match-admin";
 import { recomputeDivisionStandings } from "@/lib/standings-cache";
 import { resolveDiscordIdToDisplayName } from "@/lib/add-player";
 import { addGuildMemberRole } from "@/lib/discord";
@@ -412,6 +412,23 @@ export async function recordShootout(formData: FormData) {
   const winnerId = String(formData.get("winnerId") ?? "");
   await recordShowdown({ divisionId, p1Id, p2Id, winnerId, actor: actorFromAdminUser(user) });
   revalidatePath(`/divisions/${divisionId}`);
+}
+
+// Resolve a tie of any size: the admin lists the tied players in finishing
+// order (place1, place2, …) and we write the round-robin of showdowns that
+// encodes it. Handles 3-way+ ties the single p1-vs-p2 showdown can't.
+export async function resolveTieAction(formData: FormData) {
+  const { user } = await requireAdmin();
+  const divisionId = String(formData.get("divisionId") ?? "");
+  const ordered: string[] = [];
+  for (let i = 1; i <= 12; i++) {
+    const v = String(formData.get(`place${i}`) ?? "").trim();
+    if (v) ordered.push(v);
+  }
+  const r = await resolveTieWithShowdowns({ divisionId, orderedPlayerIds: ordered, actor: actorFromAdminUser(user) });
+  if (!r.ok) redirect(`/divisions/${divisionId}?err=${encodeURIComponent(r.reason)}`);
+  revalidatePath(`/divisions/${divisionId}`);
+  redirect(`/divisions/${divisionId}?ok=tie-resolved`);
 }
 
 // Remove a showdown — sort falls back to the next tiebreaker (wins,
