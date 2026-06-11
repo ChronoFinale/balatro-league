@@ -635,26 +635,53 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
     ].filter((l): l is string => l !== null);
 
     const fullOutput = lines.join("\n");
-    // Try to DM the runner so the wall-of-text summary doesn't dump
-    // into a channel. Fall back to the ephemeral reply if DMs are
-    // disabled. Either way the public channel stays clean.
+    // The summary blows past Discord's 2000-char message limit after a fresh
+    // bootstrap (long "Created:" list + every channel line), so chunk it.
+    // Try to DM the runner so the wall-of-text doesn't dump into a channel;
+    // fall back to the ephemeral reply (+ followups) if DMs are disabled.
+    const chunks = chunkForDiscord(fullOutput);
     let dmSent = false;
     try {
-      await interaction.user.send(fullOutput);
+      for (const c of chunks) await interaction.user.send(c);
       dmSent = true;
     } catch {
       dmSent = false;
     }
-    await interaction.editReply(
-      dmSent
-        ? `✅ Bootstrap complete — full summary + next steps sent to your DMs.`
-        : fullOutput,
-    );
+    if (dmSent) {
+      await interaction.editReply(`✅ Bootstrap complete — full summary + next steps sent to your DMs.`);
+    } else {
+      await interaction.editReply(chunks[0] ?? "✅ Bootstrap complete.");
+      for (let i = 1; i < chunks.length; i++) {
+        await interaction.followUp({ content: chunks[i]!, flags: MessageFlags.Ephemeral });
+      }
+    }
   } catch (err) {
     await interaction.editReply(
       `Bootstrap failed: ${(err as Error).message}. The bot may need additional permissions.`,
     );
   }
+}
+
+// Split a long message into <2000-char chunks on line boundaries (Discord's
+// hard message-content limit). A single overlong line is hard-sliced.
+function chunkForDiscord(text: string, max = 1900): string[] {
+  const chunks: string[] = [];
+  let cur = "";
+  for (const line of text.split("\n")) {
+    if (line.length > max) {
+      if (cur) { chunks.push(cur); cur = ""; }
+      for (let i = 0; i < line.length; i += max) chunks.push(line.slice(i, i + max));
+      continue;
+    }
+    if (cur.length + line.length + 1 > max) {
+      chunks.push(cur);
+      cur = line;
+    } else {
+      cur = cur ? `${cur}\n${line}` : line;
+    }
+  }
+  if (cur) chunks.push(cur);
+  return chunks.length ? chunks : [text];
 }
 
 // Setup-diagnostic: walks every LeagueConfig channel ID + the
