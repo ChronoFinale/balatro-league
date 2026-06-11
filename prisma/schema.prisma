@@ -643,7 +643,8 @@ model Match {
   // One BO2 + one shootout can both exist for a pair, so format is part of
   // the uniqueness (vs Pairing's pair-only unique).
   @@unique([divisionId, playerAId, playerBId, format])
-  @@index([divisionId, status])
+  @@index([divisionId, status, confirmedAt])
+  @@index([status, format])
   @@index([playerAId])
   @@index([playerBId])
 }
