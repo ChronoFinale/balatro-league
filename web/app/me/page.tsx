@@ -7,6 +7,7 @@ import { loadMePageData } from "@/lib/loaders/me";
 import { SiteNav } from "@/components/SiteNav";
 import { Button } from "@/components/ui/button";
 import { NextSeasonCard } from "@/components/NextSeasonCard";
+import { ProfileView } from "@/components/ProfileView";
 
 export const dynamic = "force-dynamic";
 
@@ -27,11 +28,11 @@ export default async function MePage({
 
   const { player, interest } = await loadMePageData(user.discordId, user.name);
 
-  // /me and the profile page used to be confusingly separate. Now if you
-  // have a Player record, /me just sends you to your own profile (which
-  // carries the report form + personal settings + full history). Only the
-  // "not linked yet" state stays here.
-  if (player) redirect(`/profile/${player.id}`);
+  // /me and /profile/[id] render the SAME <ProfileView> — no redirect. If you
+  // have a Player record, /me just renders your own profile inline (ProfileView
+  // resolves you as the viewer, so you get the own-profile controls). Only the
+  // "not linked yet" state below is unique to /me.
+  if (player) return <ProfileView playerId={player.id} />;
 
   const avatarUrl = user.avatar
     ? `https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png?size=128`
