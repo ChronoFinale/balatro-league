@@ -400,29 +400,41 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       reused.push("#league-results-bot (couldn't set bot-only perms — set '@everyone: deny Send Messages' manually)");
     }
 
-    // Lock #league-info to read-only: it's the bot-maintained pinned 'how it
-    // works' + live-season message, so @everyone can view + react but not post.
-    try {
-      await infoChan.permissionOverwrites.edit(guild.roles.everyone.id, {
-        ViewChannel: true,
-        ReadMessageHistory: true,
-        AddReactions: true,
-        SendMessages: false,
-        SendMessagesInThreads: false,
-        CreatePublicThreads: false,
-        CreatePrivateThreads: false,
-      });
-      await infoChan.permissionOverwrites.edit(interaction.client.user.id, {
-        ViewChannel: true,
-        SendMessages: true,
-        EmbedLinks: true,
-        AttachFiles: true,
-        ManageMessages: true,
-      });
-    } catch (err) {
-      console.warn("[bootstrap] couldn't lock #league-info:", err);
-      reused.push("#league-info (couldn't set read-only perms — set '@everyone: deny Send Messages' manually)");
+    // Read-only lock for bot/staff-maintained channels: @everyone can view +
+    // read history (and react, only if allowReactions) but can't post; the bot
+    // can. Best-effort + idempotent — a perms hiccup must not abort bootstrap.
+    async function lockReadOnly(
+      channel: Awaited<ReturnType<typeof ensureChannel>>,
+      label: string,
+      allowReactions: boolean,
+    ) {
+      try {
+        await channel.permissionOverwrites.edit(guild.roles.everyone.id, {
+          ViewChannel: true,
+          ReadMessageHistory: true,
+          AddReactions: allowReactions,
+          SendMessages: false,
+          SendMessagesInThreads: false,
+          CreatePublicThreads: false,
+          CreatePrivateThreads: false,
+        });
+        await channel.permissionOverwrites.edit(interaction.client.user.id, {
+          ViewChannel: true,
+          SendMessages: true,
+          EmbedLinks: true,
+          AttachFiles: true,
+          ManageMessages: true,
+        });
+      } catch (err) {
+        console.warn(`[bootstrap] couldn't lock ${label}:`, err);
+        reused.push(`${label} (couldn't set read-only perms — set '@everyone: deny Send Messages' manually)`);
+      }
     }
+    // Reactions are allowed only in #league-announcements (engagement on news);
+    // #league-info and #league-signups stay fully silent.
+    await lockReadOnly(infoChan, "#league-info", false);
+    await lockReadOnly(announcementsChan, "#league-announcements", true);
+    await lockReadOnly(signupChan, "#league-signups", false);
 
     // Human-facing results channel — open for manual posting if the bot's
     // auto-post in #league-results-bot ever has an issue. Created after the
@@ -710,6 +722,9 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       create: { key: "support_channel_id", value: supportChan.id, updatedBy: interaction.user.id },
       update: { value: supportChan.id, updatedBy: interaction.user.id },
     });
+    // Read-only parent: members open tickets via /support (which spins up a
+    // private thread); they don't post in the channel itself. No reactions.
+    await lockReadOnly(supportChan, "#league-support", false);
 
     // Casual matches get their own '🎴 Matches' category with a single
     // #challenges parent channel — /challenge threads spawn there.
