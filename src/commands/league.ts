@@ -200,7 +200,6 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       name: string,
       topic: string,
       type: ChannelType.GuildText | ChannelType.GuildAnnouncement = ChannelType.GuildText,
-      aliases: string[] = [],
       configKey?: LeagueConfigKey,
     ) {
       // 0. Pinned id wins — and it's GUILD-SCOPED. If an admin set this
@@ -260,34 +259,23 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
           return pinned;
         }
       }
-      // 1. Otherwise match the canonical name first, then any legacy alias
-      // (e.g. a pre-prefix "results" when we now want "league-results-bot").
-      // Matching an alias renames the channel in place — same id, same history,
-      // no re-create. Canonical name is checked BEFORE aliases (two separate
-      // finds, not one OR) so a command whose alias list happens to overlap
-      // ANOTHER channel's real name can't grab + rename the wrong channel based
-      // on cache order — e.g. league-results-bot must never adopt the human
-      // #league-results just because it's listed as a legacy alias.
-      const inCat = (c: { type: ChannelType; parentId: string | null }) =>
-        (c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement) &&
-        c.parentId === categoryId;
-      const existing =
-        guild.channels.cache.find((c) => inCat(c) && c.name === name) ??
-        guild.channels.cache.find((c) => inCat(c) && aliases.includes(c.name));
+      // 1. Otherwise reuse a channel that ALREADY has this EXACT canonical name
+      // in the league category. No alias / "similar name" guessing — that's what
+      // let setup grab and rename the wrong channel. We only adopt an exact name
+      // match (so a hand-made #league-results-bot isn't duplicated) or, failing
+      // that, create a fresh one. No renaming here: the name already matches.
+      const existing = guild.channels.cache.find(
+        (c) =>
+          (c.type === ChannelType.GuildText || c.type === ChannelType.GuildAnnouncement) &&
+          c.name === name &&
+          c.parentId === categoryId,
+      );
       if (
         existing &&
         (existing.type === ChannelType.GuildText || existing.type === ChannelType.GuildAnnouncement)
       ) {
-        const wasRenamed = existing.name !== name;
-        if (wasRenamed) {
-          const from = existing.name;
-          await existing.edit({ name }).then(
-            () => created.push(`#${from} → #${name} (renamed)`),
-            () => reused.push(`#${from} (couldn't rename to #${name} — rename it manually)`),
-          );
-        }
-        // Convert in place if it's the wrong type (e.g. #announcements was made
-        // as a plain text channel before this fix).
+        // Convert in place if it's the wrong type (e.g. #league-announcements
+        // made as a plain text channel before Community was enabled).
         if (existing.type !== type) {
           await existing.edit({ type }).then(
             () =>
@@ -296,7 +284,7 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
               ),
             () => reused.push(`#${name} (couldn't convert type — convert it manually in channel settings)`),
           );
-        } else if (!wasRenamed) {
+        } else {
           reused.push(`#${name}`);
         }
         return existing;
@@ -322,28 +310,24 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
     }
     // All public channels are "league-" prefixed so they don't collide with a
     // server's own generic #results / #signups / #announcements when the bot
-    // joins an existing community. Legacy unprefixed names are passed as
-    // aliases so re-running bootstrap renames them in place (keeps history).
-    const infoChan = await ensureChannel("league-info", "League rules, schedule, announcements. Read-only for most.", ChannelType.GuildText, [], LeagueConfigKey.LeagueInfoChannelId);
-    const signupChan = await ensureChannel("league-signups", "Signup embeds posted here by the web admin. Players click the button to register.", ChannelType.GuildText, ["signups"], LeagueConfigKey.SignupsChannelId);
-    // Alias "results" only (the old generic pre-prefix name). Deliberately NOT
-    // "league-results" — that's the HUMAN results channel's real name, and
-    // listing it here used to make this call rename the human channel.
-    const resultsChan = await ensureChannel("league-results-bot", "Bot-only: match results auto-post here. Players can react + use slash commands but can't post.", ChannelType.GuildText, ["results"], LeagueConfigKey.ResultsChannelId);
-    const chatChan = await ensureChannel("league-chat", "General league chat. Match scheduling, banter, etc.", ChannelType.GuildText, [], LeagueConfigKey.GeneralChannelId);
-    const botCmdChan = await ensureChannel("league-bot-commands", "General bot commands: /random, /profile, /standings, etc. Most replies are private (only you see them) so you can run commands from any channel.", ChannelType.GuildText, ["bot-commands"], LeagueConfigKey.BotCommandsChannelId);
+    // joins an existing community. Each ensureChannel adopts the channel pinned
+    // in /admin/config by id, else an existing channel of the exact same name,
+    // else creates it — no fuzzy/alias matching.
+    const infoChan = await ensureChannel("league-info", "League rules, schedule, announcements. Read-only for most.", ChannelType.GuildText, LeagueConfigKey.LeagueInfoChannelId);
+    const signupChan = await ensureChannel("league-signups", "Signup embeds posted here by the web admin. Players click the button to register.", ChannelType.GuildText, LeagueConfigKey.SignupsChannelId);
+    const resultsChan = await ensureChannel("league-results-bot", "Bot-only: match results auto-post here. Players can react + use slash commands but can't post.", ChannelType.GuildText, LeagueConfigKey.ResultsChannelId);
+    const chatChan = await ensureChannel("league-chat", "General league chat. Match scheduling, banter, etc.", ChannelType.GuildText, LeagueConfigKey.GeneralChannelId);
+    const botCmdChan = await ensureChannel("league-bot-commands", "General bot commands: /random, /profile, /standings, etc. Most replies are private (only you see them) so you can run commands from any channel.", ChannelType.GuildText, LeagueConfigKey.BotCommandsChannelId);
     const announcementsChan = await ensureChannel(
       "league-announcements",
       "League-wide announcements: season starts, recaps, league news. Bot-posted, read-only for members.",
       ChannelType.GuildAnnouncement,
-      ["announcements"],
       LeagueConfigKey.AnnouncementsChannelId,
     );
     const feedbackChan = await ensureChannel(
       "league-feedback",
       "Player feedback, suggestions, and bug reports for the league. Everyone can post.",
       ChannelType.GuildText,
-      ["feedback"],
       LeagueConfigKey.FeedbackChannelId,
     );
 
@@ -424,7 +408,6 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       "league-results",
       "Post results here manually if the bot's auto-post in #league-results-bot ever misses one. Open to everyone.",
       ChannelType.GuildText,
-      [],
       LeagueConfigKey.ResultsHumanChannelId,
     );
     await prisma.leagueConfig.upsert({
