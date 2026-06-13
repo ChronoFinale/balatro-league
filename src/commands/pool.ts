@@ -1,6 +1,8 @@
 // /pool — let players see which decks + stakes are currently in rotation,
-// so the ban/pick pool isn't a mystery. Shows the active season's league pool
-// and the casual /challenge pool; if they're the same preset it's shown once.
+// so the ban/pick pool isn't a mystery. Each section is labelled with the
+// COMMAND(S) that draw from it, so people can connect "what shows up" to
+// "what I type". Shows the active season's league pool, the casual /challenge
+// pool, and the custom-combo pool; contexts sharing a preset are merged.
 // Falls back to the full canonical set when nothing is configured.
 
 import {
@@ -32,13 +34,18 @@ function fmt(names: string[], emoji: (n: string) => string | null): string {
   return names.map((n) => `${emoji(n) ?? ""} ${n}`.trim()).join("  •  ");
 }
 
-function poolFields(label: string, preset: PresetLike | null) {
+// One embed field per pool: a heading that names the match type + the command
+// you'd use, then the decks and stakes that pool currently contains.
+function poolField(heading: string, commands: string, preset: PresetLike | null) {
   const { decks, stakes } = namesOf(preset);
-  return [
-    { name: label, value: "​" },
-    { name: `🃏 Decks (${decks.length})`, value: fmt(decks, deckEmoji) },
-    { name: `♠ Stakes (${stakes.length})`, value: fmt(stakes, stakeEmoji) },
-  ];
+  return {
+    name: heading,
+    value: [
+      `*Used by:* ${commands}`,
+      `🃏 **Decks (${decks.length}):** ${fmt(decks, deckEmoji)}`,
+      `♠ **Stakes (${stakes.length}):** ${fmt(stakes, stakeEmoji)}`,
+    ].join("\n"),
+  };
 }
 
 export const pool: SlashCommand = {
@@ -47,7 +54,7 @@ export const pool: SlashCommand = {
   channelScope: "bot-commands-only",
   data: new SlashCommandBuilder()
     .setName("pool")
-    .setDescription("Show the decks + stakes currently in rotation."),
+    .setDescription("Show which decks + stakes each match type uses."),
   async execute(interaction: ChatInputCommandInteraction) {
     const [casual, custom, season] = await Promise.all([
       presetForCasualMatch(),
@@ -56,28 +63,56 @@ export const pool: SlashCommand = {
     ]);
     const leaguePreset = season ? await presetForSeason(season.id) : null;
 
-    // Each "context" that has a pool, in display order. Contexts that resolve
-    // to the SAME preset are merged into one section so we don't repeat an
-    // identical deck list (custom-combo falls back to the casual preset, so
-    // they're usually the same).
-    const contexts: Array<{ label: string; preset: PresetLike | null }> = [];
-    if (season) contexts.push({ label: `🏆 ${formatSeasonLabel(season)}`, preset: leaguePreset ?? casual });
-    contexts.push({ label: "🎴 Challenge", preset: casual });
-    contexts.push({ label: "🎛 Custom combos", preset: custom });
+    // Each "context" that has a pool, in display order, tagged with the
+    // command(s) that draw from it. Contexts that resolve to the SAME preset
+    // are merged into one section so we don't repeat an identical list
+    // (custom-combo falls back to the casual preset, so they're often equal).
+    const contexts: Array<{ heading: string; commands: string; preset: PresetLike | null }> = [];
+    if (season) {
+      contexts.push({
+        heading: `🏆 League matches — ${formatSeasonLabel(season)}`,
+        commands: "`/start-match`",
+        preset: leaguePreset ?? casual,
+      });
+    }
+    contexts.push({
+      heading: "🎴 Casual & random rolls",
+      commands: "`/challenge` • `/random` • `/random-deck` • `/random-stake` • `/random-bans`",
+      preset: casual,
+    });
+    contexts.push({
+      heading: "🎛️ Custom combos",
+      commands: "the in-match “pick a custom combo” option",
+      preset: custom,
+    });
 
-    const groups = new Map<string, { labels: string[]; preset: PresetLike | null }>();
+    // Merge contexts that share a preset, keeping each context's heading +
+    // command list so the combined section still shows what feeds what.
+    const groups = new Map<string, { headings: string[]; commands: string[]; preset: PresetLike | null }>();
     for (const c of contexts) {
       const key = c.preset?.id ?? "__canonical__";
       const g = groups.get(key);
-      if (g) g.labels.push(c.label);
-      else groups.set(key, { labels: [c.label], preset: c.preset });
+      if (g) {
+        g.headings.push(c.heading);
+        g.commands.push(c.commands);
+      } else {
+        groups.set(key, { headings: [c.heading], commands: [c.commands], preset: c.preset });
+      }
     }
 
-    const embed = new EmbedBuilder().setTitle("🃏 Deck & stake pools").setColor(0x9b59b6);
+    const embed = new EmbedBuilder()
+      .setTitle("🃏 What’s in rotation")
+      .setDescription(
+        "A **pool** is the set of decks and stakes a match can ban and pick from. " +
+          "Each match type uses its own pool — here’s what’s currently in each:",
+      )
+      .setColor(0x9b59b6);
     for (const g of groups.values()) {
-      embed.addFields(...poolFields(g.labels.join(" & "), g.preset));
+      embed.addFields(poolField(g.headings.join("  +  "), g.commands.join("  •  "), g.preset));
     }
-    embed.setFooter({ text: "Roll one with /random, or a full ban pool with /random-bans." });
+    embed.setFooter({
+      text: "/random rolls one combo • /random-bans rolls a 9-combo ban pool",
+    });
     await interaction.reply({ embeds: [embed] });
   },
 };
