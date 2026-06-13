@@ -29,10 +29,16 @@ export async function resolveBotCommandsChannelId(): Promise<string | null> {
 // Full allow-list of channels where public ("not ephemeral") player commands
 // may run: every configured bot-commands channel (CSV) PLUS the admin channel
 // so staff can run them in admin chat. Membership-checked by the scope gate.
+//
+// The env var and the LeagueConfig value are MERGED (not env-overrides-config):
+// admins manage the multi-channel list in /admin/config, and a leftover single
+// BOT_COMMANDS_CHANNEL_ID env var (e.g. a stale one from a previous server) must
+// not silently suppress that list. Both are parsed as CSV; ids are de-duped.
 export async function resolveBotCommandsChannelIds(): Promise<string[]> {
-  const primary = env.BOT_COMMANDS_CHANNEL_ID || (await getConfig(LeagueConfigKey.BotCommandsChannelId));
-  const admin = await getConfig(LeagueConfigKey.AdminChannelId);
-  return Array.from(new Set([...parseIdList(primary), ...parseIdList(admin)]));
+  const fromEnv = parseIdList(env.BOT_COMMANDS_CHANNEL_ID);
+  const fromConfig = parseIdList(await getConfig(LeagueConfigKey.BotCommandsChannelId));
+  const admin = parseIdList(await getConfig(LeagueConfigKey.AdminChannelId));
+  return Array.from(new Set([...fromEnv, ...fromConfig, ...admin]));
 }
 
 export async function ensureBotCommandsChannel(): Promise<void> {
