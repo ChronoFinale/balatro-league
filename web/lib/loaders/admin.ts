@@ -26,13 +26,13 @@ export interface AdminDisputeRow {
   divisionId: string;
   divisionName: string;
   tierName: string;
-  playerA: { id: string; displayName: string };
-  playerB: { id: string; displayName: string };
+  playerA: { id: string; displayName: string; discordId: string };
+  playerB: { id: string; displayName: string; discordId: string };
   gamesWonA: number;
   gamesWonB: number;
   disputedAt: Date | null;
   disputer: { id: string; displayName: string; discordId: string } | null;
-  reporter: { id: string; displayName: string } | null;
+  reporter: { id: string; displayName: string; discordId: string } | null;
   disputeProposedGamesWonA: number | null;
   disputeProposedGamesWonB: number | null;
   disputeReason: string | null;
@@ -52,10 +52,10 @@ export async function loadAdminDisputes(): Promise<AdminDisputeRow[]> {
       disputeProposedGamesWonB: true,
       disputeReason: true,
       disputeThreadId: true,
-      playerA: { select: { id: true, displayName: true } },
-      playerB: { select: { id: true, displayName: true } },
+      playerA: { select: { id: true, displayName: true, discordId: true } },
+      playerB: { select: { id: true, displayName: true, discordId: true } },
       disputer: { select: { id: true, displayName: true, discordId: true } },
-      reporter: { select: { id: true, displayName: true } },
+      reporter: { select: { id: true, displayName: true, discordId: true } },
       division: {
         select: {
           name: true,

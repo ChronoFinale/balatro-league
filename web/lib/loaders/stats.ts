@@ -14,6 +14,7 @@ import { CANONICAL_DECKS, CANONICAL_STAKES } from "@/lib/balatro-info";
 export interface StatsLeaderRow {
   playerId: string;
   displayName: string;
+  discordId: string;
   value: number;
 }
 
@@ -45,6 +46,7 @@ export interface StatsComboRow {
 export interface StatsStreakRow {
   playerId: string;
   displayName: string;
+  discordId: string;
   streak: number;
   isActive: boolean;
 }
@@ -138,7 +140,7 @@ async function computeStatsPageData(): Promise<StatsPageData> {
       where: { rating: { not: null } },
       orderBy: { rating: "asc" },
       take: 5,
-      select: { id: true, displayName: true, rating: true },
+      select: { id: true, displayName: true, discordId: true, rating: true },
     }),
     prisma.match.groupBy({ by: ["playerAId"], where: { ...matchWhere, gamesWonA: 2 }, _count: { _all: true } }),
     prisma.match.groupBy({ by: ["playerBId"], where: { ...matchWhere, gamesWonB: 2 }, _count: { _all: true } }),
@@ -155,6 +157,7 @@ async function computeStatsPageData(): Promise<StatsPageData> {
   const topByRating: StatsLeaderRow[] = topRated.map((p) => ({
     playerId: p.id,
     displayName: p.displayName,
+    discordId: p.discordId,
     value: p.rating ?? 0,
   }));
 
@@ -171,11 +174,13 @@ async function computeStatsPageData(): Promise<StatsPageData> {
   const leaderIds = new Set<string>([...topMatch.map((e) => e[0]), ...topGames.map((e) => e[0])]);
   const leaderNames = leaderIds.size === 0
     ? []
-    : await prisma.player.findMany({ where: { id: { in: [...leaderIds] } }, select: { id: true, displayName: true } });
+    : await prisma.player.findMany({ where: { id: { in: [...leaderIds] } }, select: { id: true, displayName: true, discordId: true } });
   const nameById = new Map(leaderNames.map((p) => [p.id, p.displayName]));
+  const discordById = new Map(leaderNames.map((p) => [p.id, p.discordId]));
   const toLeaderRow = ([playerId, value]: [string, number]): StatsLeaderRow => ({
     playerId,
     displayName: nameById.get(playerId) ?? "Unknown",
+    discordId: discordById.get(playerId) ?? "",
     value,
   });
   const topByMatchWins = topMatch.map(toLeaderRow);
@@ -266,9 +271,10 @@ async function computeStreaks(): Promise<StatsStreakRow[]> {
   }
   const namesNeeded = await prisma.player.findMany({
     where: { id: { in: activePlayerIds } },
-    select: { id: true, displayName: true },
+    select: { id: true, displayName: true, discordId: true },
   });
   const namesById = new Map(namesNeeded.map((p) => [p.id, p.displayName]));
+  const discordById = new Map(namesNeeded.map((p) => [p.id, p.discordId]));
   const streaks: StatsStreakRow[] = [];
   for (const [playerId, list] of pairingsByPlayer) {
     let streak = 0;
@@ -286,7 +292,7 @@ async function computeStreaks(): Promise<StatsStreakRow[]> {
       }
     }
     if (streak >= 3) {
-      streaks.push({ playerId, displayName: namesById.get(playerId) ?? "Unknown", streak, isActive: activeStreak });
+      streaks.push({ playerId, displayName: namesById.get(playerId) ?? "Unknown", discordId: discordById.get(playerId) ?? "", streak, isActive: activeStreak });
     }
   }
   return streaks.sort((a, b) => b.streak - a.streak).slice(0, 5);

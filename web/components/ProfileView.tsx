@@ -9,6 +9,7 @@ import { getShowBmpMmr } from "@/lib/preferences";
 import { loadPlayerHistory, loadPlayerBanStats } from "@/lib/profile";
 import { tierColors } from "@/lib/tier-colors";
 import { SiteNav } from "@/components/SiteNav";
+import { DiscordId } from "@/components/DiscordId";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -166,7 +167,7 @@ export async function ProfileView({
         <p style={{ marginBottom: 4 }}>
           <Link href="/standings" className="muted" style={{ fontSize: 13 }}>← Standings</Link>
         </p>
-        <h2>{profile.player.displayName}</h2>
+        <h2>{profile.player.displayName}<DiscordId value={profile.player.discordId} /></h2>
 
         <div className="grid grid-2">
           <div className="stat"><div className="label">Seasons</div><div className="value">{t.seasons}</div></div>

@@ -17,6 +17,7 @@ import {
   CommandGroup,
   CommandItem,
 } from "@/components/ui/command";
+import { DiscordId } from "@/components/DiscordId";
 
 interface Item {
   label: string;
@@ -55,7 +56,7 @@ const ADMIN_PAGES: Item[] = [
 interface Ctx {
   loggedIn: boolean;
   admin: boolean;
-  players: { id: string; displayName: string }[];
+  players: { id: string; displayName: string; discordId?: string }[];
   divisions: { id: string; label: string }[];
 }
 
@@ -139,8 +140,9 @@ export function CommandPalette() {
           {ctx.players.length > 0 && (
             <CommandGroup heading="Players">
               {ctx.players.map((p) => (
-                <CommandItem key={p.id} value={`player ${p.displayName}`} onSelect={() => go(`/profile/${p.id}`)}>
+                <CommandItem key={p.id} value={`player ${p.displayName} ${p.discordId ?? ""}`} onSelect={() => go(`/profile/${p.id}`)}>
                   {p.displayName}
+                  <DiscordId value={p.discordId} />
                 </CommandItem>
               ))}
             </CommandGroup>

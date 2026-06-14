@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
 import { loadTraitsAdmin } from "@/lib/loaders/traits-admin";
 import { SiteNav } from "@/components/SiteNav";
+import { DiscordId } from "@/components/DiscordId";
 import { AdminNav } from "@/components/AdminNav";
 import { TraitEditorRow } from "./TraitEditorRow";
 import { saveTrait, resetTrait } from "./actions";
@@ -45,6 +46,7 @@ export default async function TraitsAdminPage() {
                     {row.holders.map((h) => (
                       <li key={h.id}>
                         <Link href={`/profile/${h.id}`}>{h.name}</Link>
+                        <DiscordId value={h.discordId} />
                       </li>
                     ))}
                   </ul>

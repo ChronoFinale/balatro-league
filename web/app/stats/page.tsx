@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { SiteNav } from "@/components/SiteNav";
+import { DiscordId } from "@/components/DiscordId";
 import { deckImage, stakeImage } from "@/lib/balatro-slugs";
 import {
   loadStatsPageData,
@@ -54,6 +55,7 @@ export default async function StatsPage() {
                     <td>{i + 1}.</td>
                     <td>
                       <Link href={`/profile/${r.playerId}`} style={{ color: "var(--text)" }}>{r.displayName}</Link>
+                      <DiscordId value={r.discordId} />
                       {r.isActive && <span style={{ marginLeft: 6, color: "#2ecc71", fontSize: 11 }}>● active</span>}
                     </td>
                     <td style={{ textAlign: "right" }}>
@@ -123,6 +125,7 @@ function LeaderCard({
                   <td style={{ width: 24 }}>{medal}</td>
                   <td>
                     <Link href={`/profile/${r.playerId}`} style={{ color: "var(--text)" }}>{r.displayName}</Link>
+                    <DiscordId value={r.discordId} />
                   </td>
                   <td style={{ textAlign: "right" }}>
                     <strong>{valueFormat(r.value)}</strong>

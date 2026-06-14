@@ -10,6 +10,7 @@ import { loadReportPageData } from "@/lib/loaders/report";
 import { CANONICAL_DECKS, CANONICAL_STAKES } from "@/lib/balatro-info";
 import { tierColors } from "@/lib/tier-colors";
 import { SiteNav } from "@/components/SiteNav";
+import { DiscordId } from "@/components/DiscordId";
 import { Button } from "@/components/ui/button";
 import { FormSelect } from "@/components/FormSelect";
 import { Textarea } from "@/components/ui/textarea";
@@ -135,6 +136,7 @@ export default async function ReportPage({
                       <td>{date}</td>
                       <td>
                         <Link href={`/profile/${m.opponentPlayerId}`} style={{ color: "var(--text)" }}>{m.opponentDisplayName}</Link>
+                        <DiscordId value={m.opponentDiscordId} />
                       </td>
                       <td><strong>{m.myGames}–{m.opponentGames}</strong></td>
                       <td><span className="pill" style={{ background: outcome.bg, color: outcome.fg, fontSize: isDisputed ? 10 : undefined }}>{outcome.label}</span></td>

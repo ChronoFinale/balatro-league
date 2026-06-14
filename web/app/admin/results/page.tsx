@@ -7,6 +7,7 @@
 import { Suspense } from "react";
 import { requireAdmin } from "@/lib/admin";
 import { SiteNav } from "@/components/SiteNav";
+import { DiscordId } from "@/components/DiscordId";
 import { AdminNav } from "@/components/AdminNav";
 import { FlashToast } from "@/components/FlashToast";
 import { PlayerSearch } from "@/components/PlayerSearch";
@@ -66,7 +67,7 @@ export default async function ResultsPage({
           {data.hasActiveSeason && (
             <form method="get" style={{ display: "flex", gap: 6, alignItems: "center", flex: "1 1 260px" }}>
               <label className="muted" style={{ fontSize: 12 }}>or player</label>
-              <PlayerSearch players={data.allPlayers.map((p) => ({ id: p.playerId, displayName: p.displayName }))} name="player" placeholder="…jump to a player's division" />
+              <PlayerSearch players={data.allPlayers.map((p) => ({ id: p.playerId, displayName: p.displayName, discordId: p.discordId }))} name="player" placeholder="…jump to a player's division" />
               <Button type="submit" variant="secondary">Find</Button>
             </form>
           )}
@@ -160,7 +161,7 @@ export default async function ResultsPage({
                   <tbody>
                     {sel.matches.map((m) => (
                       <tr key={m.id}>
-                        <td>{m.aName} <span className="muted">vs</span> {m.bName}</td>
+                        <td>{m.aName}<DiscordId value={m.aDiscordId} /> <span className="muted">vs</span> {m.bName}<DiscordId value={m.bDiscordId} /></td>
                         <td><strong>{m.gamesWonA}-{m.gamesWonB}</strong></td>
                         <td style={{ fontSize: 11 }} className="muted">
                           {m.format === "SHOOTOUT_BO1" ? "⚔ showdown" : m.forfeit ? "by DQ" : "league"}

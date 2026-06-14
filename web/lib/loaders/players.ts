@@ -8,6 +8,7 @@ import { isMockPlayer } from "@/lib/mock";
 export interface PlayersListEntry {
   id: string;
   displayName: string;
+  discordId: string;
   membership: {
     division: {
       id: string;
@@ -49,6 +50,7 @@ export async function loadPlayersList(): Promise<PlayersListEntry[]> {
       return {
         id: p.id,
         displayName: p.displayName,
+        discordId: p.discordId,
         membership: m
           ? {
               division: {

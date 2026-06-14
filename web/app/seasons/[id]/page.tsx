@@ -5,6 +5,7 @@ import { loadSeasonDetail } from "@/lib/loaders/seasons";
 import { loadAdminSeasonDetail } from "@/lib/loaders/admin";
 import { prisma } from "@/lib/prisma";
 import { SiteNav } from "@/components/SiteNav";
+import { DiscordId } from "@/components/DiscordId";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormSelect } from "@/components/FormSelect";
@@ -206,7 +207,7 @@ function PublicSummary({
                         return (
                           <tr key={r.player.id}>
                             <td>{medal}</td>
-                            <td>{r.dropped ? <s>{link}</s> : link}</td>
+                            <td>{r.dropped ? <s>{link}</s> : link}<DiscordId value={r.player.discordId} /></td>
                             {isEnded && (
                               <td>
                                 {isAdmin ? (
@@ -280,7 +281,7 @@ async function AdminSeasonPanel({
   });
   // Existing players for the draft editor's "add existing player" search.
   const allPlayers = await prisma.player.findMany({
-    select: { id: true, displayName: true },
+    select: { id: true, displayName: true, discordId: true },
     orderBy: { displayName: "asc" },
   });
 

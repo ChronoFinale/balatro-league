@@ -12,6 +12,7 @@ import { loadAdminDivisionDetail } from "@/lib/loaders/admin";
 import { prisma } from "@/lib/prisma";
 import { tierColors } from "@/lib/tier-colors";
 import { SiteNav } from "@/components/SiteNav";
+import { DiscordId } from "@/components/DiscordId";
 import { Button } from "@/components/ui/button";
 import { FormSelect } from "@/components/FormSelect";
 import { Textarea } from "@/components/ui/textarea";
@@ -148,7 +149,7 @@ export default async function PublicDivisionPage({
                 return (
                   <tr key={r.player.id}>
                     <td data-label="Rank">{medal}</td>
-                    <td className="card-header">{r.dropped ? <s>{link}</s> : link}{r.dropped && <span className="muted"> (dropped)</span>}</td>
+                    <td className="card-header">{r.dropped ? <s>{link}</s> : link}<DiscordId value={r.player.discordId} />{r.dropped && <span className="muted"> (dropped)</span>}</td>
                     <td data-label="Pts"><strong>{r.points}</strong></td>
                     <td data-label="W-D-L">{r.wins}-{r.draws}-{r.losses}</td>
                     <td data-label="Games">{r.gamesWon}-{r.gamesLost}</td>
@@ -187,10 +188,12 @@ export default async function PublicDivisionPage({
                         <Link href={`/profile/${s.winner.id}`} style={{ color: "var(--text)" }}>
                           <strong>{s.winner.displayName}</strong>
                         </Link>
+                        <DiscordId value={s.winner.discordId} />
                         {" "}beat{" "}
                         <Link href={`/profile/${s.loser.id}`} style={{ color: "var(--text)" }}>
                           {s.loser.displayName}
                         </Link>
+                        <DiscordId value={s.loser.discordId} />
                       </td>
                       <td className="muted" style={{ fontSize: 11 }}>
                         {s.selfReported ? "self-reported" : "mediator"}
@@ -365,8 +368,10 @@ function UnplayedList({
           >
             <span style={{ flex: "1 1 220px" }}>
               <Link href={`/profile/${m.a.id}`} style={{ color: "var(--text)" }}>{m.a.displayName}</Link>
+              <DiscordId value={m.a.discordId} />
               <span className="muted"> vs </span>
               <Link href={`/profile/${m.b.id}`} style={{ color: "var(--text)" }}>{m.b.displayName}</Link>
+              <DiscordId value={m.b.discordId} />
             </span>
             {viewerIsPlayer && opponent && (
               <form action={reportFromDivisionAction} style={{ display: "flex", gap: 4, alignItems: "center" }}>
@@ -428,8 +433,10 @@ function PlayedTable({ rows }: { rows: DivisionRecentPairing[] }) {
               <td className="muted">{date}</td>
               <td>
                 <Link href={`/profile/${p.playerA.id}`} style={{ color: "var(--text)" }}>{p.playerA.displayName}</Link>
+                <DiscordId value={p.playerA.discordId} />
                 {" "}<strong>{p.gamesWonA}-{p.gamesWonB}</strong>{" "}
                 <Link href={`/profile/${p.playerB.id}`} style={{ color: "var(--text)" }}>{p.playerB.displayName}</Link>
+                <DiscordId value={p.playerB.discordId} />
                 {p.forfeit && (
                   <span className="muted" style={{ fontSize: 10, marginLeft: 6 }} title="Win by forfeit / disqualification">
                     by DQ

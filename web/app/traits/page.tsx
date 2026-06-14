@@ -6,6 +6,7 @@
 
 import Link from "next/link";
 import { SiteNav } from "@/components/SiteNav";
+import { DiscordId } from "@/components/DiscordId";
 import { loadTraitsAdmin } from "@/lib/loaders/traits-admin";
 
 export const dynamic = "force-dynamic";
@@ -68,6 +69,7 @@ export default async function TraitsGuidePage() {
                         <span key={h.id}>
                           {i > 0 && ", "}
                           <Link href={`/profile/${h.id}`}>{h.name}</Link>
+                          <DiscordId value={h.discordId} />
                         </span>
                       ))}
                     </>

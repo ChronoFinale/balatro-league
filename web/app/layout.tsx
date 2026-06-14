@@ -3,6 +3,7 @@ import { Silkscreen } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { CommandPalette } from "@/components/CommandPalette";
+import { getShowDiscordIds } from "@/lib/preferences";
 
 // Crisp pixel font for headings + accents — a nod to Balatro's pixel look,
 // without hurting readability of the dense tables (body text stays system).
@@ -20,10 +21,14 @@ export const metadata: Metadata = {
   description: "League standings, schedules, and history",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Per-browser "Show Discord IDs" preference (⚙️ menu). Drives a body class so
+  // every <DiscordId> across the app shows/hides via CSS without each page
+  // having to thread the cookie down.
+  const showDiscordIds = await getShowDiscordIds();
   return (
     <html lang="en" className={pixel.variable}>
-      <body>
+      <body className={showDiscordIds ? "show-discord-ids" : undefined}>
         {children}
         <CommandPalette />
         <Toaster richColors position="top-center" />

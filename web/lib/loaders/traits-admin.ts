@@ -15,6 +15,7 @@ import { TRAIT_REGISTRY, loadTraitOverrides } from "./player-traits";
 export interface TraitHolder {
   id: string;
   name: string;
+  discordId: string;
 }
 
 export interface TraitAdminRow {
@@ -186,14 +187,15 @@ async function computeTraitHolders(): Promise<Map<string, TraitHolder[]>> {
   for (const set of Object.values(holderIds)) for (const id of set) allIds.add(id);
   const names = await prisma.player.findMany({
     where: { id: { in: [...allIds] } },
-    select: { id: true, displayName: true },
+    select: { id: true, displayName: true, discordId: true },
   });
   const nameById = new Map(names.map((n) => [n.id, n.displayName]));
+  const discordById = new Map(names.map((n) => [n.id, n.discordId]));
 
   const result = new Map<string, TraitHolder[]>();
   for (const [key, ids] of Object.entries(holderIds)) {
     const arr = [...ids]
-      .map((id) => ({ id, name: nameById.get(id) ?? id }))
+      .map((id) => ({ id, name: nameById.get(id) ?? id, discordId: discordById.get(id) ?? "" }))
       .sort((a, b) => a.name.localeCompare(b.name));
     result.set(key, arr);
   }

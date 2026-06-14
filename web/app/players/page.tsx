@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { loadPlayersList } from "@/lib/loaders/players";
 import { tierColors } from "@/lib/tier-colors";
 import { SiteNav } from "@/components/SiteNav";
+import { DiscordId } from "@/components/DiscordId";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,7 @@ export default async function PlayersPage() {
                       <Link href={`/profile/${p.id}`} style={{ color: "var(--text)" }}>
                         {p.displayName}
                       </Link>
+                      <DiscordId value={p.discordId} />
                     </td>
                     <td data-label="Division">
                       {p.membership ? (

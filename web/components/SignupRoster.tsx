@@ -2,12 +2,13 @@
 
 // Admin-only roster of the people currently signed up. Players see only a
 // count on the public embed; this is where staff eyeball who's actually in.
-// Shows each person's Discord global display name by default (the recognizable
-// account-level name), with a toggle to also show their Discord ID. The search
-// box matches on ALL of: global name, @username, and Discord ID — regardless
-// of which columns are currently shown.
+// Shows each person's Discord global display name (the recognizable
+// account-level name). Discord IDs render via <DiscordId> — visible app-wide
+// when the ⚙️ "Show Discord IDs" toggle is on. The search box matches on ALL
+// of: global name, @username, and Discord ID, regardless of toggle state.
 
 import { useMemo, useState } from "react";
+import { DiscordId } from "@/components/DiscordId";
 
 export interface RosterEntry {
   // Discord @username captured at signup.
@@ -20,17 +21,8 @@ export interface RosterEntry {
   inGuild: boolean | null;
 }
 
-export function SignupRoster({
-  signups,
-  defaultShowId = false,
-}: {
-  signups: RosterEntry[];
-  defaultShowId?: boolean;
-}) {
+export function SignupRoster({ signups }: { signups: RosterEntry[] }) {
   const [query, setQuery] = useState("");
-  // Discord-ID visibility follows the global per-browser preference (the ⚙️
-  // "Show Discord IDs" toggle in the nav), passed down as defaultShowId.
-  const showId = defaultShowId;
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -79,8 +71,10 @@ export function SignupRoster({
           {matches.map((s, i) => (
             <li key={`${s.discordId}-${i}`}>
               <span style={{ display: "inline-flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-                <span style={s.inGuild === false ? { opacity: 0.6 } : undefined}>{label(s)}</span>
-                {showId && <code style={{ fontSize: 12, opacity: 0.85 }}>{s.discordId}</code>}
+                <span style={s.inGuild === false ? { opacity: 0.6 } : undefined}>
+                  {label(s)}
+                  <DiscordId value={s.discordId} />
+                </span>
                 {s.inGuild === false && (
                   <span style={{ color: "#e67e22", fontSize: 11 }} title="Signed up but not currently a member of the Discord server">
                     ⚠️ not in server

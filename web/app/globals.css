@@ -246,3 +246,16 @@ form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
 .flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; }
 .flash.success { background: rgba(46,204,113,0.15); color: var(--success); border: 1px solid rgba(46,204,113,0.3); }
 .flash.error { background: rgba(231,76,60,0.15); color: var(--danger); border: 1px solid rgba(231,76,60,0.3); }
+
+/* Discord-ID chips next to player names. Hidden by default; revealed app-wide
+   when the viewer flips the ⚙️ "Show Discord IDs" toggle (sets body class). */
+.discord-id { display: none; }
+body.show-discord-ids .discord-id {
+  display: inline;
+  font-size: 0.78em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted);
+  opacity: 0.85;
+  margin-left: 6px;
+  user-select: all;
+}

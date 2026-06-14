@@ -15,6 +15,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { DiscordId } from "@/components/DiscordId";
 
 export interface RatingRow {
   discordId: string;
@@ -56,12 +57,10 @@ export function DraggableRatingTable({
   initial,
   formAction,
   roundId,
-  showDiscordId = true,
 }: {
   initial: RatingRow[];
   formAction: (formData: FormData) => void | Promise<void>;
   roundId: string;
-  showDiscordId?: boolean;
 }) {
   const [rows, setRows] = useState<RatingRow[]>(initial);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -277,10 +276,8 @@ export function DraggableRatingTable({
                     </Link>
                   ) : (
                     <strong>{r.displayName}</strong>
-                  )}{" "}
-                  {showDiscordId && (
-                    <span className="muted" style={{ fontSize: 11 }}>{r.discordId}</span>
                   )}
+                  <DiscordId value={r.discordId} />
                 </td>
                 <td>
                   <span

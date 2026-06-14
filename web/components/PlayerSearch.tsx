@@ -5,6 +5,9 @@ import { useMemo, useRef, useState } from "react";
 export interface PlayerOption {
   id: string;
   displayName: string;
+  // Optional — when present, the picker also matches the query against it, so
+  // you can find someone by pasting their Discord ID.
+  discordId?: string;
 }
 
 // A small searchable player picker: type to filter the existing player
@@ -28,7 +31,9 @@ export function PlayerSearch({
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return players.slice(0, 20);
-    return players.filter((p) => p.displayName.toLowerCase().includes(q)).slice(0, 20);
+    return players
+      .filter((p) => p.displayName.toLowerCase().includes(q) || (p.discordId ?? "").includes(q))
+      .slice(0, 20);
   }, [players, query]);
 
   function pick(p: PlayerOption) {
