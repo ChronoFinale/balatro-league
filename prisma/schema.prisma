@@ -231,6 +231,11 @@ model Signup {
   // Null for users who never set one (then fall back to displayName). Shown as
   // the default label in the admin roster since it's the recognizable name.
   globalName  String?
+  // Whether this person is currently a member of the Discord server. True at
+  // signup (they clicked the button), re-checked by the admin "refresh names"
+  // action so it catches anyone who later left. Null = not yet checked. The
+  // admin roster flags `false` as "not in server".
+  inGuild     Boolean?
   withdrawn   Boolean  @default(false)
   signedUpAt  DateTime @default(now())
 

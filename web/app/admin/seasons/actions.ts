@@ -11,6 +11,7 @@ import {
   createChannelInvite,
   editChannelMessage,
   fetchDiscordUser,
+  fetchGuildMember,
   postChannelMessage,
   type ComponentActionRow,
   type MessageEmbed,
@@ -720,13 +721,15 @@ export async function updateSeasonWindow(formData: FormData) {
 
 // Re-pull each active signup's current Discord @username + global display name
 // from the API and store them, so the admin roster reflects renames (and
-// backfills global names captured before that column existed). REST throttling
-// is handled by @discordjs/rest, so firing them together is safe at our scale.
+// backfills global names captured before that column existed). Also re-checks
+// Discord-server membership so the roster can flag anyone who left. REST
+// throttling is handled by @discordjs/rest, so firing them together is safe.
 export async function refreshSignupNames(formData: FormData) {
   const { user } = await requireAdmin();
   const roundId = String(formData.get("roundId") ?? "");
   if (!roundId) redirect("/admin/seasons?err=missing-fields");
 
+  const guildId = process.env.DISCORD_GUILD_ID;
   const signups = await prisma.signup.findMany({
     where: { roundId, withdrawn: false },
     select: { id: true, discordId: true },
@@ -736,9 +739,16 @@ export async function refreshSignupNames(formData: FormData) {
     signups.map(async (s) => {
       const u = await fetchDiscordUser(s.discordId);
       if (!u) return false;
+      // Membership re-check. Leave inGuild unchanged when we have no guild id
+      // rather than wrongly flag everyone as gone.
+      const inGuild = guildId ? (await fetchGuildMember(guildId, s.discordId)) !== null : undefined;
       await prisma.signup.update({
         where: { id: s.id },
-        data: { displayName: u.username, globalName: u.global_name ?? null },
+        data: {
+          displayName: u.username,
+          globalName: u.global_name ?? null,
+          ...(inGuild === undefined ? {} : { inGuild }),
+        },
       });
       return true;
     }),

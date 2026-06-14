@@ -66,10 +66,11 @@ export const signupHandlers: ButtonHandler = {
       // never set one. Captured so the admin roster can show the recognizable
       // name rather than the @handle.
       const globalName = interaction.user.globalName ?? null;
+      // They just clicked the button inside the server, so they're a member.
       if (existing) {
         await prisma.signup.update({
           where: { id: existing.id },
-          data: { withdrawn: false, displayName: interaction.user.username, globalName },
+          data: { withdrawn: false, displayName: interaction.user.username, globalName, inGuild: true },
         });
       } else {
         await prisma.signup.create({
@@ -78,6 +79,7 @@ export const signupHandlers: ButtonHandler = {
             discordId: interaction.user.id,
             displayName: interaction.user.username,
             globalName,
+            inGuild: true,
           },
         });
       }

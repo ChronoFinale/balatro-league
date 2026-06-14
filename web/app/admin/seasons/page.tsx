@@ -354,7 +354,7 @@ interface LifecycleRound {
   status: "OPEN" | "CLOSED" | "BUILT";
   channelId: string;
   _count: { signups: number };
-  signups: { displayName: string; globalName: string | null; discordId: string; signedUpAt: Date }[];
+  signups: { displayName: string; globalName: string | null; discordId: string; inGuild: boolean | null; signedUpAt: Date }[];
 }
 interface LifecycleChannel { id: string; name: string }
 
@@ -372,7 +372,7 @@ function RosterPanel({ round }: { round: LifecycleRound }) {
             type="submit"
             variant="secondary"
             size="sm"
-            title="Re-pull each player's current Discord username + global display name"
+            title="Re-pull each player's current Discord username + global display name, and re-check server membership"
           >
             ↻ Refresh names from Discord
           </Button>

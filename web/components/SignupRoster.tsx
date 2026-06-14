@@ -15,6 +15,9 @@ export interface RosterEntry {
   // Account-level display name (user.global_name); null when unset.
   globalName: string | null;
   discordId: string;
+  // Whether they're currently in the Discord server. false → flagged "not in
+  // server"; null → not yet checked (shown without a flag).
+  inGuild: boolean | null;
 }
 
 export function SignupRoster({ signups }: { signups: RosterEntry[] }) {
@@ -39,10 +42,15 @@ export function SignupRoster({ signups }: { signups: RosterEntry[] }) {
   // Default label = global name; fall back to @username when it's unset.
   const label = (s: RosterEntry) => s.globalName ?? s.displayName;
 
+  const goneCount = signups.filter((s) => s.inGuild === false).length;
+
   return (
     <details style={{ margin: "4px 0 8px" }} open={query.length > 0}>
       <summary style={{ cursor: "pointer", fontSize: 12 }} className="muted">
         View who&apos;s signed up ({signups.length})
+        {goneCount > 0 && (
+          <span style={{ color: "#e67e22", marginLeft: 6 }}>· {goneCount} not in server</span>
+        )}
       </summary>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", margin: "8px 0" }}>
@@ -66,8 +74,13 @@ export function SignupRoster({ signups }: { signups: RosterEntry[] }) {
           {matches.map((s, i) => (
             <li key={`${s.discordId}-${i}`}>
               <span style={{ display: "inline-flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-                <span>{label(s)}</span>
+                <span style={s.inGuild === false ? { opacity: 0.6 } : undefined}>{label(s)}</span>
                 {showId && <code style={{ fontSize: 12, opacity: 0.85 }}>{s.discordId}</code>}
+                {s.inGuild === false && (
+                  <span style={{ color: "#e67e22", fontSize: 11 }} title="Signed up but not currently a member of the Discord server">
+                    ⚠️ not in server
+                  </span>
+                )}
               </span>
             </li>
           ))}
