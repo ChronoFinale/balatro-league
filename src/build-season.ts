@@ -22,6 +22,7 @@ import { prisma } from "./db.js";
 import { DEFAULT_TIERS, parseTierConfig, PLAYERS_PER_DIVISION, type TierConfig } from "./pyramid.js";
 import { computeStandings } from "./standings.js";
 import { createTiersAndDivisions } from "./tiers.js";
+import { formatDivisionName } from "./format-season.js";
 
 export interface PlacementPlan {
   tiers: Array<{
@@ -168,7 +169,7 @@ export async function planSeason(roundId: string, opts: PlanOpts = {}): Promise<
         playerCount: 0,
         divisions: Array.from({ length: config.divisionCount }, (_, gi) => ({
           groupNumber: gi + 1,
-          name: config.divisionCount === 1 ? config.name : `${config.name} ${gi + 1}`,
+          name: formatDivisionName(config.name, gi + 1, config.divisionCount),
           signupIds: [],
         })),
       });

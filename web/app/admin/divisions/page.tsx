@@ -4,6 +4,8 @@ import { loadAdminDivisionsIndex } from "@/lib/loaders/admin";
 import { tierColors } from "@/lib/tier-colors";
 import { SiteNav } from "@/components/SiteNav";
 import { AdminNav } from "@/components/AdminNav";
+import { Button } from "@/components/ui/button";
+import { relabelDivisions } from "@/app/admin/seasons/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,20 @@ export default async function AdminDivisionsPage() {
             · {season?.name ?? "no active season"}
           </span>
         </h2>
+
+        {season && (
+          <form action={relabelDivisions} style={{ marginBottom: 12 }}>
+            <input type="hidden" name="seasonId" value={season.id} />
+            <Button
+              type="submit"
+              variant="secondary"
+              size="sm"
+              title="Rewrite every division's name to the standard format: first group = 'Tier A (1)', then 'Tier 2', 'Tier 3'… (single-division tiers stay just the tier name). Doesn't move any players."
+            >
+              ↻ Relabel divisions to standard names
+            </Button>
+          </form>
+        )}
 
         {!season ? (
           <div className="card muted">

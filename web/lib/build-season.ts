@@ -11,7 +11,7 @@
 import { prisma } from "@/lib/prisma";
 import { placePlayerInDivision } from "@/lib/division-membership";
 import { recordAudit, type AuditActor } from "@/lib/audit";
-import { formatSeasonLabel, nextSeasonNumber } from "@/lib/format-season";
+import { formatSeasonLabel, formatDivisionName, nextSeasonNumber } from "@/lib/format-season";
 
 export interface TierConfig {
   name: string;
@@ -180,9 +180,7 @@ export async function buildSeasonFromRound(input: BuildSeasonInput): Promise<Bui
           data: { seasonId: existing.id, position: i + 1, name: c.name },
         });
         for (let g = 1; g <= c.divisionCount; g++) {
-          // Card-themed: the first (strongest) division in a tier is the Ace
-          // ("Tier A"), then 2, 3, 4, 5… Single-division tiers stay unnumbered.
-          const divisionName = c.divisionCount === 1 ? c.name : `${c.name} ${g === 1 ? "A (1)" : g}`;
+          const divisionName = formatDivisionName(c.name, g, c.divisionCount);
           await prisma.division.create({
             data: { seasonId: existing.id, tierId: tier.id, groupNumber: g, name: divisionName },
           });
@@ -262,11 +260,7 @@ export async function buildSeasonFromRound(input: BuildSeasonInput): Promise<Bui
       });
       for (let gi = 0; gi < planTier.divisions.length; gi++) {
         const memberDiscordIds = planTier.divisions[gi]!;
-        // Card-themed: first (strongest) division in a tier is the Ace, then 2…
-        const divisionName =
-          planTier.tier.divisionCount === 1 && gi === 0
-            ? planTier.tier.name
-            : `${planTier.tier.name} ${gi === 0 ? "A (1)" : gi + 1}`;
+        const divisionName = formatDivisionName(planTier.tier.name, gi + 1, planTier.tier.divisionCount);
         const division = await prisma.division.create({
           data: { seasonId: season.id, tierId: tier.id, groupNumber: gi + 1, name: divisionName },
         });

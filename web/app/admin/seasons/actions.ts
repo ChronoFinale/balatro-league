@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
 import { actorFromAdminUser, recordAudit, type AuditActor } from "@/lib/audit";
 import { runSeasonDiscordBootstrap } from "./bootstrap-actions";
-import { formatSeasonLabel, nextSeasonNumber } from "@/lib/format-season";
+import { formatSeasonLabel, formatDivisionName, nextSeasonNumber } from "@/lib/format-season";
 import {
   createChannelInvite,
   editChannelMessage,
@@ -463,6 +463,46 @@ export async function unendSeason(formData: FormData) {
     metadata: { previousEndedAt: season.endedAt.toISOString() },
   });
   revalidatePath("/admin/seasons");
+}
+
+// Regenerate every division's display name in a season to the canonical
+// "<Tier> A (1)" / "<Tier> 2" / "<Tier>" format (formatDivisionName). For
+// seasons built before that format existed (or hand-renamed) — leaves the
+// tiers + placements untouched, only rewrites Division.name.
+export async function relabelDivisions(formData: FormData) {
+  const { user } = await requireAdmin();
+  const seasonId = String(formData.get("seasonId") ?? "");
+  if (!seasonId) redirect("/admin/seasons?err=missing-fields");
+
+  const tiers = await prisma.tier.findMany({
+    where: { seasonId },
+    select: { name: true, divisions: { select: { id: true, groupNumber: true, name: true } } },
+  });
+
+  let renamed = 0;
+  for (const tier of tiers) {
+    const count = tier.divisions.length;
+    for (const d of tier.divisions) {
+      const next = formatDivisionName(tier.name, d.groupNumber, count);
+      if (next !== d.name) {
+        await prisma.division.update({ where: { id: d.id }, data: { name: next } });
+        renamed++;
+      }
+    }
+  }
+
+  recordAudit({
+    actor: actorFromAdminUser(user),
+    action: "season.relabel-divisions",
+    targetType: "Season",
+    targetId: seasonId,
+    summary: `Relabeled ${renamed} division(s) to canonical names`,
+    metadata: { seasonId, renamed },
+  });
+
+  revalidatePath("/admin/seasons");
+  revalidatePath(`/seasons/${seasonId}`);
+  redirect(`/seasons/${seasonId}?ok=relabeled-${renamed}`);
 }
 
 // "<start> → <end> (2 weeks)" when both ends are known, else null. Mirrors

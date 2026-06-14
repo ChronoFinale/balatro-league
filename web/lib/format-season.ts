@@ -15,6 +15,14 @@ export function formatSeasonLabel(season: SeasonLabelInput): string {
   return season.subtitle ? `${base} — ${season.subtitle}` : base;
 }
 
+// Canonical division label. The strongest (group 1) division in a multi-division
+// tier is the "Ace" — "<Tier> A (1)" — and the rest are "<Tier> 2", "<Tier> 3", …
+// A tier with a single division is just "<Tier>". Mirrors src/format-season.ts.
+export function formatDivisionName(tierName: string, groupNumber: number, divisionCount: number): string {
+  if (divisionCount <= 1) return tierName;
+  return groupNumber === 1 ? `${tierName} A (1)` : `${tierName} ${groupNumber}`;
+}
+
 // Pick the next available number for a brand-new season. Caller is
 // responsible for the actual DB write — this just suggests the value.
 export async function nextSeasonNumber(prisma: { season: { aggregate: (args: { _max: { number: true } }) => Promise<{ _max: { number: number | null } }> } }): Promise<number> {

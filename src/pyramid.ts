@@ -4,6 +4,8 @@
 // Each tier has 1+ divisions. Default structure is the joker-rarity pyramid but
 // admins can fully customize per-season at creation time.
 
+import { formatDivisionName } from "./format-season.js";
+
 export interface TierConfig {
   name: string;
   divisionCount: number;
@@ -52,6 +54,7 @@ export function tiersToText(tiers: TierConfig[]): string {
 // (strongest) division is the Ace ("Rare A"), then 2, 3, 4, 5… A single-
 // division tier is just the tier name ("Legendary").
 export function defaultDivisionNames(tier: TierConfig): string[] {
-  if (tier.divisionCount === 1) return [tier.name];
-  return Array.from({ length: tier.divisionCount }, (_, i) => `${tier.name} ${i === 0 ? "A (1)" : i + 1}`);
+  return Array.from({ length: tier.divisionCount }, (_, i) =>
+    formatDivisionName(tier.name, i + 1, tier.divisionCount),
+  );
 }
