@@ -226,7 +226,11 @@ model Signup {
   id          String   @id @default(cuid())
   roundId     String
   discordId   String
-  displayName String
+  displayName String // the Discord @username captured at signup time
+  // Account-level Discord display name (user.global_name), captured at signup.
+  // Null for users who never set one (then fall back to displayName). Shown as
+  // the default label in the admin roster since it's the recognizable name.
+  globalName  String?
   withdrawn   Boolean  @default(false)
   signedUpAt  DateTime @default(now())
 

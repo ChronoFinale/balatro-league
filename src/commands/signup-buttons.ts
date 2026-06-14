@@ -62,10 +62,14 @@ export const signupHandlers: ButtonHandler = {
         });
         return;
       }
+      // global_name is the account-level display name; null for users who
+      // never set one. Captured so the admin roster can show the recognizable
+      // name rather than the @handle.
+      const globalName = interaction.user.globalName ?? null;
       if (existing) {
         await prisma.signup.update({
           where: { id: existing.id },
-          data: { withdrawn: false, displayName: interaction.user.username },
+          data: { withdrawn: false, displayName: interaction.user.username, globalName },
         });
       } else {
         await prisma.signup.create({
@@ -73,6 +77,7 @@ export const signupHandlers: ButtonHandler = {
             roundId,
             discordId: interaction.user.id,
             displayName: interaction.user.username,
+            globalName,
           },
         });
       }

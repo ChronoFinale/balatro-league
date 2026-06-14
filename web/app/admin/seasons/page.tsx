@@ -353,7 +353,7 @@ interface LifecycleRound {
   status: "OPEN" | "CLOSED" | "BUILT";
   channelId: string;
   _count: { signups: number };
-  signups: { displayName: string; discordId: string; signedUpAt: Date }[];
+  signups: { displayName: string; globalName: string | null; discordId: string; signedUpAt: Date }[];
 }
 interface LifecycleChannel { id: string; name: string }
 
