@@ -3,6 +3,7 @@
 // native <details> for zero-JS accessibility.
 
 import Link from "next/link";
+import Image from "next/image";
 import { auth } from "@/auth";
 import { isAdminUser } from "@/lib/admin";
 import { getShowBmpMmr, getShowUsernames } from "@/lib/preferences";
@@ -36,7 +37,10 @@ export async function SiteNav({ activePath }: { activePath: string }) {
   return (
     <header className="flex flex-wrap items-center gap-3 border-b border-border bg-card px-4 py-2.5 md:gap-6 md:px-6 md:py-3">
       <h1 className="m-0 text-base">
-        <Link href="/" className="text-foreground no-underline hover:opacity-80">🃏 Balatro League</Link>
+        <Link href="/" className="flex items-center gap-2 text-foreground no-underline hover:opacity-80">
+          <Image src="/Balatro_League.png" alt="" width={24} height={24} className="rounded-sm" priority />
+          Balatro League
+        </Link>
       </h1>
       <nav className="pixel flex flex-wrap gap-1 md:gap-2 text-[13px]">
         {links.map((link) => {

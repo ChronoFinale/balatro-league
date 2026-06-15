@@ -19,6 +19,7 @@ const pixel = Silkscreen({
 export const metadata: Metadata = {
   title: "Balatro League",
   description: "League standings, schedules, and history",
+  icons: { icon: "/Balatro_League.png", apple: "/Balatro_League.png" },
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
