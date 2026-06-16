@@ -889,6 +889,129 @@ export async function loadBuildSeasonPage(roundId: string): Promise<BuildSeasonR
   };
 }
 
+// ── /admin/signups/[id] — pre-season MMR distribution ────────────────
+
+export interface SignupMmrRow {
+  discordId: string;
+  name: string;
+  inGuild: boolean | null;
+  mmr: number | null;
+  tier: string | null;
+  totalGames: number | null;
+  winRatePct: number | null;
+}
+export interface SignupMmrTier {
+  tier: string;
+  count: number;
+  avgMmr: number;
+}
+export interface SignupMmrOverview {
+  round: { id: string; name: string; status: string; signupCount: number; resultingSeasonId: string | null };
+  rows: SignupMmrRow[]; // sorted by mmr desc, no-data last
+  withData: number;
+  withoutData: number;
+  min: number | null;
+  max: number | null;
+  median: number | null;
+  avg: number | null;
+  byTier: SignupMmrTier[]; // sorted strongest tier first (by avg mmr)
+}
+
+// Roster of a signup round joined to each signup's best BMP MMR snapshot (by
+// discordId — works before they're materialized into Players), plus summary
+// stats + tier distribution. Read-only "how strong is this signup pool" view.
+export async function loadSignupMmrOverview(roundId: string): Promise<SignupMmrOverview | null> {
+  const round = await prisma.signupRound.findUnique({
+    where: { id: roundId },
+    include: {
+      signups: {
+        where: { withdrawn: false },
+        select: { discordId: true, displayName: true, globalName: true, inGuild: true },
+      },
+    },
+  });
+  if (!round) return null;
+
+  const discordIds = round.signups.map((s) => s.discordId);
+  const snaps = discordIds.length === 0 ? [] : await prisma.playerMmrSnapshot.findMany({
+    where: { discordId: { in: discordIds }, rankedMmr: { not: null } },
+    orderBy: { capturedAt: "desc" },
+    select: { discordId: true, bmpSeason: true, rankedMmr: true, rankedTier: true, totalGames: true, winRatePct: true, capturedAt: true },
+  });
+  // Best snapshot per discordId: latest tagged BMP season, then newest capture.
+  const seasonNum = (tag: string | null): number => {
+    if (!tag) return -Infinity;
+    const m = /^season(\d+)$/.exec(tag);
+    return m ? parseInt(m[1]!, 10) : -Infinity;
+  };
+  const byDid = new Map<string, typeof snaps>();
+  for (const s of snaps) {
+    const arr = byDid.get(s.discordId) ?? [];
+    arr.push(s);
+    byDid.set(s.discordId, arr);
+  }
+  const best = new Map<string, (typeof snaps)[number]>();
+  for (const [did, arr] of byDid) {
+    arr.sort((a, b) => {
+      const na = seasonNum(a.bmpSeason);
+      const nb = seasonNum(b.bmpSeason);
+      if (na !== nb) return nb - na;
+      return b.capturedAt.getTime() - a.capturedAt.getTime();
+    });
+    best.set(did, arr[0]!);
+  }
+
+  const rows: SignupMmrRow[] = round.signups
+    .map((s) => {
+      const b = best.get(s.discordId);
+      return {
+        discordId: s.discordId,
+        name: s.globalName ?? s.displayName,
+        inGuild: s.inGuild,
+        mmr: b?.rankedMmr ?? null,
+        tier: b?.rankedTier ?? null,
+        totalGames: b?.totalGames ?? null,
+        winRatePct: b?.winRatePct ?? null,
+      };
+    })
+    .sort((a, b) => {
+      if (a.mmr === null && b.mmr === null) return a.name.localeCompare(b.name);
+      if (a.mmr === null) return 1;
+      if (b.mmr === null) return -1;
+      return b.mmr - a.mmr;
+    });
+
+  const mmrs = rows.map((r) => r.mmr).filter((m): m is number => m !== null).sort((a, b) => a - b);
+  const n = mmrs.length;
+  const median =
+    n === 0 ? null : n % 2 === 1 ? mmrs[(n - 1) / 2]! : Math.round((mmrs[n / 2 - 1]! + mmrs[n / 2]!) / 2);
+
+  const tierStats = new Map<string, { count: number; sum: number }>();
+  for (const r of rows) {
+    if (r.tier && r.mmr !== null) {
+      const t = tierStats.get(r.tier) ?? { count: 0, sum: 0 };
+      t.count += 1;
+      t.sum += r.mmr;
+      tierStats.set(r.tier, t);
+    }
+  }
+  const byTier: SignupMmrTier[] = Array.from(tierStats.entries())
+    .map(([tier, s]) => ({ tier, count: s.count, avgMmr: Math.round(s.sum / s.count) }))
+    .sort((a, b) => b.avgMmr - a.avgMmr);
+
+  return {
+    round: { id: round.id, name: round.name, status: round.status, signupCount: round.signups.length, resultingSeasonId: round.resultingSeasonId },
+    rows,
+    withData: n,
+    withoutData: rows.length - n,
+    min: n ? mmrs[0]! : null,
+    max: n ? mmrs[n - 1]! : null,
+    median,
+    avg: n ? Math.round(mmrs.reduce((s, m) => s + m, 0) / n) : null,
+    byTier,
+  };
+}
+
 // ── /admin/seasons/[id] ──────────────────────────────────────────────
 
 export interface AdminSeasonDetailData {

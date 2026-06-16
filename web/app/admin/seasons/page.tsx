@@ -205,6 +205,9 @@ export default async function AdminSeasonsPage({
                   >
                     {r.status} · {r.signupCount} signed up
                   </span>
+                  <Link href={`/admin/signups/${r.id}`} style={{ fontSize: 12 }}>
+                    📊 MMR
+                  </Link>
                   <Link
                     href={`/admin/signups/${r.id}/build`}
                     style={{ fontSize: 12 }}
@@ -468,10 +471,13 @@ function LifecycleActions({
           🟢 Signups open in <code>#{channels.find((c) => c.id === round.channelId)?.name ?? round.channelId}</code> — {round._count.signups} joined
         </div>
         <RosterPanel round={round} />
-        <form action={finalizeSignupsForSeason}>
-          <input type="hidden" name="seasonId" value={season.id} />
-          <Button type="submit" variant="secondary">Finalize signups →</Button>
-        </form>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <form action={finalizeSignupsForSeason}>
+            <input type="hidden" name="seasonId" value={season.id} />
+            <Button type="submit" variant="secondary">Finalize signups →</Button>
+          </form>
+          <Link href={`/admin/signups/${round.id}`} style={{ fontSize: 12 }}>📊 Signup MMR distribution →</Link>
+        </div>
         <details style={{ marginTop: 8 }}>
           <summary style={{ cursor: "pointer", fontSize: 12 }} className="muted">Change close date</summary>
           <form action={updateSignupCloseDate} style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap", alignItems: "flex-end" }}>
