@@ -18,7 +18,6 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { MatchActionsPanel } from "@/components/MatchActionsPanel";
 import { ReportForm } from "@/components/ReportForm";
 import { CANONICAL_DECKS, CANONICAL_STAKES } from "@/lib/balatro-info";
-import { resultLabelByName } from "@/lib/result-labels";
 import { FormSelect } from "@/components/FormSelect";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -26,12 +25,9 @@ import {
   addDivisionMemberByDiscordId,
   bulkAddMembers,
   bulkRecordPairings,
-  deletePairing,
   deleteShootout,
   dropDivisionMember,
-  overridePairing,
   reactivateDivisionMember,
-  recordFromDivisionAction,
   recordSet,
   recordShootout,
   removeDivisionMember,
@@ -169,7 +165,6 @@ export default async function PublicDivisionPage({
         <MatchesSections
           divisionId={id}
           viewerPlayerId={viewerPlayerId}
-          isAdmin={isAdmin}
           unplayed={unplayed}
           recentPairings={recentPairings}
           confirmedPairingCount={division.confirmedPairingCount}
@@ -227,14 +222,12 @@ export default async function PublicDivisionPage({
 function MatchesSections({
   divisionId,
   viewerPlayerId,
-  isAdmin,
   unplayed,
   recentPairings,
   confirmedPairingCount,
 }: {
   divisionId: string;
   viewerPlayerId: string | null;
-  isAdmin: boolean;
   unplayed: DivisionUnplayed[];
   recentPairings: DivisionRecentPairing[];
   confirmedPairingCount: number;
@@ -249,6 +242,11 @@ function MatchesSections({
   // with zero history still has unplayed against every other active
   // member, so this catches them.
   const viewerIsMember = myUnplayed.length > 0 || myPlayed.length > 0;
+  // The viewer's unplayed opponents → the report form's dropdown.
+  const myOpponents = myUnplayed.map((m) => {
+    const opp = m.a.id === viewerPlayerId ? m.b : m.a;
+    return { playerId: opp.id, displayName: opp.displayName, alreadyPending: false };
+  });
 
   if (!viewerIsMember) {
     return (
@@ -258,15 +256,10 @@ function MatchesSections({
             <strong>Remaining ({unplayed.length})</strong>
             <p className="muted" style={{ fontSize: 11, marginTop: 4, marginBottom: 8 }}>
               {viewerPlayerId
-                ? "Admins can record any match below. Sign-in won't help unless you're a member."
-                : "Players in this division can report their matches by signing in."}
+                ? "Sign-in only lets you report your own matches — admins use the Match-actions panel below."
+                : "Players in this division report their own matches by signing in."}
             </p>
-            <UnplayedList
-              divisionId={divisionId}
-              rows={unplayed}
-              viewerPlayerId={viewerPlayerId}
-              isAdmin={isAdmin}
-            />
+            <UnplayedList rows={unplayed} />
           </div>
         )}
         <details className="card">
@@ -284,18 +277,26 @@ function MatchesSections({
       <h3 style={{ marginTop: 16, marginBottom: 8 }}>🎯 Your matches</h3>
 
       <div className="card">
-        <strong>Your unplayed ({myUnplayed.length})</strong>
-        {myUnplayed.length === 0 ? (
-          <p className="muted" style={{ marginTop: 6 }}>
+        <strong>Report a match</strong>
+        {myOpponents.length === 0 ? (
+          <p className="muted" style={{ marginTop: 6, marginBottom: 0 }}>
             You&apos;ve played everyone in your division.
           </p>
         ) : (
-          <UnplayedList
-            divisionId={divisionId}
-            rows={myUnplayed}
-            viewerPlayerId={viewerPlayerId}
-            isAdmin={isAdmin}
-          />
+          <>
+            <div style={{ marginTop: 8 }}>
+              <ReportForm
+                action={reportFromDivisionAction}
+                opponents={myOpponents}
+                decks={CANONICAL_DECKS.map((d) => d.name)}
+                stakes={CANONICAL_STAKES.map((s) => s.name)}
+                hiddenFields={{ divisionId }}
+              />
+            </div>
+            <p className="muted" style={{ fontSize: 11, marginTop: 8, marginBottom: 0 }}>
+              Recorded right away and posted to <strong>#results</strong>. Your opponent gets a DM to dispute if the score is wrong.
+            </p>
+          </>
         )}
       </div>
 
@@ -316,12 +317,7 @@ function MatchesSections({
               other players&apos; upcoming
             </span>
           </summary>
-          <UnplayedList
-            divisionId={divisionId}
-            rows={otherUnplayed}
-            viewerPlayerId={viewerPlayerId}
-            isAdmin={isAdmin}
-          />
+          <UnplayedList rows={otherUnplayed} />
         </details>
       )}
 
@@ -338,79 +334,34 @@ function MatchesSections({
   );
 }
 
-// Per-row Report / admin Record controls for an unplayed matchup. Same
-// shape regardless of which section it lives in (yours/others/no-viewer).
-function UnplayedList({
-  divisionId,
-  rows,
-  viewerPlayerId,
-  isAdmin,
-}: {
-  divisionId: string;
-  rows: DivisionUnplayed[];
-  viewerPlayerId: string | null;
-  isAdmin: boolean;
-}) {
+// Read-only list of unplayed matchups (who still has to play whom). Players
+// report via the single ReportForm above; admins act via the Match-actions
+// panel in the admin section.
+function UnplayedList({ rows }: { rows: DivisionUnplayed[] }) {
   return (
     <ul style={{ marginTop: 4, listStyle: "none", padding: 0 }}>
-      {rows.map((m) => {
-        const viewerIsA = viewerPlayerId === m.a.id;
-        const viewerIsB = viewerPlayerId === m.b.id;
-        const viewerIsPlayer = viewerIsA || viewerIsB;
-        const opponent = viewerIsA ? m.b : viewerIsB ? m.a : null;
-        return (
-          <li
-            key={`${m.a.id}-${m.b.id}`}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "6px 0",
-              borderBottom: "1px solid rgba(255,255,255,0.05)",
-              fontSize: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <span style={{ flex: "1 1 220px" }}>
-              <Link href={`/profile/${m.a.id}`} style={{ color: "var(--text)" }}>{m.a.displayName}</Link>
-              <DiscordId value={m.a.discordId} username={m.a.username} />
-              <span className="muted"> vs </span>
-              <Link href={`/profile/${m.b.id}`} style={{ color: "var(--text)" }}>{m.b.displayName}</Link>
-              <DiscordId value={m.b.discordId} username={m.b.username} />
-            </span>
-            {viewerIsPlayer && opponent && (
-              <ReportForm
-                action={reportFromDivisionAction}
-                lockedOpponent={{ playerId: opponent.id, displayName: opponent.displayName, alreadyPending: false }}
-                decks={CANONICAL_DECKS.map((d) => d.name)}
-                stakes={CANONICAL_STAKES.map((s) => s.name)}
-                hiddenFields={{ divisionId }}
-                compact
-                collapsible
-              />
-            )}
-            {!viewerIsPlayer && isAdmin && (
-              <form action={recordFromDivisionAction} style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                <input type="hidden" name="divisionId" value={divisionId} />
-                <input type="hidden" name="playerAId" value={m.a.id} />
-                <input type="hidden" name="playerBId" value={m.b.id} />
-                <FormSelect
-                  name="result"
-                  defaultValue="2-0"
-                  size="sm"
-                  title="Result from playerA's POV"
-                  options={[
-                    { value: "2-0", label: resultLabelByName("2-0", m.a.displayName, m.b.displayName) },
-                    { value: "1-1", label: resultLabelByName("1-1", m.a.displayName, m.b.displayName) },
-                    { value: "0-2", label: resultLabelByName("0-2", m.a.displayName, m.b.displayName) },
-                  ]}
-                />
-                <Button type="submit" variant="secondary" size="sm">Record</Button>
-              </form>
-            )}
-          </li>
-        );
-      })}
+      {rows.map((m) => (
+        <li
+          key={`${m.a.id}-${m.b.id}`}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 0",
+            borderBottom: "1px solid rgba(255,255,255,0.05)",
+            fontSize: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <span>
+            <Link href={`/profile/${m.a.id}`} style={{ color: "var(--text)" }}>{m.a.displayName}</Link>
+            <DiscordId value={m.a.discordId} username={m.a.username} />
+            <span className="muted"> vs </span>
+            <Link href={`/profile/${m.b.id}`} style={{ color: "var(--text)" }}>{m.b.displayName}</Link>
+            <DiscordId value={m.b.discordId} username={m.b.username} />
+          </span>
+        </li>
+      ))}
     </ul>
   );
 }
@@ -654,59 +605,9 @@ function AdminSection({
         </table>
       </div>
 
-      {/* Recorded matches with admin override/delete */}
-      <div className="card">
-        <strong>Matches — recorded ({pairings.length})</strong>
-        <table>
-          <thead>
-            <tr><th>Matchup</th><th>Result</th><th>Status</th><th>Override</th><th></th></tr>
-          </thead>
-          <tbody>
-            {pairings.length === 0 ? (
-              <tr><td colSpan={5} className="muted">None yet.</td></tr>
-            ) : pairings.map((p) => {
-              const statusBg = p.status === "CONFIRMED" ? "rgba(46,204,113,0.15)" : p.status === "DISPUTED" ? "rgba(231,76,60,0.15)" : "rgba(241,196,15,0.15)";
-              const statusFg = p.status === "CONFIRMED" ? "#2ecc71" : p.status === "DISPUTED" ? "#e74c3c" : "#f1c40f";
-              return (
-                <tr key={p.id}>
-                  <td>
-                    <Link href={`/profile/${p.playerA.id}`} style={{ color: "var(--text)" }}>{p.playerA.displayName}</Link>
-                    {" "}<span className="muted">vs</span>{" "}
-                    <Link href={`/profile/${p.playerB.id}`} style={{ color: "var(--text)" }}>{p.playerB.displayName}</Link>
-                  </td>
-                  <td><strong>{p.gamesWonA}-{p.gamesWonB}</strong></td>
-                  <td><span className="pill" style={{ background: statusBg, color: statusFg }}>{p.status}</span></td>
-                  <td>
-                    <form action={overridePairing} style={{ display: "flex", gap: 4 }}>
-                      <input type="hidden" name="pairingId" value={p.id} />
-                      <FormSelect
-                        name="result"
-                        defaultValue={`${p.gamesWonA}-${p.gamesWonB}`}
-                        options={[
-                          { value: "2-0", label: resultLabelByName("2-0", p.playerA.displayName, p.playerB.displayName) },
-                          { value: "1-1", label: resultLabelByName("1-1", p.playerA.displayName, p.playerB.displayName) },
-                          { value: "0-2", label: resultLabelByName("0-2", p.playerA.displayName, p.playerB.displayName) },
-                        ]}
-                      />
-                      <Button type="submit">Override</Button>
-                    </form>
-                  </td>
-                  <td>
-                    <form action={deletePairing}>
-                      <input type="hidden" name="pairingId" value={p.id} />
-                      <Button type="submit" variant="destructive">Delete</Button>
-                    </form>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
       {/* Consolidated match actions: pick a matchup → pick what happened.
-          Covers record / override / DQ / void / undo in one flow (replaces the
-          old separate Record-DQ + Void-game cards). */}
+          Covers record / override / DQ / void / undo in one flow — the single
+          place admins act on matches. */}
       <MatchActionsPanel
         divisionId={divisionId}
         returnTo={`/divisions/${divisionId}`}

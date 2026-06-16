@@ -3,13 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { hasTier, requireAdmin } from "@/lib/admin";
-import { actorFromAdminUser, recordAudit } from "@/lib/audit";
+import { requireAdmin } from "@/lib/admin";
+import { actorFromAdminUser } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
-import { enqueueAnnounceResult } from "@/lib/queue";
-import { reportSetFromWeb, type ReportResultStr } from "@/lib/report";
+import { reportSetFromWeb } from "@/lib/report";
 import { parseReportForm } from "@/lib/report-form";
-import { recordResult, overrideResult, forfeitResult, recordShowdown, resolveTieWithShowdowns, undoResult, voidGame, voidPlayerInDivision } from "@/lib/match-admin";
+import { recordResult, forfeitResult, recordShowdown, resolveTieWithShowdowns, undoResult, voidGame, voidPlayerInDivision } from "@/lib/match-admin";
 import { recomputeDivisionStandings } from "@/lib/standings-cache";
 import { resolveDiscordIdToDisplayName } from "@/lib/add-player";
 import { addGuildMemberRole } from "@/lib/discord";
@@ -29,72 +28,6 @@ export async function reportFromDivisionAction(formData: FormData) {
   revalidatePath(`/divisions/${divisionId}`);
   revalidatePath("/standings");
   revalidatePath("/me");
-  redirect(`/divisions/${divisionId}?reportOk=1`);
-}
-
-// Admin path: record a result without being one of the players.
-// Visible on the public division page only when the viewer is an
-// admin. Form posts player A id, player B id, and a result from
-// either side's POV — server canonicalizes + writes.
-export async function recordFromDivisionAction(formData: FormData) {
-  const session = await auth();
-  const viewerUser = session?.user as { discordId?: string; name?: string | null } | undefined;
-  if (!viewerUser?.discordId) redirect(`/divisions/${String(formData.get("divisionId") ?? "")}?reportErr=not-logged-in`);
-  if (!(await hasTier("ADMIN"))) {
-    redirect(`/divisions/${String(formData.get("divisionId") ?? "")}?reportErr=admin-only`);
-  }
-  const divisionId = String(formData.get("divisionId") ?? "");
-  const playerAId = String(formData.get("playerAId") ?? "");
-  const playerBId = String(formData.get("playerBId") ?? "");
-  const result = String(formData.get("result") ?? "") as ReportResultStr;
-  if (!divisionId || !playerAId || !playerBId || !["2-0", "1-1", "0-2"].includes(result)) {
-    redirect(`/divisions/${divisionId}?reportErr=missing-fields`);
-  }
-  const [canonA, canonB] = playerAId < playerBId ? [playerAId, playerBId] : [playerBId, playerAId];
-  const aIsCanon = playerAId === canonA;
-  const games = result === "2-0" ? { a: 2, b: 0 } : result === "1-1" ? { a: 1, b: 1 } : { a: 0, b: 2 };
-  const gamesWonA = aIsCanon ? games.a : games.b;
-  const gamesWonB = aIsCanon ? games.b : games.a;
-
-  const winnerId = gamesWonA > gamesWonB ? canonA : gamesWonB > gamesWonA ? canonB : null;
-  const recorded = await prisma.match.upsert({
-    where: { divisionId_playerAId_playerBId_format: { divisionId, playerAId: canonA, playerBId: canonB, format: "LEAGUE_BO2" } },
-    create: {
-      divisionId,
-      playerAId: canonA,
-      playerBId: canonB,
-      format: "LEAGUE_BO2",
-      gamesWonA,
-      gamesWonB,
-      winnerId,
-      status: "CONFIRMED",
-      reportedAt: new Date(),
-      confirmedAt: new Date(),
-      adminOverrideBy: viewerUser.discordId,
-      adminOverrideReason: "Admin recorded from /divisions",
-    },
-    update: {
-      gamesWonA,
-      gamesWonB,
-      winnerId,
-      status: "CONFIRMED",
-      confirmedAt: new Date(),
-      adminOverrideBy: viewerUser.discordId,
-      adminOverrideReason: "Admin recorded from /divisions (overwrite)",
-    },
-  });
-  enqueueAnnounceResult(recorded.id).catch(() => {});
-  recomputeDivisionStandings(divisionId).catch(() => {});
-  recordAudit({
-    actor: actorFromAdminUser({ discordId: viewerUser.discordId, name: viewerUser.name ?? null }),
-    action: "pairing.record-from-division-page",
-    targetType: "Pairing",
-    targetId: recorded.id,
-    summary: `Admin recorded ${result} from /divisions/${divisionId.slice(-6)}`,
-    metadata: { divisionId, playerAId: canonA, playerBId: canonB, result },
-  });
-  revalidatePath(`/divisions/${divisionId}`);
-  revalidatePath("/standings");
   redirect(`/divisions/${divisionId}?reportOk=1`);
 }
 
@@ -368,13 +301,7 @@ export async function bulkRecordPairings(formData: FormData) {
 
 type Result = "2-0" | "1-1" | "0-2";
 
-function gamesFromResult(r: Result): { a: number; b: number } {
-  if (r === "2-0") return { a: 2, b: 0 };
-  if (r === "0-2") return { a: 0, b: 2 };
-  return { a: 1, b: 1 };
-}
-
-// Admin "record a result" action — distinct from recordFromDivisionAction
+// Admin "record a result" action
 // (which is for the public per-row report form). This is for the admin's
 // "Matches — unplayed" picker that lets them set any unplayed pair to any
 // result without being one of the players.
@@ -387,15 +314,6 @@ export async function recordSet(formData: FormData) {
   if (!divisionId || !playerAId || !playerBId || !["2-0", "1-1", "0-2"].includes(result)) return;
   await recordResult({ divisionId, playerAId, playerBId, result, actor: actorFromAdminUser(user) });
   revalidatePath(`/divisions/${divisionId}`);
-}
-
-export async function overridePairing(formData: FormData) {
-  const { user } = await requireAdmin();
-  const pairingId = String(formData.get("pairingId") ?? "");
-  const result = String(formData.get("result") ?? "") as Result;
-  if (!pairingId || !["2-0", "1-1", "0-2"].includes(result)) return;
-  const r = await overrideResult({ matchId: pairingId, result, actor: actorFromAdminUser(user) });
-  if (r.ok) revalidatePath(`/divisions/${r.divisionId}`);
 }
 
 // Void a single game (record 0-0): finished, no points, not a W/L/D.
@@ -473,14 +391,6 @@ export async function deleteShootout(formData: FormData) {
   });
   if (m) await undoResult({ matchId: m.id, actor: actorFromAdminUser(user) });
   revalidatePath(`/divisions/${divisionId}`);
-}
-
-export async function deletePairing(formData: FormData) {
-  const { user } = await requireAdmin();
-  const pairingId = String(formData.get("pairingId") ?? "");
-  if (!pairingId) return;
-  const r = await undoResult({ matchId: pairingId, actor: actorFromAdminUser(user) });
-  if (r.ok) revalidatePath(`/divisions/${r.divisionId}`);
 }
 
 // Record (or FIX) a forfeit / DQ between two members of this division. Upserts
