@@ -23,21 +23,21 @@ export async function generateSubGroups(formData: FormData) {
 
   const season = await prisma.season.findUnique({
     where: { id: seasonId },
-    select: { targetGroupSize: true },
+    select: { subGroupSize: true },
   });
   if (!season) redirect(`/seasons/${seasonId}?err=season-not-found`);
 
-  const plans = await planSeasonSubGroups(seasonId, season!.targetGroupSize, { apply: true });
+  const plans = await planSeasonSubGroups(seasonId, season!.subGroupSize, { apply: true });
 
   recordAudit({
     actor: actorFromAdminUser(user),
     action: "season.generate-subgroups",
     targetType: "Season",
     targetId: seasonId,
-    summary: `Generated sub-groups for ${plans.length} division(s) (target size ${season!.targetGroupSize})`,
+    summary: `Generated sub-groups for ${plans.length} division(s) (target size ${season!.subGroupSize})`,
     metadata: {
       seasonId,
-      groupSize: season!.targetGroupSize,
+      groupSize: season!.subGroupSize,
       divisions: plans.map((p) => ({ name: p.divisionName, members: p.memberCount, groups: p.groupCount })),
     },
   });

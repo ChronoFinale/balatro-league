@@ -28,6 +28,7 @@ interface RequestBody {
   subtitle?: unknown;
   config?: unknown;
   targetGroupSize?: unknown;
+  subGroupSize?: unknown;
   minGroupSize?: unknown;
   matchConfigPresetId?: unknown;
   activate?: unknown;
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest) {
 
   const subtitleRaw = typeof body.subtitle === "string" ? body.subtitle.trim() : "";
   const targetGroupSize = typeof body.targetGroupSize === "number" ? body.targetGroupSize : undefined;
+  const subGroupSize = typeof body.subGroupSize === "number" ? body.subGroupSize : undefined;
   const minGroupSize = typeof body.minGroupSize === "number" ? body.minGroupSize : undefined;
   const matchConfigPresetId =
     typeof body.matchConfigPresetId === "string" && body.matchConfigPresetId.length > 0
@@ -79,6 +81,7 @@ export async function POST(req: NextRequest) {
       subtitle: subtitleRaw.length > 0 ? subtitleRaw : null,
       config,
       targetGroupSize,
+      subGroupSize,
       minGroupSize,
       matchConfigPresetId,
       actor: ctx.actor,

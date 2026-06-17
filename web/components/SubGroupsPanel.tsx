@@ -13,10 +13,10 @@ import { generateSubGroups } from "@/app/seasons/[id]/actions";
 export async function SubGroupsPanel({ seasonId }: { seasonId: string }) {
   const season = await prisma.season.findUnique({
     where: { id: seasonId },
-    select: { targetGroupSize: true },
+    select: { subGroupSize: true },
   });
   if (!season) return null;
-  const groupSize = season.targetGroupSize;
+  const groupSize = season.subGroupSize;
 
   const divisions = await prisma.division.findMany({
     where: { seasonId },

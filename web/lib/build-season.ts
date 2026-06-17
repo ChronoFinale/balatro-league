@@ -113,6 +113,9 @@ export interface BuildSeasonInput {
   config?: string;
   // Create-mode knobs (ignored in populate mode).
   targetGroupSize?: number;
+  // Sub-group size for the sub-grouping step (distinct from targetGroupSize,
+  // the division size). Default 5.
+  subGroupSize?: number;
   minGroupSize?: number;
   matchConfigPresetId?: string | null;
   // Stamps the audit entry so we can tell UI vs script-triggered builds.
@@ -233,6 +236,7 @@ export async function buildSeasonFromRound(input: BuildSeasonInput): Promise<Bui
     if (tiers.length === 0) return null;
 
     const targetGroupSize = Math.max(2, input.targetGroupSize ?? 5);
+    const subGroupSize = Math.max(2, input.subGroupSize ?? 5);
     const minGroupSize = Math.max(2, input.minGroupSize ?? 3);
     const matchConfigPresetId = input.matchConfigPresetId ?? null;
 
@@ -249,6 +253,7 @@ export async function buildSeasonFromRound(input: BuildSeasonInput): Promise<Bui
         subtitle,
         isActive: false,
         targetGroupSize,
+        subGroupSize,
         minGroupSize,
         matchConfigPresetId,
       },

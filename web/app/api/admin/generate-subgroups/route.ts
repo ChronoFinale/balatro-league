@@ -47,14 +47,14 @@ export async function POST(req: NextRequest) {
 
   const season = await prisma.season.findUnique({
     where: { id: seasonId },
-    select: { targetGroupSize: true },
+    select: { subGroupSize: true },
   });
   if (!season) {
     return NextResponse.json({ error: "season not found" }, { status: 404 });
   }
 
   try {
-    const plans = await planSeasonSubGroups(seasonId, season.targetGroupSize, { apply: true });
+    const plans = await planSeasonSubGroups(seasonId, season.subGroupSize, { apply: true });
 
     let activated = false;
     if (body.activate === true) {
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       activated,
-      groupSize: season.targetGroupSize,
+      groupSize: season.subGroupSize,
       divisions: plans.map((p) => ({
         name: p.divisionName,
         members: p.memberCount,

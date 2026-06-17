@@ -961,7 +961,7 @@ async function subGroups(interaction: ChatInputCommandInteraction) {
     await interaction.editReply("No active season.");
     return;
   }
-  const plans = await applySeasonSubGroups(season.id, season.targetGroupSize, { apply });
+  const plans = await applySeasonSubGroups(season.id, season.subGroupSize, { apply });
   if (plans.length === 0) {
     await interaction.editReply("No divisions in the active season.");
     return;
@@ -973,8 +973,8 @@ async function subGroups(interaction: ChatInputCommandInteraction) {
     return `**${p.divisionName}** — ${p.memberCount} players → ${p.groupCount} group(s)\n  ${bal}`;
   });
   const header = apply
-    ? `✅ Applied sub-groups (target size ${season.targetGroupSize}):`
-    : `👁 Preview (target size ${season.targetGroupSize}) — re-run with \`apply:true\` to write:`;
+    ? `✅ Applied sub-groups (target size ${season.subGroupSize}):`
+    : `👁 Preview (target size ${season.subGroupSize}) — re-run with \`apply:true\` to write:`;
   await interaction.editReply(`${header}\n${lines.join("\n")}`.slice(0, 1900));
 }
 

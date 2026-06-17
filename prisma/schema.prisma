@@ -169,8 +169,16 @@ model Season {
   // for old seasons you want kept-but-out-of-the-way.
   archivedAt       DateTime?
   isActive         Boolean   @default(true)
-  // Target players per division. Driving fewer games per player → use 4 instead of 5.
+  // Target players per DIVISION (the build auto-expands a tier into more
+  // divisions to keep each ≤ this). For the classic small-division/full-round-
+  // robin model this is also the group size; for the sub-group model set it big
+  // (e.g. 15) and let subGroupSize do the splitting.
   targetGroupSize  Int       @default(5)
+  // Sub-group size used when an admin generates sub-groups: each division is
+  // split into balanced groups of this size and you round-robin within yours
+  // (5 → 4 matches). Distinct from targetGroupSize (the DIVISION size).
+  // Generating is opt-in per division; standings + promotion stay division-wide.
+  subGroupSize     Int       @default(5)
   // Don't auto-create a division with fewer than this many players (smaller leftover groups
   // are flagged as warnings instead of becoming tiny divisions).
   minGroupSize     Int       @default(3)
