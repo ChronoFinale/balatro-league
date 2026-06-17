@@ -17,6 +17,7 @@ import {
 import { MatchSessionState } from "@prisma/client";
 import { enqueueAnnounceResult, runDisplayNameRefresh } from "../queue.js";
 import { actorFromInteractionUser, recordAudit } from "../audit.js";
+import { purgeBotAccounts } from "../bot-purge.js";
 import { activeSeasonMemberAutocomplete } from "./autocomplete.js";
 import { prisma } from "../db.js";
 import { requireAdmin, requireHelper } from "../permissions.js";
@@ -163,6 +164,11 @@ export const admin: SlashCommand = {
     )
     .addSubcommand((sub) =>
       sub
+        .setName("scan-bots")
+        .setDescription("Check every signup/player against Discord's bot flag and remove any bot accounts from the league."),
+    )
+    .addSubcommand((sub) =>
+      sub
         .setName("cancel-match")
         .setDescription("Force-cancel a wedged match session (any state). Use when players are stuck.")
         .addStringOption((opt) =>
@@ -224,6 +230,7 @@ export const admin: SlashCommand = {
     if (sub === "strikes") return listStrikes(interaction);
     if (sub === "reload-emojis") return reloadEmojis(interaction);
     if (sub === "sync-names") return syncNames(interaction);
+    if (sub === "scan-bots") return scanBots(interaction);
     if (sub === "cancel-match") return cancelMatch(interaction);
   },
 };
@@ -903,6 +910,33 @@ async function voidPlayer(interaction: ChatInputCommandInteraction) {
     `✅ Voided **${player.displayName}** in **${division.name}** — **${voided.count}** match(es) cancelled, removed from standings.\n` +
       `No 2-0s awarded to opponents, no losses recorded against them.\n` +
       `Reason (admin-only): _${reason}_`,
+  );
+}
+
+// Scan every signup + player against Discord's authoritative bot flag and
+// remove any bot accounts. Bots aren't players (the signup button now rejects
+// them); this cleans up any that predate that guard and otherwise just confirms
+// "no bots". `user.bot` has no false positives, so removal is unconditional +
+// full (signups + player + their matches) and each removal is audited.
+async function scanBots(interaction: ChatInputCommandInteraction) {
+  // REST user-fetches are sequential, so this can run past the 3s window.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const result = await purgeBotAccounts(interaction.client, actorFromInteractionUser(interaction.user));
+  const unresolvedNote =
+    result.unresolved > 0 ? `\n\n_${result.unresolved} id(s) couldn't be resolved (deleted account?) and were left as-is._` : "";
+
+  if (result.removed.length === 0) {
+    await interaction.editReply(`✅ Scanned **${result.scanned}** account(s) — no bots found.${unresolvedNote}`);
+    return;
+  }
+
+  const lines = result.removed.map(
+    (r) =>
+      `• **${r.username}** (\`${r.discordId}\`) — ${r.removedSignups} signup(s)` +
+      (r.deletedPlayer ? `, player + ${r.deletedMatches} match(es) deleted` : ""),
+  );
+  await interaction.editReply(
+    `✅ Scanned **${result.scanned}** account(s), removed **${result.removed.length}** bot(s):\n${lines.join("\n")}${unresolvedNote}`,
   );
 }
 
