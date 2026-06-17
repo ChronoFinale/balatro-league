@@ -243,7 +243,16 @@ export async function initQueue(): Promise<void> {
     { batchSize: 1, pollingIntervalSeconds: 3 },
     async (jobs: Job<MmrSnapshotJob>[]) => {
       for (const job of jobs) {
-        await snapshotPlayerMmr(job.data);
+        // Per-job logging so a backlog reads as "slow but draining" rather than
+        // "stuck" in the logs — each job is now ≤2 balatromp fetches.
+        const t0 = Date.now();
+        try {
+          await snapshotPlayerMmr(job.data);
+          console.log(`[snapshot.mmr] ${job.data.discordId} ✓ (${Date.now() - t0}ms)`);
+        } catch (err) {
+          console.warn(`[snapshot.mmr] ${job.data.discordId} ✗ after ${Date.now() - t0}ms:`, err);
+          throw err; // surface to pg-boss so its retryLimit applies
+        }
       }
     },
   );
@@ -578,51 +587,49 @@ async function snapshotPlayerMmr({ discordId, seasonId }: MmrSnapshotJob): Promi
   // Resolve the BMP current-season tag from LeagueConfig. Auto-detected
   // on bot startup + daily refresh; admin can also override manually.
   const currentBmpSeason = await getConfig(LeagueConfigKey.BmpCurrentSeason);
-  // Always capture the current state.
-  await fetchAndStore(discordId, player?.id ?? null, seasonId, currentBmpSeason);
+  // Capture the current state — unless we already grabbed it for this player
+  // recently. A signup-MMR re-click (or overlapping enqueues) shouldn't re-hit
+  // the rate-limited balatromp API; the daily refresh runs 24h apart, well
+  // outside this window, so it still updates.
+  const FRESHNESS_MS = 6 * 60 * 60 * 1000; // 6h
+  const recentlyCaptured = currentBmpSeason
+    ? await prisma.playerMmrSnapshot.findFirst({
+        where: {
+          discordId,
+          bmpSeason: currentBmpSeason,
+          rankedMmr: { not: null },
+          capturedAt: { gte: new Date(Date.now() - FRESHNESS_MS) },
+        },
+        select: { id: true },
+      })
+    : null;
+  if (recentlyCaptured) {
+    console.log(`[snapshot.mmr] ${discordId} — fresh current (${currentBmpSeason}) on file, skipping`);
+  } else {
+    await fetchAndStore(discordId, player?.id ?? null, seasonId, currentBmpSeason);
+  }
 
   if (!currentBmpSeason) return;
-  const currentN = parseSeasonNumber(currentBmpSeason);
-  if (!currentN || currentN <= 1) return;
+  const prev = previousBmpSeason(currentBmpSeason);
+  if (!prev) return;
 
-  // Backfill any missing historical BMP seasons (season1 through current-1)
-  // we don't already have a successful row for. Self-terminates per player:
-  // after the first refresh that backfills, future refreshes find every
-  // past season already captured and skip them. Past BMP seasons are
-  // frozen so one successful capture per (player, season) is forever.
-  const existing = await prisma.playerMmrSnapshot.findMany({
-    where: {
-      discordId,
-      bmpSeason: { not: null },
-      rankedMmr: { not: null },
-    },
-    select: { bmpSeason: true },
-    distinct: ["bmpSeason"],
-  });
-  const haveSeasons = new Set(existing.map((e) => e.bmpSeason).filter(Boolean));
-
-  for (let n = 1; n < currentN; n++) {
-    const tag = `season${n}`;
-    if (haveSeasons.has(tag)) continue;
-    await fetchAndStore(discordId, player?.id ?? null, seasonId, tag);
+  // Also capture the PREVIOUS BMP season — enough for the "hasn't played the
+  // current season, fall back to their last one" case (the signup MMR view +
+  // the profile's last-2-seasons trend). We deliberately do NOT backfill ALL of
+  // history (season1…current-1) anymore: that turned a single signup-MMR
+  // refresh into ~N fetches PER player, which buried the rate-limited
+  // snapshot.mmr queue and tripped the stall alert. Skip when we already have a
+  // good row for it (past seasons are frozen — one capture is forever), unless
+  // the force-recapture flag is set (to overwrite briefly-bad API data).
+  const forceRecapture = (await getConfig(LeagueConfigKey.BmpCapturePreviousSeason)) === "true";
+  if (!forceRecapture) {
+    const have = await prisma.playerMmrSnapshot.findFirst({
+      where: { discordId, bmpSeason: prev, rankedMmr: { not: null } },
+      select: { id: true },
+    });
+    if (have) return;
   }
-
-  // Opt-in force re-capture of previous season (and only previous — for
-  // wider re-captures, admin can null out the snapshots manually). Kept
-  // around for cases where the API briefly returned bad data we want to
-  // overwrite. Default off — backfill above handles new players.
-  if ((await getConfig(LeagueConfigKey.BmpCapturePreviousSeason)) === "true") {
-    const prev = previousBmpSeason(currentBmpSeason);
-    if (prev) await fetchAndStore(discordId, player?.id ?? null, seasonId, prev);
-  }
-}
-
-// "season6" → 6. Returns null if input isn't a recognized season pattern.
-function parseSeasonNumber(s: string): number | null {
-  const m = /^season(\d+)$/.exec(s);
-  if (!m) return null;
-  const n = parseInt(m[1]!, 10);
-  return Number.isFinite(n) ? n : null;
+  await fetchAndStore(discordId, player?.id ?? null, seasonId, prev);
 }
 
 // Single fetch + insert. Splitting out so snapshotPlayerMmr can call it
@@ -634,6 +641,12 @@ async function fetchAndStore(
   bmpSeason: string | null,
 ): Promise<void> {
   const { stats, rawJson, error } = await fetchPlayerStats(discordId, bmpSeason);
+  const label = bmpSeason ?? "current";
+  if (error) {
+    console.warn(`[snapshot.mmr] ${discordId} (${label}) fetch failed: ${error}`);
+  } else {
+    console.log(`[snapshot.mmr] ${discordId} (${label}) → mmr=${stats?.rankedMmr ?? "—"} tier=${stats?.rankedTier ?? "—"}`);
+  }
   await prisma.playerMmrSnapshot.create({
     data: {
       discordId,
