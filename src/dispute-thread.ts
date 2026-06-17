@@ -159,6 +159,17 @@ export async function spawnDisputeThread(
         `\n\nTalk it out below. Either player can **Close** to keep the reported result, ` +
         `or a helper${hasProposal ? " can apply the proposed correction" : " can step in"}.`,
       components: [disputeThreadButtons(pairing.id, hasProposal)],
+      // Only ping what we intend: the staff roles + the people in this match.
+      // Any @everyone / @here / role mention injected via a (user-settable)
+      // displayName or the free-text dispute reason then renders as inert text.
+      allowedMentions: {
+        roles: staffBindings.map((b) => b.discordRoleId),
+        users: [
+          reporter.discordId,
+          opponent.discordId,
+          ...(pairing.disputer ? [pairing.disputer.discordId] : []),
+        ],
+      },
     });
 
     await prisma.match.update({

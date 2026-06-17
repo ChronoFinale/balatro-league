@@ -100,13 +100,19 @@ export interface ComponentActionRow {
   components: ComponentButton[];
 }
 
+// Mention allowlist for a send. Default (none passed) → ping nothing, so a
+// stray @everyone / role mention injected via a user-settable display name or
+// free-text field renders as inert text. Pass an explicit allowlist to ping.
+type AllowedMentions = { parse?: ("users" | "roles" | "everyone")[]; roles?: string[]; users?: string[] };
+
 export async function postChannelMessage(
   channelId: string,
-  payload: { content?: string; embeds?: MessageEmbed[]; components?: ComponentActionRow[] },
+  payload: { content?: string; embeds?: MessageEmbed[]; components?: ComponentActionRow[]; allowedMentions?: AllowedMentions },
 ): Promise<string | null> {
+  const { allowedMentions, ...rest_ } = payload;
   try {
     const msg = (await rest().post(Routes.channelMessages(channelId), {
-      body: payload as RESTPostAPIChannelMessageJSONBody,
+      body: { ...rest_, allowed_mentions: allowedMentions ?? { parse: [] } } as RESTPostAPIChannelMessageJSONBody,
     })) as APIMessage;
     return msg.id ?? null;
   } catch (err) {
@@ -118,10 +124,13 @@ export async function postChannelMessage(
 export async function editChannelMessage(
   channelId: string,
   messageId: string,
-  payload: { content?: string; embeds?: MessageEmbed[]; components?: ComponentActionRow[] },
+  payload: { content?: string; embeds?: MessageEmbed[]; components?: ComponentActionRow[]; allowedMentions?: AllowedMentions },
 ): Promise<boolean> {
+  const { allowedMentions, ...rest_ } = payload;
   try {
-    await rest().patch(Routes.channelMessage(channelId, messageId), { body: payload });
+    await rest().patch(Routes.channelMessage(channelId, messageId), {
+      body: { ...rest_, allowed_mentions: allowedMentions ?? { parse: [] } },
+    });
     return true;
   } catch (err) {
     console.warn(`Discord editChannelMessage failed:`, err);

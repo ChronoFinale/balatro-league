@@ -12,10 +12,22 @@ async function currentDiscordId(): Promise<string | null> {
   return (session?.user as { discordId?: string } | undefined)?.discordId ?? null;
 }
 
+// Defense-in-depth for the custom display name (the real ping protection is the
+// allowedMentions allowlist at the send layer, which also covers Discord-synced
+// names this can't touch). Strip raw mention tokens + neutralize @everyone/@here
+// so a name can't read as a mention anywhere, and cap the length.
+function sanitizeDisplayName(raw: string): string {
+  return raw
+    .replace(/<(@[!&]?|#)\d+>/g, "") // raw <@id>/<@&id>/<#id> mentions — no legit use in a name
+    .replace(/@(everyone|here)/gi, "$1") // drop the @ so it's inert text
+    .slice(0, 40)
+    .trim();
+}
+
 export async function setCustomNameAction(formData: FormData) {
   const discordId = await currentDiscordId();
   if (!discordId) return;
-  const name = String(formData.get("displayName") ?? "").trim();
+  const name = sanitizeDisplayName(String(formData.get("displayName") ?? ""));
   if (!name) return;
   await prisma.player.update({
     where: { discordId },

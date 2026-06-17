@@ -231,18 +231,17 @@ export async function createGuildTextChannel(
 export async function postChannelMessage(
   channelId: string,
   content: string,
-  opts: { silent?: boolean } = {},
 ): Promise<string | null> {
   try {
     const channel = await getDiscordClient().channels.fetch(channelId);
     if (!channel || !channel.isTextBased() || !("send" in channel)) return null;
-    // silent=true keeps any <@id>/<@&id> in the message rendering as
-    // clickable mentions but DOESN'T fire a notification or in-app ping.
-    // Used by setup messages (bootstrap welcomes, etc.) where the
-    // reference is useful but pinging everyone in the channel is noise.
+    // Generic poster: never pings. A content field with a stray @everyone / role
+    // mention (e.g. injected via a user-settable display name) renders as inert
+    // text. The one message that intentionally pings — the dispute-thread opener
+    // in dispute-thread.ts — builds its own explicit allowlist at the call site.
     const msg = await channel.send({
       content,
-      ...(opts.silent ? { allowedMentions: { parse: [] } } : {}),
+      allowedMentions: { parse: [] },
     });
     return msg.id;
   } catch (err) {
