@@ -60,6 +60,17 @@ export const signupHandlers: ButtonHandler = {
     }
 
     if (action === "join") {
+      // Bot accounts aren't players. In practice a bot can't click a component
+      // (Discord doesn't deliver interactions to bots), so this is belt-and-
+      // suspenders — but it keeps a non-human out of the roster if that ever
+      // changes, and mirrors the opponent.bot guard in the match commands.
+      if (interaction.user.bot) {
+        await interaction.reply({
+          content: "Bot accounts can't join the league.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
       const existing = await prisma.signup.findUnique({
         where: { roundId_discordId: { roundId, discordId: interaction.user.id } },
       });
