@@ -181,7 +181,16 @@ export const startMatch: SlashCommand = {
     // (no relocation, no league-channel message at all).
     let threadId: string | null = null;
     try {
-      const parent = interaction.channel as TextChannel;
+      // If /start-match is run INSIDE a thread (e.g. a sub-group "Group N"
+      // thread), create the match thread on that thread's PARENT channel —
+      // Discord can't nest a thread in a thread.
+      const ch = interaction.channel;
+      // discord.js types interaction.channel as a non-thread union here, so cast
+      // to read .parent when it IS a thread (sub-group thread → put the match
+      // thread on the parent channel; Discord can't nest a thread in a thread).
+      const threadParent = ch && ch.isThread() ? (ch as unknown as { parent: TextChannel | null }).parent : null;
+      const parent = (threadParent ?? ch) as TextChannel | null;
+      if (!parent) throw new Error("no parent channel for the match thread");
       const suffix = session.id.slice(-6);
       const thread = await parent.threads.create({
         name: `Match: ${me.displayName} vs ${opp.displayName} (${suffix})`,
