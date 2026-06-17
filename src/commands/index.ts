@@ -16,6 +16,7 @@ import { signupHandlers } from "./signup-buttons.js";
 import { standings } from "./standings.js";
 import { startMatch } from "./start-match.js";
 import { support } from "./support.js";
+import { timezone } from "./timezone.js";
 import { supportButtons } from "./support-buttons.js";
 import type { ButtonHandler, ModalHandler, SelectMenuHandler, SlashCommand } from "./types.js";
 
@@ -24,7 +25,7 @@ import type { ButtonHandler, ModalHandler, SelectMenuHandler, SlashCommand } fro
 // also captures lives, decks, etc.) or the website. The report.ts / report-shootout.ts
 // code stays (the report-flow + buttons back /start-match finalize, web reports,
 // and admin tooling), it's just hidden from the player command list.
-export const slashCommands: SlashCommand[] = [help, adminHelp, helper, support, standings, schedule, profile, league, startMatch, challenge, admin, random, pool];
+export const slashCommands: SlashCommand[] = [help, adminHelp, helper, support, standings, schedule, profile, league, startMatch, challenge, admin, random, pool, timezone];
 
 export const buttonHandlers: ButtonHandler[] = [reportButtons, signupHandlers, matchButtons, disputeThreadButtonHandler, supportButtons];
 

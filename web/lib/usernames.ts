@@ -1,6 +1,20 @@
 import { cache } from "react";
 import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
 import { getShowUsernames } from "@/lib/preferences";
+
+// The SUBJECT-side half of the username gate: discordIds whose owner opted OUT
+// of showing their @username (Player.showUsername = false). AND'd with the
+// viewer-side canSeeUsernames below, so BOTH the person and the viewer have to
+// allow it. cache() memoizes per request, so rendering 50 names is one query;
+// the set is usually tiny (default is "shown").
+export const getHiddenUsernameIds = cache(async (): Promise<Set<string>> => {
+  const rows = await prisma.player.findMany({
+    where: { showUsername: false },
+    select: { discordId: true },
+  });
+  return new Set(rows.map((r) => r.discordId));
+});
 
 // Whether the CURRENT viewer may see other players' Discord @usernames. Gate:
 //   1. they're a verified member of the server (checked at login → session), AND

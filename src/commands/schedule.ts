@@ -8,6 +8,7 @@ import { activePublicSeason } from "../active-season.js";
 import { prisma } from "../db.js";
 import { getOrCreatePlayer, guildDisplayName } from "../players.js";
 import { formatSeasonLabel } from "../format-season.js";
+import { formatZone } from "../timezones.js";
 import type { SlashCommand } from "./types.js";
 
 export const schedule: SlashCommand = {
@@ -50,8 +51,9 @@ export const schedule: SlashCommand = {
       .filter((m) => m.playerId !== me.id && m.status === "ACTIVE")
       .map((m) => m.player);
 
-    // Categorize each opponent
-    interface Item { name: string; status: string }
+    // Categorize each opponent. `tz` is only set on opponents you still have to
+    // play (the scheduling-relevant list) and only when they've shared one.
+    interface Item { name: string; status: string; tz?: string | null }
     const remaining: Item[] = [];
     const youReported: Item[] = [];
     const theyReported: Item[] = [];
@@ -65,7 +67,7 @@ export const schedule: SlashCommand = {
           (pr.playerAId === opp.id && pr.playerBId === me.id),
       );
       if (!p) {
-        remaining.push({ name: opp.displayName, status: "" });
+        remaining.push({ name: opp.displayName, status: "", tz: opp.timezone });
       } else if (p.status === "CONFIRMED") {
         const myGames = p.playerAId === me.id ? p.gamesWonA : p.gamesWonB;
         const oppGames = p.playerAId === me.id ? p.gamesWonB : p.gamesWonA;
@@ -88,7 +90,10 @@ export const schedule: SlashCommand = {
     function fmt(items: Item[]): string {
       if (items.length === 0) return "_(none)_";
       return items
-        .map((i) => (i.status ? `• **${i.name}** — ${i.status}` : `• **${i.name}**`))
+        .map((i) => {
+          const base = i.status ? `• **${i.name}** — ${i.status}` : `• **${i.name}**`;
+          return i.tz ? `${base}  ·  🕐 ${formatZone(i.tz)}` : base;
+        })
         .join("\n");
     }
 

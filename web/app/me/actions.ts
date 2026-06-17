@@ -51,6 +51,37 @@ export async function resetToDiscordNameAction() {
   revalidatePath("/me");
 }
 
+// Opt-in timezone sharing. An empty value clears it (opt out). We validate the
+// IANA zone server-side — constructing a DateTimeFormat with an unknown zone
+// throws — so only a real zone is ever stored, and we keep only the zone tag,
+// never any location data.
+export async function setTimezoneAction(formData: FormData) {
+  const discordId = await currentDiscordId();
+  if (!discordId) return;
+  const raw = String(formData.get("timezone") ?? "").trim();
+  let timezone: string | null = null;
+  if (raw) {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: raw });
+      timezone = raw;
+    } catch {
+      return; // unknown zone — ignore rather than store junk
+    }
+  }
+  await prisma.player.update({ where: { discordId }, data: { timezone } });
+  revalidatePath("/me");
+}
+
+// Opt-out toggle for the @username display. Default is shown (to verified server
+// members); `show=0` hides it everywhere, `show=1` re-shows it.
+export async function setShowUsernameAction(formData: FormData) {
+  const discordId = await currentDiscordId();
+  if (!discordId) return;
+  const show = String(formData.get("show") ?? "") === "1";
+  await prisma.player.update({ where: { discordId }, data: { showUsername: show } });
+  revalidatePath("/me");
+}
+
 // Toggle auto-sign-up: when ON, the player is automatically entered into the
 // next signup round the moment it opens (they can still withdraw). Lives on
 // the profile owner settings.

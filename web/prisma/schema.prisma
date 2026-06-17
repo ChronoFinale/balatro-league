@@ -38,6 +38,16 @@ model Player {
   // Synced from Discord alongside displayName; shown publicly so people can
   // find each other on Discord. Null until first synced.
   username             String?
+  // Subject-side opt-out for the @username display above. Default true keeps the
+  // current behavior (visible to verified server members via the DiscordId
+  // component); set false to hide it everywhere. AND'd with the viewer-side gate
+  // (canSeeUsernames) so BOTH the subject and viewer have to allow it.
+  showUsername         Boolean  @default(true)
+  // IANA timezone tag (e.g. "America/New_York") the player opted into sharing.
+  // Null = not shared. Captured on the website (auto-detected from the browser)
+  // or set via /timezone in Discord; shown to server members on schedule
+  // surfaces; cleared when they opt out. We store only the zone, never location.
+  timezone             String?
   // Whether the player explicitly set their own displayName. False (default)
   // means "let Discord be the source of truth — auto-sync on login." True
   // means "they typed this, leave it alone."

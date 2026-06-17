@@ -1,5 +1,5 @@
 import "server-only";
-import { canSeeUsernames } from "@/lib/usernames";
+import { canSeeUsernames, getHiddenUsernameIds } from "@/lib/usernames";
 
 // Inline Discord @username chip rendered next to a player's name — but ONLY for
 // verified server members with the toggle on (canSeeUsernames). For everyone
@@ -14,6 +14,7 @@ import { canSeeUsernames } from "@/lib/usernames";
 // client components (it's server-only) — those render the handle inline,
 // gated by their own server-provided data.
 export async function DiscordId({
+  value,
   username,
 }: {
   value?: string | null;
@@ -21,6 +22,12 @@ export async function DiscordId({
 }) {
   if (!username) return null;
   if (!(await canSeeUsernames())) return null;
+  // Subject opted out → never render their handle, even to an allowed viewer.
+  // `value` is the player's discordId (passed by every call site).
+  if (value) {
+    const hidden = await getHiddenUsernameIds();
+    if (hidden.has(value)) return null;
+  }
   return (
     <span className="discord-username" title="Discord username">
       (@{username})

@@ -17,7 +17,8 @@ import { MatchActionsPanel } from "@/components/MatchActionsPanel";
 import { DisputeForm } from "@/components/DisputeForm";
 import { CANONICAL_DECKS, CANONICAL_STAKES } from "@/lib/balatro-info";
 import { reportFromProfileAction, submitProfileDispute } from "@/app/profile/[id]/actions";
-import { resetToDiscordNameAction, setCustomNameAction } from "@/app/me/actions";
+import { resetToDiscordNameAction, setCustomNameAction, setShowUsernameAction } from "@/app/me/actions";
+import { TimezoneSetting } from "@/components/TimezoneSetting";
 import { NextSeasonCard } from "@/components/NextSeasonCard";
 import { prisma } from "@/lib/prisma";
 import type { SeasonHistoryEntry, FavoriteEntry, BanStatEntry } from "@/lib/profile";
@@ -129,6 +130,8 @@ export async function ProfileView({
   const viewerSession = await auth();
   const viewerDiscordId =
     (viewerSession?.user as { discordId?: string } | undefined)?.discordId ?? null;
+  const viewerInGuild =
+    (viewerSession?.user as { inGuild?: boolean } | undefined)?.inGuild === true;
   const showBmpMmr = await getShowBmpMmr();
   const isAdmin = await hasTier("ADMIN");
   const { viewer, bmpSeasonSnapshots, fallbackSnapshot, adminCtx, ownActiveDivision } = await loadProfileExtras({
@@ -157,6 +160,15 @@ export async function ProfileView({
         autoSignup: myPrefs?.autoSignup ?? false,
       }
     : null;
+  // Privacy fields for the profiled player — needed both for the timezone
+  // display (to server members) and, on your own profile, the Privacy settings.
+  const playerPrivacy = await prisma.player.findUnique({
+    where: { id: profile.player.id },
+    select: { timezone: true, showUsername: true },
+  });
+  // Timezone is shown only to server members (and always to yourself).
+  const shownTimezone =
+    (isOwnProfile || viewerInGuild) && playerPrivacy?.timezone ? playerPrivacy.timezone : null;
 
   // What this player bans (most-banned decks/stakes + their ban rate).
   const banStats = await loadPlayerBanStats(profile.player.id);
@@ -169,6 +181,9 @@ export async function ProfileView({
           <Link href="/standings" className="muted" style={{ fontSize: 13 }}>← Standings</Link>
         </p>
         <h2>{profile.player.displayName}<DiscordId value={profile.player.discordId} username={profile.player.username} /></h2>
+        {shownTimezone && (
+          <p className="muted" style={{ fontSize: 13, marginTop: -4 }}>🕐 {shownTimezone}</p>
+        )}
 
         <div className="grid grid-2">
           <div className="stat"><div className="label">Seasons</div><div className="value">{t.seasons}</div></div>
@@ -271,6 +286,35 @@ export async function ProfileView({
                     <Button type="submit" variant="secondary">↻ Reset to auto</Button>
                   </form>
                 )}
+              </div>
+            </div>
+
+            {/* Privacy — you control what's shared. Both default to the
+                least-surprising state: timezone off (opt in), @username on
+                (opt out), and both are visible to server members only. */}
+            <div className="card" style={{ marginTop: 16 }}>
+              <strong>Privacy</strong>
+
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Timezone</div>
+                <TimezoneSetting current={playerPrivacy?.timezone ?? null} />
+              </div>
+
+              <div style={{ marginTop: 14, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Discord @username</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontSize: 13 }}>
+                    {playerPrivacy?.showUsername ?? true
+                      ? <>Visible to server members next to your name.</>
+                      : <>Hidden — your @username isn&apos;t shown to anyone.</>}
+                  </span>
+                  <form action={setShowUsernameAction}>
+                    <input type="hidden" name="show" value={(playerPrivacy?.showUsername ?? true) ? "0" : "1"} />
+                    <Button type="submit" variant="secondary">
+                      {(playerPrivacy?.showUsername ?? true) ? "Hide my @username" : "Show my @username"}
+                    </Button>
+                  </form>
+                </div>
               </div>
             </div>
           </>
