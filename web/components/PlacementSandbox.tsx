@@ -1,13 +1,15 @@
 "use client";
 
 // Dry-run placement sandbox. Runs the CURRENT signups through the real build
-// math (planByRating) entirely in the browser, so you can twist the tier shape
-// and watch where everyone would land — without writing a single row. planByRating
-// is pure, so this projection is exactly what a real build would produce from the
-// same inputs. Each division is a full round-robin (everyone plays everyone).
+// math (planByRating) and the real schedule generator (generateSchedule)
+// entirely in the browser — twist the tier shape, optionally show each player's
+// assigned 4-opponent schedule + the strength-of-schedule spread, all without
+// writing a single row. Both functions are pure, so this is exactly what a real
+// setup would produce. The artifact to show Owen.
 
 import { useMemo, useState } from "react";
 import { planByRating, type TierConfig } from "@/lib/season-plan";
+import { generateSchedule, summariseSchedule } from "@/lib/schedule";
 
 export interface SandboxPlayer {
   discordId: string;
@@ -29,12 +31,27 @@ export function PlacementSandbox({
     initialTiers.length ? initialTiers : [{ name: "Common", divisionCount: 1 }],
   );
   const [targetGroupSize, setTargetGroupSize] = useState(initialTargetGroupSize);
+  const [showSchedules, setShowSchedules] = useState(false);
 
   const lookup = useMemo(() => new Map(players.map((p) => [p.discordId, p])), [players]);
   const ranked = useMemo(
     () => players.map((p) => ({ id: p.discordId, discordId: p.discordId, displayName: p.displayName, rating: p.rating })),
     [players],
   );
+
+  // Seed MMR on Owen's 2200 scale (top seed 2200, −10 per global seed). Feeds
+  // the schedule generator so SoS balance is on real-ish numbers.
+  const seedMmr = useMemo(() => {
+    const ordered = [...players].sort((a, b) => {
+      const ra = a.rating ?? Number.POSITIVE_INFINITY;
+      const rb = b.rating ?? Number.POSITIVE_INFINITY;
+      if (ra !== rb) return ra - rb;
+      return a.displayName.localeCompare(b.displayName);
+    });
+    const m = new Map<string, number>();
+    ordered.forEach((p, i) => m.set(p.discordId, Math.max(0, 2200 - i * 10)));
+    return m;
+  }, [players]);
 
   const projection = useMemo(() => {
     const plan = planByRating(ranked, tiers, targetGroupSize);
@@ -44,12 +61,22 @@ export function PlacementSandbox({
       const divisions = pt.divisions.map((divIds, gi) => {
         totalDivs++;
         placed += divIds.length;
-        return { name: `${pt.tier.name} ${gi + 1}`, size: divIds.length, members: divIds };
+        let schedule: {
+          opponents: Map<string, string[]>;
+          sos: Map<string, number>;
+          summary: ReturnType<typeof summariseSchedule>;
+        } | null = null;
+        if (showSchedules && divIds.length >= 2) {
+          const sp = divIds.map((id) => ({ id, mmr: seedMmr.get(id) ?? 0 }));
+          const r = generateSchedule(sp, { degree: 4, seed: 1 });
+          schedule = { opponents: r.opponents, sos: r.sos, summary: summariseSchedule(r, sp, 4) };
+        }
+        return { name: `${pt.tier.name} ${gi + 1}`, size: divIds.length, members: divIds, schedule };
       });
       return { name: pt.tier.name, position: pt.position, size: divisions.reduce((s, d) => s + d.size, 0), divisions };
     });
     return { tiersOut, totalDivs, placed };
-  }, [ranked, tiers, targetGroupSize]);
+  }, [ranked, tiers, targetGroupSize, showSchedules, seedMmr]);
 
   const updateTier = (i: number, patch: Partial<TierConfig>) =>
     setTiers(tiers.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
@@ -72,7 +99,10 @@ export function PlacementSandbox({
               onChange={(e) => setTargetGroupSize(Math.max(2, Math.min(20, Number(e.target.value) || 5)))}
               style={{ width: 56, padding: "2px 4px" }}
             />
-            <span className="muted">→ {targetGroupSize - 1} games each</span>
+          </label>
+          <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 5, marginLeft: "auto" }}>
+            <input type="checkbox" checked={showSchedules} onChange={(e) => setShowSchedules(e.target.checked)} />
+            Show schedules (4 opponents each)
           </label>
         </div>
 
@@ -120,7 +150,9 @@ export function PlacementSandbox({
           {projection.placed} players · {projection.totalDivs} divisions
         </div>
         <p className="muted" style={{ fontSize: 11, margin: "6px 0 0" }}>
-          Dry-run only — nothing here is saved. Division sizes are derived from how many divisions you give each tier.
+          Dry-run only — nothing here is saved. With schedules on, each player gets a balanced set of 4
+          opponents; &ldquo;SoS&rdquo; = sum of their opponents&apos; MMR, kept tight so everyone&apos;s
+          slate is comparable.
         </p>
       </div>
 
@@ -139,38 +171,82 @@ export function PlacementSandbox({
                 <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>
                   {div.name}{" "}
                   <span className="muted" style={{ fontWeight: 400 }}>
-                    — {div.size} players · {Math.max(0, div.size - 1)} games each
+                    — {div.size} players · {Math.max(0, Math.min(4, div.size - 1))} games each
                   </span>
+                  {div.schedule && (
+                    <span className="muted" style={{ fontWeight: 400, marginLeft: 8, color: "#2ecc71" }}>
+                      · SoS {div.schedule.summary.minSos}–{div.schedule.summary.maxSos} (spread {div.schedule.summary.spread})
+                    </span>
+                  )}
                 </div>
-                <div>
-                  {div.members.map((id, idx) => {
-                    const p = lookup.get(id);
-                    return (
-                      <div
-                        key={id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 5,
-                          padding: "3px 4px",
-                          fontSize: 13,
-                          borderTop: idx === 0 ? undefined : "1px solid rgba(255,255,255,0.06)",
-                        }}
-                      >
-                        <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {p?.displayName ?? id}
-                        </span>
-                        <span
-                          className="muted"
-                          style={{ fontSize: 11, fontVariantNumeric: "tabular-nums", color: p?.rating == null ? "#666" : undefined }}
-                          title="League seed (rating)"
+
+                {div.schedule ? (
+                  // Schedule view: each player → their assigned opponents + SoS.
+                  <div>
+                    {div.members
+                      .slice()
+                      .sort((a, b) => (seedMmr.get(b) ?? 0) - (seedMmr.get(a) ?? 0))
+                      .map((id, idx) => {
+                        const p = lookup.get(id);
+                        const opps = div.schedule!.opponents.get(id) ?? [];
+                        return (
+                          <div
+                            key={id}
+                            style={{
+                              display: "flex",
+                              alignItems: "baseline",
+                              gap: 8,
+                              padding: "4px",
+                              fontSize: 13,
+                              borderTop: idx === 0 ? undefined : "1px solid rgba(255,255,255,0.06)",
+                            }}
+                          >
+                            <span style={{ minWidth: 150, fontWeight: 500 }}>
+                              {p?.displayName ?? id}{" "}
+                              <span className="muted" style={{ fontSize: 11 }}>{seedMmr.get(id)}</span>
+                            </span>
+                            <span className="muted" style={{ fontSize: 12, flex: 1 }}>
+                              vs {opps.map((o) => lookup.get(o)?.displayName ?? o).join(", ")}
+                            </span>
+                            <span className="muted" style={{ fontSize: 11, fontVariantNumeric: "tabular-nums" }} title="Strength of schedule (sum of opponent MMR)">
+                              SoS {div.schedule!.sos.get(id)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                ) : (
+                  // Roster view (schedules off).
+                  <div>
+                    {div.members.map((id, idx) => {
+                      const p = lookup.get(id);
+                      return (
+                        <div
+                          key={id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 5,
+                            padding: "3px 4px",
+                            fontSize: 13,
+                            borderTop: idx === 0 ? undefined : "1px solid rgba(255,255,255,0.06)",
+                          }}
                         >
-                          {p?.rating == null ? "L —" : `L#${p.rating}`}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                          <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {p?.displayName ?? id}
+                          </span>
+                          <span
+                            className="muted"
+                            style={{ fontSize: 11, fontVariantNumeric: "tabular-nums", color: p?.rating == null ? "#666" : undefined }}
+                            title="League seed (rating)"
+                          >
+                            {p?.rating == null ? "L —" : `L#${p.rating}`}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             ))}
           </div>
