@@ -53,8 +53,8 @@ export default async function PlacementPreviewPage({
         <p className="muted">
           A sandbox over the <strong>current</strong> signups — change the tier shape and group size
           and watch where everyone would land. Nothing is saved; signups can still be open. Ratings
-          come from each player&apos;s current league seed (returners) / BMP MMR fill (new), same as a
-          real build. Use it to tune the structure, or to show people roughly how their season will look.
+          come from each player&apos;s current league seed (returners) / BMP MMR fill (new), same as
+          setting up the season for real. Use it to tune the structure, or to show people roughly how their season will look.
         </p>
 
         {players.length === 0 ? (

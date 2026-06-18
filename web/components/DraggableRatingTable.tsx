@@ -200,7 +200,7 @@ export function DraggableRatingTable({
     <div>
       <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
         Drag rows to reorder — position #1 is rank 1 (best player), #N is rank N (weakest).
-        Order is saved automatically as you drag; <strong>Build season</strong> below uses
+        Order is saved automatically as you drag; <strong>Set up the season</strong> below uses
         whatever order you see here. Returners show their saved rank from end-of-last-season;
         new players show BMP Ranked MMR. ⚠ next to a rank means the player has both a rank and
         an MMR — worth a quick sanity check.

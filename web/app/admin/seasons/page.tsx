@@ -171,7 +171,7 @@ export default async function AdminSeasonsPage({
             <strong style={{ color: "#76c7ff" }}>📋 Pending signup rounds ({orphanRounds.length})</strong>
             <p className="muted" style={{ marginTop: 4, fontSize: 12 }}>
               Signup rounds without a built season yet. From a seed script or
-              admin closed signups without clicking Build. Click through to
+              admin closed signups without setting it up yet. Click through to
               <code> /admin/signups/&lt;id&gt;/build</code> to assemble the season.
             </p>
             <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
@@ -212,7 +212,7 @@ export default async function AdminSeasonsPage({
                     href={`/admin/signups/${r.id}/build`}
                     style={{ fontSize: 12 }}
                   >
-                    Build →
+                    Set up →
                   </Link>
                 </li>
               ))}
@@ -457,7 +457,7 @@ function LifecycleActions({
       <div style={{ marginTop: 8 }}>
         <RosterPanel round={round} />
         <Link href={`/admin/signups/${round.id}/build`}>
-          <Button type="button"><strong>Build divisions from {round._count.signups} signups →</strong></Button>
+          <Button type="button"><strong>Set up divisions from {round._count.signups} signups →</strong></Button>
         </Link>
       </div>
     );
@@ -523,7 +523,7 @@ function LifecycleActions({
         <Button type="submit" disabled={channels.length === 0}>Open signups</Button>
       </form>
       <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-        Posts a signup embed in the channel. Players click Sign Up; you Finalize when ready, then Build divisions from the signups.
+        Posts a signup embed in the channel. Players click Sign Up; you Finalize when ready, then Set up divisions from the signups.
       </div>
     </details>
   );

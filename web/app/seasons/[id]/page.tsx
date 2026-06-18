@@ -330,7 +330,7 @@ async function AdminSeasonPanel({
           <p className="muted" style={{ fontSize: 12 }}>
             Divisions get built from the signups after you finalize sign-ups —
             do that from <Link href="/admin/seasons">Manage seasons</Link> →
-            “Build divisions from signups” (you set the tier shape there).
+            “Set up divisions from signups” (you set the tier shape there).
             {signupRound?._count.signups != null && ` ${signupRound._count.signups} signed up so far.`}
           </p>
           <Link href={`/admin/seasons/${season.id}/bulk-import`}>
@@ -686,7 +686,7 @@ function LifecycleActions({
     return (
       <div className="card">
         <Link href={`/admin/signups/${round.id}/build`}>
-          <Button type="button"><strong>Build divisions from {round._count.signups} signups →</strong></Button>
+          <Button type="button"><strong>Set up divisions from {round._count.signups} signups →</strong></Button>
         </Link>
       </div>
     );

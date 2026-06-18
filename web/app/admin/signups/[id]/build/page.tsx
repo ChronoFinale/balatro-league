@@ -65,7 +65,7 @@ export default async function BuildSeasonPage({
       <AdminNav activePath="/admin/seasons" />
       <main>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <h2 style={{ margin: 0 }}>Build season from "{round.name}"</h2>
+          <h2 style={{ margin: 0 }}>Set up the season — "{round.name}"</h2>
           <span className="pill" style={{ background: "rgba(46,204,113,0.2)", color: "#2ecc71" }}>
             {playerCount} signups
           </span>
@@ -78,16 +78,16 @@ export default async function BuildSeasonPage({
         </div>
         <p className="muted">
           Set ratings for everyone (returning + new), pick the tier shape and match preset, and
-          click <strong>Build season</strong>. Auto-seed fills divisions in rank order — top of
+          click <strong>Set up the season</strong>. Players are auto-sorted into divisions in rank order — top of
           each tier goes into the lowest-numbered division (Rare 1 = strongest Rare, Rare 6 = weakest).
         </p>
 
         <details className="card" style={{ background: "rgba(118,199,255,0.06)", borderColor: "#76c7ff" }}>
-          <summary style={{ cursor: "pointer" }}><strong style={{ color: "#76c7ff" }}>ℹ️ How this works — full season-build flow</strong></summary>
+          <summary style={{ cursor: "pointer" }}><strong style={{ color: "#76c7ff" }}>ℹ️ How this works — setting up the season</strong></summary>
           <ol style={{ marginTop: 8, paddingLeft: 24, fontSize: 13, lineHeight: 1.6 }}>
             <li><strong>Set ratings</strong> below — drag rows to reorder, or use the sort/auto-fill buttons. Top of the list = strongest player, ratings get re-numbered on Save.</li>
             <li><strong>Pick the tier shape</strong> (Legendary / Rare / Uncommon / Common…) — use ✨ Suggest from N signups to auto-compute, or load a saved template.</li>
-            <li><strong>Click Build season</strong> — auto-seeds top-rated players into the top tier and fills each tier's divisions in rank order (Rare 1 gets the top Rare ranks, Rare 6 gets the bottom). Keeps entering rank close to ending rank so ranks don't shuffle wildly between seasons.</li>
+            <li><strong>Click Set up the season</strong> — auto-sorts top-rated players into the top tier and fills each tier's divisions in rank order (Rare 1 gets the top Rare ranks, Rare 6 gets the bottom). Keeps entering rank close to ending rank so ranks don't shuffle wildly between seasons.</li>
             <li><strong>Review &amp; tweak placements</strong> on the season detail page that opens — use the per-player "Move to…" dropdowns to nudge anyone between divisions.</li>
             <li><strong>Start the season</strong> — when placements look right, click <strong>Start season →</strong> at the bottom of the season detail page. The league goes live, players see standings, /start-match works.</li>
           </ol>
@@ -108,7 +108,7 @@ export default async function BuildSeasonPage({
           <p className="muted">
             For late additions — bot looks up the member's guild display name; you can
             override before adding. The player will appear in the list below and be
-            included when you Build season.
+            included when you set up the season.
           </p>
           <form action={addSignupByDiscordId} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             <input type="hidden" name="roundId" value={round.id} />
@@ -213,8 +213,8 @@ export default async function BuildSeasonPage({
               className="card"
               style={{ borderColor: "#f1c40f", color: "#f1c40f", marginBottom: 12 }}
             >
-              ⚠ <strong>Re-building Season {existingSeason.number}.</strong> This replaces its current
-              divisions and player placements with the layout below. Don&apos;t rebuild a season that&apos;s
+              ⚠ <strong>Redoing Season {existingSeason.number}&apos;s setup.</strong> This replaces its current
+              divisions and player placements with the layout below. Don&apos;t redo setup for a season that&apos;s
               already in progress — recorded results in those divisions can be lost.
             </div>
           )}
@@ -223,7 +223,7 @@ export default async function BuildSeasonPage({
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <label>
                 {existingSeason ? (
-                  <>Subtitle — building <strong>Season {existingSeason.number}</strong> (edit to rename)</>
+                  <>Subtitle — setting up <strong>Season {existingSeason.number}</strong> (edit to rename)</>
                 ) : (
                   <>Subtitle (optional) — will create <strong>Season {nextNumber}</strong></>
                 )}
@@ -266,14 +266,14 @@ export default async function BuildSeasonPage({
 
             {existingSeason ? (
               <ConfirmButton
-                message={`Re-build Season ${existingSeason.number}? This replaces its current divisions and player placements.`}
+                message={`Redo Season ${existingSeason.number}'s setup? This replaces its current divisions and player placements.`}
                 style={{ marginTop: 16 }}
               >
-                Re-build Season {existingSeason.number} · place {playerCount} players
+                Redo Season {existingSeason.number} setup · place {playerCount} players
               </ConfirmButton>
             ) : (
               <Button type="submit" className="mt-4">
-                Build season + place {playerCount} players
+                Set up the season · place {playerCount} players
               </Button>
             )}
           </form>
