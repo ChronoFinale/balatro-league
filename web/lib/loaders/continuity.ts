@@ -91,18 +91,16 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
   // Use the stored secret MMR. For anyone not seeded yet, fall back to ladder
   // position (Legendary → Common, 2200, 2190 …) so the view stays coherent
   // until they're set on /admin/mmr. Within a division, order by MMR desc.
-  // Effective MMR = stored secret MMR, else BMP peak ×1.5, else ladder position.
-  const mmrOf = (discordId: string) => {
-    const stored = playerByDiscord.get(discordId)?.hiddenMmr;
-    if (stored != null) return stored;
-    const peak = peakByDiscord.get(discordId);
-    return peak ? Math.round(peak * 1.5) : null;
-  };
+  // Returners seed from their LEAGUE standing (ladder position), NOT BMP — a
+  // strong league player who barely plays BMP must not get a low MMR. Stored
+  // secret MMR wins if set; otherwise ladder position (Legendary high → Common
+  // low). BMP is only ever used for rookies (below), who have no league history.
+  const storedOf = (discordId: string) => playerByDiscord.get(discordId)?.hiddenMmr ?? null;
   let pos = 0;
   for (const d of divList) {
-    d.members.sort((a, b) => (mmrOf(b.discordId) ?? -Infinity) - (mmrOf(a.discordId) ?? -Infinity));
+    d.members.sort((a, b) => (storedOf(b.discordId) ?? -Infinity) - (storedOf(a.discordId) ?? -Infinity));
     for (const m of d.members) {
-      m.mmr = mmrOf(m.discordId) ?? Math.max(0, 2200 - pos * 10);
+      m.mmr = storedOf(m.discordId) ?? Math.max(0, 2200 - pos * 10);
       pos++;
     }
   }
