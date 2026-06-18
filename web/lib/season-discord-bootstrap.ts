@@ -47,7 +47,7 @@ export async function runSeasonDiscordBootstrap(
   // parent id immediately.
   const seasonLabel = formatSeasonLabel(season);
   if (!season.discordCategoryId) {
-    const cat = await ensureGuildCategory(guildId, `🃏 ${seasonLabel}`);
+    const cat = await ensureGuildCategory(guildId, `🃏 League ${seasonLabel}`);
     if (cat) {
       await prisma.season.update({
         where: { id: season.id },

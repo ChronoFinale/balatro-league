@@ -121,7 +121,14 @@ export function ReportForm({
         ) : (
           <>
             <span className="muted text-xs">vs</span>
-            <Select value={opponentId} onValueChange={(v) => setOpponentId(v ?? "")}>
+            <Select
+              items={opponents.map((o) => ({
+                value: o.playerId,
+                label: o.displayName + (o.alreadyPending ? " (already pending)" : ""),
+              }))}
+              value={opponentId}
+              onValueChange={(v) => setOpponentId(v ?? "")}
+            >
               <SelectTrigger className="min-w-[220px] flex-1">
                 <SelectValue placeholder="— pick an opponent —" />
               </SelectTrigger>
@@ -137,7 +144,11 @@ export function ReportForm({
           </>
         )}
 
-        <Select value={result} onValueChange={(v) => setResult((v as ResultStr) ?? "2-0")}>
+        <Select
+          items={(["2-0", "1-1", "0-2"] as ResultStr[]).map((r) => ({ value: r, label: resultLabel(r) }))}
+          value={result}
+          onValueChange={(v) => setResult((v as ResultStr) ?? "2-0")}
+        >
           <SelectTrigger className={resultWidth}>
             <SelectValue />
           </SelectTrigger>

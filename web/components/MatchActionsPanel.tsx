@@ -78,6 +78,10 @@ function PairForm({
       <input type="hidden" name="p1" value={p1Id} />
       <input type="hidden" name="p2" value={p2Id} />
       <Select
+        items={pairs.map((pr) => ({
+          value: `${pr.p1Id}|${pr.p2Id}`,
+          label: `${nameOf(pr.p1Id)} vs ${nameOf(pr.p2Id)}${pr.summary ? ` — ${pr.summary}` : ""}`,
+        }))}
         value={pairKey}
         onValueChange={(v) => {
           setPairKey(v ?? "");
@@ -100,7 +104,11 @@ function PairForm({
         <>
           {/* Radix Select isn't a native <select name>, so mirror the value. */}
           <input type="hidden" name="outcome" value={outcome} />
-          <Select value={outcome} onValueChange={(v) => setOutcome(v ?? "")}>
+          <Select
+            items={outcomeOptions(nameOf(p1Id!), nameOf(p2Id!), includeUndo)}
+            value={outcome}
+            onValueChange={(v) => setOutcome(v ?? "")}
+          >
             <SelectTrigger className="min-w-[200px]">
               <SelectValue placeholder="— what happened? —" />
             </SelectTrigger>
