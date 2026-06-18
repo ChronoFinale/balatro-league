@@ -66,17 +66,20 @@ export async function performSeasonActivation(
     }))?.value === "true";
   if (!divChannelsDisabled) {
     // Auto-bootstrap Discord (per-division roles + channels). Idempotent +
-    // best-effort: activation still succeeds if the enqueue fails.
+    // best-effort: activation still succeeds if the enqueue fails. The
+    // season-start announcement is NOT posted here — the LAST division bootstrap
+    // job posts it, once every player has their League Player role (so the ping
+    // reaches everyone).
     await runSeasonDiscordBootstrap(seasonId).catch((err) =>
       console.warn("[season.activate] Discord bootstrap enqueue failed:", err),
     );
+  } else {
+    // Lightweight league (no per-division channels/roles): no bootstrap jobs to
+    // wait on, so announce right now (no League Player role exists to ping).
+    await postSeasonStartAnnouncement(target.id, formatSeasonLabel(target)).catch((err) =>
+      console.warn("[season.activate] announcement post failed:", err),
+    );
   }
-
-  // Best-effort announcement. Fire even when no channel is configured — the
-  // call short-circuits cleanly without failing activation.
-  await postSeasonStartAnnouncement(target.id, formatSeasonLabel(target)).catch((err) =>
-    console.warn("[season.activate] announcement post failed:", err),
-  );
 
   // Refresh #league-info so the "Season N is live" block appears.
   await enqueueLeagueInfoRefresh().catch((err) =>

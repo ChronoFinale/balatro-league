@@ -205,6 +205,10 @@ model Season {
   // season-start announcement. Per-season so each season has its own roster
   // role (no cross-season unbind/rebind needed).
   leaguePlayerRoleId String?
+  // When the season-start announcement was posted. The LAST division bootstrap
+  // job to finish fires it (so every player has the League Player role first),
+  // claimed atomically via this column so it posts exactly once.
+  startAnnouncedAt   DateTime?
 
   // Per-season overrides for results announcements. If null, fall back to
   // the global LeagueConfig.ResultsWebhookUrl / env RESULTS_CHANNEL_ID.

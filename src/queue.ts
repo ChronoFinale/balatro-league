@@ -1107,4 +1107,61 @@ async function bootstrapDivision({ divisionId, guildId, rebuildThreads }: Bootst
     where: { id: div.id },
     data: { discordRoleId: roleId, discordChannelId: channelId },
   });
+
+  // If this was the last division to finish, fire the season-start announcement —
+  // every player now has their League Player role, so the @-ping reaches all.
+  await announceSeasonStartIfComplete(div.seasonId).catch((err) =>
+    console.warn(`[season.announce] check failed for ${div.seasonId}:`, err),
+  );
+}
+
+// Post the "Season N is live" announcement (pinging the League Player role) —
+// but only once every division with members has its channel + role, i.e. all
+// role assignments are done. Claimed atomically via Season.startAnnouncedAt so
+// the last of the 2-at-a-time division jobs posts exactly once.
+async function announceSeasonStartIfComplete(seasonId: string): Promise<void> {
+  const season = await prisma.season.findUnique({
+    where: { id: seasonId },
+    select: {
+      number: true,
+      subtitle: true,
+      leaguePlayerRoleId: true,
+      startAnnouncedAt: true,
+      divisions: {
+        select: {
+          discordChannelId: true,
+          discordRoleId: true,
+          _count: { select: { members: { where: { status: "ACTIVE" } } } },
+        },
+      },
+    },
+  });
+  if (!season || season.startAnnouncedAt) return;
+  const allDone = season.divisions.every(
+    (d) => d._count.members === 0 || (!!d.discordChannelId && !!d.discordRoleId),
+  );
+  if (!allDone) return;
+
+  // Atomic claim — only the job whose update actually flips null→now() posts.
+  const claim = await prisma.season.updateMany({
+    where: { id: seasonId, startAnnouncedAt: null },
+    data: { startAnnouncedAt: new Date() },
+  });
+  if (claim.count === 0) return;
+
+  const channelId = await getConfig(LeagueConfigKey.AnnouncementsChannelId);
+  if (!channelId) return;
+  const client = tryGetDiscordClient();
+  if (!client) return;
+  const roleId = season.leaguePlayerRoleId;
+  const ping = roleId ? `<@&${roleId}> ` : "";
+  const content = `${ping}🃏 **${formatSeasonLabel(season)}** is live! Use \`/start-match @opponent\` to play. Good luck.`;
+  try {
+    const channel = await client.channels.fetch(channelId);
+    if (channel && channel.isTextBased() && "send" in channel) {
+      await channel.send({ content, allowedMentions: roleId ? { roles: [roleId] } : { parse: [] } });
+    }
+  } catch (err) {
+    console.warn(`[season.announce] post failed for ${seasonId}:`, err);
+  }
 }
