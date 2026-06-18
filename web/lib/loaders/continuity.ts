@@ -6,16 +6,21 @@ import "server-only";
 // average MMR is the greatest value ≤ their MMR (greatest-lower-bound). Pure
 // projection; nothing is written. Promotion/relegation is NOT applied here yet
 // (the active season isn't over), so it's "where everyone sits right now + where
-// newcomers would land".
+// newcomers would land". Also surfaces each returner's current league standing.
 
+import type { Player } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { formatSeasonLabel } from "@/lib/format-season";
+import { computeStandings } from "@/lib/standings";
 
 export interface ContinuityMember {
   discordId: string;
   displayName: string;
   mmr: number;
   isRookie: boolean;
+  // Current standing in their active-season division: rank (#) + W-D-L. Null for
+  // rookies and for anyone who hasn't played a game yet.
+  standing: { rank: number; record: string } | null;
 }
 export interface ContinuityDivision {
   tierName: string;
@@ -41,7 +46,14 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
     include: {
       divisions: {
         orderBy: [{ tier: { position: "asc" } }, { groupNumber: "asc" }],
-        include: { tier: true, members: { where: { status: "ACTIVE" }, select: { playerId: true } } },
+        include: {
+          tier: true,
+          members: { where: { status: "ACTIVE" }, include: { player: { select: { id: true, displayName: true } } } },
+          matches: {
+            where: { status: "CONFIRMED", format: "LEAGUE_BO2" },
+            select: { playerAId: true, playerBId: true, gamesWonA: true, gamesWonB: true },
+          },
+        },
       },
     },
   });
@@ -50,6 +62,18 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
   // playerId -> their active-season division id.
   const divByPlayer = new Map<string, string>();
   for (const d of activeSeason.divisions) for (const m of d.members) divByPlayer.set(m.playerId, d.id);
+
+  // Current standing per player (rank + record) from confirmed matches.
+  const standingByPlayer = new Map<string, { rank: number; record: string }>();
+  for (const d of activeSeason.divisions) {
+    const divPlayers = d.members.map((m) => m.player) as unknown as Player[];
+    const rows = computeStandings(divPlayers, d.matches);
+    for (const r of rows) {
+      if (r.played > 0) {
+        standingByPlayer.set(r.player.id, { rank: r.rank ?? 0, record: `${r.wins}-${r.draws}-${r.losses}` });
+      }
+    }
+  }
 
   const discordIds = round.signups.map((s) => s.discordId);
   const players = await prisma.player.findMany({
@@ -67,6 +91,12 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
     : [];
   const peakByDiscord = new Map(snaps.map((s) => [s.discordId, s.peakMmr ?? s.rankedMmr ?? 0]));
 
+  const playerIdOf = (discordId: string) => playerByDiscord.get(discordId)?.id ?? null;
+  const standingOf = (discordId: string) => {
+    const pid = playerIdOf(discordId);
+    return pid ? standingByPlayer.get(pid) ?? null : null;
+  };
+
   const isReturner = (discordId: string) => {
     const p = playerByDiscord.get(discordId);
     return !!p && divByPlayer.has(p.id);
@@ -81,24 +111,32 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
   }));
   const divIndexById = new Map(activeSeason.divisions.map((d, i) => [d.id, i]));
 
-  // Place returners into their current division.
+  // Place returners into their current division, with their standing.
   for (const s of returners) {
     const p = playerByDiscord.get(s.discordId)!;
     const di = divIndexById.get(divByPlayer.get(p.id)!)!;
-    divList[di]!.members.push({ discordId: s.discordId, displayName: s.displayName, mmr: 0, isRookie: false });
+    divList[di]!.members.push({
+      discordId: s.discordId,
+      displayName: s.displayName,
+      mmr: 0,
+      isRookie: false,
+      standing: standingOf(s.discordId),
+    });
   }
 
-  // Use the stored secret MMR. For anyone not seeded yet, fall back to ladder
-  // position (Legendary → Common, 2200, 2190 …) so the view stays coherent
-  // until they're set on /admin/mmr. Within a division, order by MMR desc.
-  // Returners seed from their LEAGUE standing (ladder position), NOT BMP — a
-  // strong league player who barely plays BMP must not get a low MMR. Stored
-  // secret MMR wins if set; otherwise ladder position (Legendary high → Common
-  // low). BMP is only ever used for rookies (below), who have no league history.
+  // Order each division by current standing (top finisher first), then stored
+  // MMR, then name — and assign MMR by ladder position (Legendary high → Common
+  // low). So the division leader gets the top MMR, never BMP. Stored secret MMR
+  // wins if set.
   const storedOf = (discordId: string) => playerByDiscord.get(discordId)?.hiddenMmr ?? null;
   let pos = 0;
   for (const d of divList) {
-    d.members.sort((a, b) => (storedOf(b.discordId) ?? -Infinity) - (storedOf(a.discordId) ?? -Infinity));
+    d.members.sort((a, b) => {
+      const ra = a.standing?.rank ?? Number.POSITIVE_INFINITY;
+      const rb = b.standing?.rank ?? Number.POSITIVE_INFINITY;
+      if (ra !== rb) return ra - rb;
+      return (storedOf(b.discordId) ?? -Infinity) - (storedOf(a.discordId) ?? -Infinity);
+    });
     for (const m of d.members) {
       m.mmr = storedOf(m.discordId) ?? Math.max(0, 2200 - pos * 10);
       pos++;
@@ -106,8 +144,7 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
   }
 
   // Rookies: MMR ≈ 1.5× peak BMP. Place in the division whose average (returner)
-  // MMR is the greatest value ≤ the rookie's MMR; if none qualify (weaker than
-  // all), the lowest division.
+  // MMR is the greatest value ≤ the rookie's MMR; if none qualify, the lowest.
   const divAvg = divList.map((d) => (d.members.length ? d.members.reduce((a, m) => a + m.mmr, 0) / d.members.length : 0));
   for (const s of rookies) {
     const rookieMmr = Math.round((peakByDiscord.get(s.discordId) ?? 0) * 1.5);
@@ -124,6 +161,7 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
       displayName: s.displayName,
       mmr: rookieMmr,
       isRookie: true,
+      standing: null,
     });
   }
 

@@ -70,6 +70,11 @@ export function ContinuityPreview({
                 · SoS {d.schedule.summary.minSos}–{d.schedule.summary.maxSos} (spread {d.schedule.summary.spread})
               </span>
             )}
+            {d.members.length < 5 && (
+              <span style={{ fontWeight: 400, marginLeft: 8, color: "#f1c40f", fontSize: 12 }}>
+                ⚠ thin — needs ≥5 for a full 4-opponent schedule
+              </span>
+            )}
           </div>
 
           {d.schedule ? (
@@ -89,9 +94,12 @@ export function ContinuityPreview({
                       borderTop: idx === 0 ? undefined : "1px solid rgba(255,255,255,0.06)",
                     }}
                   >
-                    <span style={{ minWidth: 160, fontWeight: 500 }}>
+                    <span style={{ minWidth: 180, fontWeight: 500 }}>
                       {m.displayName}{" "}
-                      <span className="muted" style={{ fontSize: 11 }}>{m.mmr}{m.isRookie ? " · new" : ""}</span>
+                      <span className="muted" style={{ fontSize: 11 }}>
+                        {m.mmr}
+                        {m.standing ? ` · #${m.standing.rank} (${m.standing.record})` : m.isRookie ? " · new" : ""}
+                      </span>
                     </span>
                     <span className="muted" style={{ fontSize: 12, flex: 1 }}>
                       vs {(d.schedule!.opponents.get(m.discordId) ?? []).map((o) => d.nameOf.get(o) ?? o).join(", ")}
@@ -123,7 +131,10 @@ export function ContinuityPreview({
                       {m.displayName}
                       {m.isRookie && <span style={{ color: "#76c7ff", fontSize: 11, marginLeft: 6 }}>new</span>}
                     </span>
-                    <span className="muted" style={{ fontSize: 11, fontVariantNumeric: "tabular-nums" }}>{m.mmr}</span>
+                    <span className="muted" style={{ fontSize: 11, minWidth: 80, textAlign: "right" }} title="Current standing (rank + W-D-L)">
+                      {m.standing ? `#${m.standing.rank} · ${m.standing.record}` : m.isRookie ? "—" : "no games"}
+                    </span>
+                    <span className="muted" style={{ fontSize: 11, fontVariantNumeric: "tabular-nums", minWidth: 44, textAlign: "right" }} title="Secret MMR">{m.mmr}</span>
                   </div>
                 ))}
             </div>
