@@ -25,6 +25,9 @@ const SYNC = [
   // Pure sub-grouping engine — one source of truth (src/), used by both the bot
   // and the web's grouping service.
   { from: ["src", "sub-grouping.ts"], to: ["lib", "sub-grouping.ts"] },
+  // Pure "Elowen" hidden-MMR engine (Owen's server formula) — shared by the bot
+  // (per-match updates) and the web (seeding + preview).
+  { from: ["src", "elowen.ts"], to: ["lib", "elowen.ts"] },
 ];
 
 for (const { from, to } of SYNC) {
