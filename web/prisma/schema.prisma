@@ -170,15 +170,8 @@ model Season {
   archivedAt       DateTime?
   isActive         Boolean   @default(true)
   // Target players per DIVISION (the build auto-expands a tier into more
-  // divisions to keep each ≤ this). For the classic small-division/full-round-
-  // robin model this is also the group size; for the sub-group model set it big
-  // (e.g. 15) and let subGroupSize do the splitting.
+  // divisions to keep each ≤ this).
   targetGroupSize  Int       @default(5)
-  // Sub-group size used when an admin generates sub-groups: each division is
-  // split into balanced groups of this size and you round-robin within yours
-  // (5 → 4 matches). Distinct from targetGroupSize (the DIVISION size).
-  // Generating is opt-in per division; standings + promotion stay division-wide.
-  subGroupSize     Int       @default(5)
   // Don't auto-create a division with fewer than this many players (smaller leftover groups
   // are flagged as warnings instead of becoming tiny divisions).
   minGroupSize     Int       @default(3)
@@ -522,11 +515,6 @@ model Division {
   // Optional Discord role + channel IDs the bot manages for this division
   discordRoleId    String?
   discordChannelId String?
-  // Per-sub-group private "Group N" thread ids, as a JSON map of
-  // { "<groupNumber>": "<threadId>" }. Written by the division bootstrap when
-  // it creates each group's thread; lets us count real threads + recreate only
-  // missing ones on a re-run. Null/empty when the division isn't sub-grouped.
-  subGroupThreadIds Json?
   // End-of-season champion role + winner. Set when admin clicks
   // 'Award champion roles' on an ended season. Role persists forever
   // as a bragging-rights badge. championPlayerId is the rank-1
@@ -609,13 +597,6 @@ model DivisionMember {
   // last-known shape. Defaults to 0; rebalanced per-division on every
   // positional move.
   draftOrder      Int                  @default(0)
-  // Admin-only sub-group index within the division (1, 2, 3, …). The division
-  // is the competitive unit (standings + promotion run across ALL members); the
-  // sub-group only scopes WHO you play — your round-robin opponents are your
-  // same-sub-group members. Balanced (snake-seeded) so each sub-group is a
-  // representative slice and strength-of-schedule stays even division-wide.
-  // Null = division isn't sub-grouped (everyone plays everyone, legacy behavior).
-  assignmentGroup Int?
 
   division Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   player   Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)

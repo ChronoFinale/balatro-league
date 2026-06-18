@@ -19,7 +19,6 @@
 import { PgBoss, type Job } from "pg-boss";
 import { announceResult } from "./announce.js";
 import { detectCurrentBmpSeason, fetchPlayerStats, NO_RANKED_RECORD } from "./balatromp.js";
-import { groupLetter } from "./sub-grouping.js";
 import { spawnDisputeThread } from "./dispute-thread.js";
 import { webUrl } from "./web-url.js";
 import { prisma } from "./db.js";
@@ -52,8 +51,6 @@ import {
   isDiscordSnowflake,
   createGuildRole,
   createGuildTextChannel,
-  createPrivateThread,
-  deleteThread,
   postChannelMessage,
   removeGuildMemberRole as removeGuildMemberRoleViaBot,
 } from "./discord-helpers.js";
@@ -409,7 +406,6 @@ export async function enqueueDisputeSpawnThread(pairingId: string): Promise<void
 export async function enqueueBootstrapDivision(job: {
   divisionId: string;
   guildId: string;
-  rebuildThreads?: boolean;
 }): Promise<void> {
   if (!boss) throw new Error("Queue not initialized — initQueue() must run first");
   await boss.send("bootstrap.division", job, { retryLimit: 2 });
@@ -914,9 +910,6 @@ async function awardChampionRole({
 interface BootstrapDivisionJob {
   divisionId: string;
   guildId: string;
-  // Delete + recreate the sub-group threads from the current grouping (used
-  // after a regenerate that reshuffles who's in which group).
-  rebuildThreads?: boolean;
 }
 
 interface MmrSnapshotJob {
@@ -931,7 +924,7 @@ interface MmrSnapshotJob {
 // division. Idempotent — re-runs check what's already done via the IDs
 // persisted back on the Division row, so a partial failure plus retry
 // picks up where it left off rather than duplicating roles/channels.
-async function bootstrapDivision({ divisionId, guildId, rebuildThreads }: BootstrapDivisionJob): Promise<void> {
+async function bootstrapDivision({ divisionId, guildId }: BootstrapDivisionJob): Promise<void> {
   const div = await prisma.division.findUnique({
     where: { id: divisionId },
     include: {
@@ -946,15 +939,9 @@ async function bootstrapDivision({ divisionId, guildId, rebuildThreads }: Bootst
   }
   if (div.members.length === 0) return;
 
-  // Sub-group threads: the distinct groups that need a thread, and which already
-  // have one recorded. A re-run creates only the missing ones, so the whole
-  // division is "done" only when role + channel + every group thread exist.
-  const groupsToThread = [
-    ...new Set(div.members.map((m) => m.assignmentGroup).filter((g): g is number => g != null)),
-  ].sort((a, b) => a - b);
-  const existingThreads: Record<string, string> = (div.subGroupThreadIds as Record<string, string> | null) ?? {};
-  const threadsComplete = groupsToThread.every((g) => existingThreads[String(g)]);
-  if (!rebuildThreads && div.discordRoleId && div.discordChannelId && threadsComplete) return; // already done
+  // Done once role + channel exist — a re-run picks up wherever a partial
+  // failure left off via the IDs persisted back on the Division row.
+  if (div.discordRoleId && div.discordChannelId) return; // already done
 
   const parentId = div.season.discordCategoryId ?? undefined;
   // OWNER tier is included so a non-Administrator owner role still gets
@@ -998,7 +985,7 @@ async function bootstrapDivision({ divisionId, guildId, rebuildThreads }: Bootst
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "");
     // Members get plain access; staff roles get ManageThreads (STAFF_ALLOW) so
-    // they see every private sub-group thread without being added to each one.
+    // they can oversee any threads in the channel without being added to each.
     let channel = await createGuildTextChannel(guildId, channelName, {
       parentId,
       topic: `${seasonLabel} — ${div.name}`,
@@ -1023,14 +1010,9 @@ async function bootstrapDivision({ divisionId, guildId, rebuildThreads }: Bootst
       .join("\n");
     // Each player plays (N-1) matches — one against every other member.
     // Total matches in the division is N*(N-1)/2 for context.
-    // Sub-grouped divisions: you only play your group (a balanced slice), so
-    // the "play everyone" instruction would be wrong — point at the group thread.
-    const isSubGrouped = div.members.some((m) => m.assignmentGroup != null);
     const matchesPerPlayer = div.members.length - 1;
     const totalMatchesInDivision = (div.members.length * (div.members.length - 1)) / 2;
-    const playBullet = isSubGrouped
-      ? `• You play the people in **your group** — see your private **Group** thread below (best-of-2). Standings + promotion run across the whole division.`
-      : `• Play **every other person** in this list once — best-of-2 (**${matchesPerPlayer} matches per player**, ${totalMatchesInDivision} total in this division).`;
+    const playBullet = `• Play **every other person** in this list once — best-of-2 (**${matchesPerPlayer} matches per player**, ${totalMatchesInDivision} total in this division).`;
     const welcome = [
       `# 🃏 Welcome to ${div.name}`,
       `_${seasonLabel} · ${div.name} division_`,
@@ -1054,53 +1036,6 @@ async function bootstrapDivision({ divisionId, guildId, rebuildThreads }: Bootst
     // ping fires for the @mentions inside. Bootstrap shouldn't blast everyone
     // — players discover the channel via their sidebar / the role, not a ping.
     await postChannelMessage(channelId, welcome);
-  }
-
-  // Option B: one private "Group N" thread per sub-group on this channel.
-  // Runs every bootstrap pass but only creates groups that don't already have a
-  // recorded thread — so a re-run from the building tab fills in any that failed
-  // or any new groups after a regenerate. Adding members notifies them; match
-  // threads from /start-match land in this channel (no thread-in-thread).
-  if (channelId && groupsToThread.length > 0) {
-    // Rebuild: delete the recorded threads and clear the map so every group is
-    // recreated fresh (with correct members + intro) below.
-    if (rebuildThreads && Object.keys(existingThreads).length > 0) {
-      for (const id of Object.values(existingThreads)) {
-        await deleteThread(id);
-      }
-      for (const k of Object.keys(existingThreads)) delete existingThreads[k];
-      await prisma.division.update({ where: { id: div.id }, data: { subGroupThreadIds: {} } });
-    }
-    const membersByGroup = new Map<number, typeof div.members>();
-    for (const m of div.members) {
-      if (m.assignmentGroup == null) continue;
-      const arr = membersByGroup.get(m.assignmentGroup) ?? [];
-      arr.push(m);
-      membersByGroup.set(m.assignmentGroup, arr);
-    }
-    let threadsChanged = false;
-    for (const g of groupsToThread) {
-      if (existingThreads[String(g)]) continue; // already has a thread
-      const ms = membersByGroup.get(g) ?? [];
-      const threadId = await createPrivateThread(
-        channelId,
-        `Group ${groupLetter(g)}`,
-        ms.map((m) => m.player.discordId),
-      );
-      if (threadId) {
-        existingThreads[String(g)] = threadId;
-        threadsChanged = true;
-        const list = ms.map((m) => `<@${m.player.discordId}>`).join(" ");
-        await postChannelMessage(
-          threadId,
-          `**Group ${groupLetter(g)}** — you ${ms.length} play each other, best-of-2 (**${ms.length - 1} matches** each). ` +
-            `Schedule here; use \`/start-match @opponent\` for the guided flow.\n${list}`,
-        );
-      }
-    }
-    if (threadsChanged) {
-      await prisma.division.update({ where: { id: div.id }, data: { subGroupThreadIds: existingThreads } });
-    }
   }
 
   await prisma.division.update({

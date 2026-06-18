@@ -8,7 +8,6 @@ import { auth } from "@/auth";
 import { hasTier } from "@/lib/admin";
 import { DivisionStandingsTable, type StandingsRowExtras } from "@/components/DivisionStandingsTable";
 import { loadMmrForPlayerIds } from "@/lib/loaders/standings";
-import { groupLetter } from "@/lib/sub-grouping";
 import { getShowBmpMmr } from "@/lib/preferences";
 import { loadDivisionPageData, type DivisionRecentPairing, type DivisionUnplayed } from "@/lib/loaders/division";
 import { loadAdminDivisionDetail } from "@/lib/loaders/admin";
@@ -82,25 +81,6 @@ export default async function PublicDivisionPage({
     standings.map((r) => [r.player.id, { mmr: mmrByPlayerId.get(r.player.id) }]),
   );
 
-  // Sub-group context: standings + promotion run off the WHOLE division; the
-  // sub-groups (who plays whom) are shown as their own section below the table.
-  const groupMembers = await prisma.divisionMember.findMany({
-    where: { divisionId: id, status: "ACTIVE", assignmentGroup: { not: null } },
-    select: { playerId: true, assignmentGroup: true },
-  });
-  const groupByPlayer = new Map(groupMembers.map((m) => [m.playerId, m.assignmentGroup!]));
-  const viewerGroup = viewerPlayerId != null ? groupByPlayer.get(viewerPlayerId) ?? null : null;
-  // Group the division's standings rows by sub-group, sorted A, B, C…
-  const subGroups = (() => {
-    const byGroup = new Map<number, typeof standings>();
-    for (const r of standings) {
-      const g = groupByPlayer.get(r.player.id);
-      if (g == null) continue;
-      (byGroup.get(g) ?? byGroup.set(g, []).get(g)!).push(r);
-    }
-    return [...byGroup.entries()].sort((a, b) => a[0] - b[0]);
-  })();
-
   return (
     <>
       <SiteNav activePath="/standings" />
@@ -134,33 +114,6 @@ export default async function PublicDivisionPage({
             />
           </div>
         </details>
-
-        {subGroups.length > 0 && (
-          <details className="card">
-            <summary style={{ cursor: "pointer" }}>
-              <strong>Sub-groups</strong>{" "}
-              <span className="muted" style={{ fontSize: 12 }}>
-                — who plays whom (promotion runs off the full division)
-              </span>
-            </summary>
-            <div style={{ display: "grid", gap: 14, marginTop: 8 }}>
-              {subGroups.map(([g, rows]) => (
-                <div key={g}>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
-                    Group {groupLetter(g)}
-                    {viewerGroup === g ? <span className="muted" style={{ fontWeight: 400 }}> · yours</span> : null}
-                  </div>
-                  <DivisionStandingsTable
-                    rows={rows}
-                    extras={standingsExtras}
-                    showBmpMmr={showBmpMmr}
-                    bmpCurrentSeason={bmpCurrentSeason}
-                  />
-                </div>
-              ))}
-            </div>
-          </details>
-        )}
 
         <MatchesSections
           divisionId={id}

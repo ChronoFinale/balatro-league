@@ -13,7 +13,6 @@
 import { prisma } from "@/lib/prisma";
 import { loadDivisionStandings, loadManyDivisionStandings } from "@/lib/standings-cache";
 import { formatSeasonLabel } from "@/lib/format-season";
-import { expectedMatchesFromGroupSizes, groupSizesFromMembers } from "@/lib/sub-grouping";
 
 export type StandingsRowsForDivision = Awaited<ReturnType<typeof loadDivisionStandings>>;
 
@@ -35,8 +34,8 @@ export interface StandingsDivisionSummary {
   activeMemberIds: string[];
   droppedMemberIds: string[];
   playedMatches: number;
-  // Expected league matches = sum of each sub-group's round-robin (or the whole
-  // division's if not sub-grouped). Use this instead of N*(N-1)/2.
+  // Expected league matches = the division's full round-robin, N*(N-1)/2
+  // over its ACTIVE members.
   expectedMatches: number;
   rows: StandingsRowsForDivision;
   shootouts: StandingsShootout[];
@@ -96,7 +95,7 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
               id: true,
               name: true,
               groupNumber: true,
-              members: { select: { playerId: true, status: true, assignmentGroup: true } },
+              members: { select: { playerId: true, status: true } },
               // Resolved league games (a real result OR a void) — used to tell
               // whether the round-robin is "complete" for promo/relegation. A
               // voided game (CONFIRMED 0-0 or CANCELLED) counts as done, so a void
@@ -207,7 +206,7 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
         activeMemberIds: [...activeSet],
         droppedMemberIds: d.members.filter((m) => m.status === "DROPPED").map((m) => m.playerId),
         playedMatches,
-        expectedMatches: expectedMatchesFromGroupSizes(groupSizesFromMembers(activeMembers)),
+        expectedMatches: (activeMembers.length * (activeMembers.length - 1)) / 2,
         rows: standingsByDivisionId.get(d.id) ?? [],
         shootouts: shootoutsByDivisionId.get(d.id) ?? [],
       };

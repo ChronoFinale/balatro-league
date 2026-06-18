@@ -13,7 +13,11 @@ import { prisma } from "@/lib/prisma";
 import { computeStandings } from "@/lib/standings";
 import { computeRatingDeltas, type DivisionForRating } from "@/lib/end-season";
 import { formatSeasonLabel } from "@/lib/format-season";
-import { expectedMatchesFromGroupSizes, groupSizesFromMembers } from "@/lib/sub-grouping";
+
+// Full round-robin match count for a division of N active members.
+function expectedMatchesForDivision(activeMemberCount: number): number {
+  return (activeMemberCount * (activeMemberCount - 1)) / 2;
+}
 
 const MOCK_PREFIXES = ["mock", "sim"]; // dashless; startsWith still matches legacy "mock-"/"sim-"
 function isMockId(id: string) {
@@ -231,7 +235,7 @@ export async function loadEndSeasonPreview(seasonId: string): Promise<EndSeasonP
     // as "unfinished". d.matches is CONFIRMED, and a voided game is a CONFIRMED
     // 0-0, so it correctly counts as finished here too.
     const activeMembers = d.members.filter((m) => m.status === "ACTIVE");
-    const expected = expectedMatchesFromGroupSizes(groupSizesFromMembers(activeMembers));
+    const expected = expectedMatchesForDivision(activeMembers.length);
     const activeIds = new Set(activeMembers.map((m) => m.playerId));
     const playedActive = d.matches.filter((m) => activeIds.has(m.playerAId) && activeIds.has(m.playerBId)).length;
     return sum + Math.max(0, expected - playedActive);
@@ -1133,7 +1137,7 @@ export async function loadAdminSeasonDetail(
   const totalConfirmed = season.divisions.reduce((sum, d) => sum + d.matches.length, 0);
   const totalExpected = season.divisions.reduce((sum, d) => {
     const activeMembers = d.members.filter((m) => m.status === "ACTIVE");
-    return sum + expectedMatchesFromGroupSizes(groupSizesFromMembers(activeMembers));
+    return sum + expectedMatchesForDivision(activeMembers.length);
   }, 0);
   const needsChannels = !signupRound && !season.endedAt;
   const channels = needsChannels && opts.guildId ? await opts.listGuildTextChannels(opts.guildId) : [];
@@ -1636,7 +1640,7 @@ export async function loadAdminDivisionsIndex(): Promise<AdminDivisionsPageData>
               id: true,
               name: true,
               targetSize: true,
-              members: { select: { status: true, assignmentGroup: true } },
+              members: { select: { status: true } },
               matches: { where: { status: "CONFIRMED", format: "LEAGUE_BO2" }, select: { id: true } },
             },
           },
@@ -1657,7 +1661,7 @@ export async function loadAdminDivisionsIndex(): Promise<AdminDivisionsPageData>
         memberCount: d.members.length,
         targetSize: d.targetSize ?? season.targetGroupSize,
         confirmedPairingCount: d.matches.length,
-        expectedPairingCount: expectedMatchesFromGroupSizes(groupSizesFromMembers(activeMembers)),
+        expectedPairingCount: expectedMatchesForDivision(activeMembers.length),
       };
     }),
   }));

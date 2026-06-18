@@ -10,10 +10,8 @@
 import {
   ChannelType,
   PermissionFlagsBits,
-  ThreadAutoArchiveDuration,
   type CategoryChannel,
   type Guild,
-  type TextChannel,
 } from "discord.js";
 import { getConfig, setConfig, type LeagueConfigKey } from "./league-config.js";
 
@@ -52,8 +50,8 @@ const BOT_ALLOW = [
 
 // Staff (admin/helper) on a division channel. The key bit is ManageThreads:
 // Discord can't grant a ROLE access to a private thread, but anyone with
-// ManageThreads on the parent channel sees EVERY private thread in it — so the
-// per-sub-group threads are visible to all staff (current + future, since it's
+// ManageThreads on the parent channel sees EVERY private thread in it — so any
+// private threads are visible to all staff (current + future, since it's
 // role-based) with no per-thread member adds and no sync job.
 const STAFF_ALLOW = [
   ...MEMBER_ALLOW,
@@ -192,7 +190,7 @@ export async function createGuildTextChannel(
     topic?: string;
     visibleToRoleIds?: string[];
     // Staff roles that get STAFF_ALLOW (incl. ManageThreads) instead of plain
-    // MEMBER_ALLOW — so they can see every private sub-group thread in here.
+    // MEMBER_ALLOW — so they can see every private thread in here.
     staffRoleIds?: string[];
     // Specific guild members who get view + send. Used for per-match
     // private channels — same effect as visibleToRoleIds but scoped to
@@ -232,7 +230,7 @@ export async function createGuildTextChannel(
             id,
             type: 0 as const,
             // STAFF_ALLOW adds ManageThreads so staff see every private
-            // sub-group thread in this channel without being added to each.
+            // thread in this channel without being added to each.
             allow: [...STAFF_ALLOW],
           })),
           ...visibleUsers.map((id) => ({
@@ -281,48 +279,3 @@ export async function postChannelMessage(
   }
 }
 
-// Create a PRIVATE thread on a text channel and add the given members — used for
-// per-sub-group "your matchups" threads. Private so only the listed players (+
-// staff with ManageThreads) see it. Adding a member notifies them, so no ping
-// needed. Non-snowflake ids (seeded/test players) are skipped. Best-effort:
-// returns the thread id or null on failure.
-export async function createPrivateThread(
-  channelId: string,
-  name: string,
-  memberIds: string[],
-): Promise<string | null> {
-  try {
-    const channel = await getDiscordClient().channels.fetch(channelId);
-    if (!channel || channel.type !== ChannelType.GuildText) return null;
-    const thread = await (channel as TextChannel).threads.create({
-      name,
-      type: ChannelType.PrivateThread,
-      autoArchiveDuration: ThreadAutoArchiveDuration.OneWeek,
-      invitable: false,
-    });
-    for (const id of memberIds) {
-      if (!isDiscordSnowflake(id)) continue;
-      await thread.members.add(id).catch((err) => {
-        console.warn(`[bot] createPrivateThread(${name}): couldn't add ${id}:`, err);
-      });
-    }
-    return thread.id;
-  } catch (err) {
-    console.warn(`[bot] createPrivateThread(${name}) failed:`, err);
-    return null;
-  }
-}
-
-// Delete a thread by id (best-effort) — used when rebuilding sub-group threads
-// so a regenerate replaces them cleanly instead of leaving stale ones.
-export async function deleteThread(threadId: string): Promise<boolean> {
-  try {
-    const channel = await getDiscordClient().channels.fetch(threadId);
-    if (!channel || !channel.isThread()) return false;
-    await channel.delete();
-    return true;
-  } catch (err) {
-    console.warn(`[bot] deleteThread(${threadId}) failed:`, err);
-    return false;
-  }
-}

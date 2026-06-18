@@ -1,9 +1,9 @@
 // Resolves the parent channel for LEAGUE /start-match private threads.
 //
 // Why a dedicated channel: division channels grant staff ManageThreads so they
-// can oversee the per-sub-group GROUP threads. ManageThreads exposes EVERY
-// private thread in a channel, so if league match threads lived there, staff
-// would auto-see every match too. Putting match threads in their own channel
+// can oversee any threads there. ManageThreads exposes EVERY private thread in
+// a channel, so if league match threads lived there, staff would auto-see every
+// match too. Putting match threads in their own channel
 // (no staff ManageThreads) keeps them private to the two players — a moderator
 // only joins when someone runs /helper, which adds them to that thread.
 //

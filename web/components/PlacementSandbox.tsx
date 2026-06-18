@@ -1,18 +1,13 @@
 "use client";
 
 // Dry-run placement sandbox. Runs the CURRENT signups through the real build
-// math (planByRating) + the real sub-grouping (balanceSubGroups) entirely in the
-// browser, so you can twist the tier shape + group size and watch where everyone
-// would land — without writing a single row. Both functions are pure, so this
-// projection is exactly what a real build would produce from the same inputs.
-//
-// It also surfaces the "muddle": a division whose sub-groups aren't all the same
-// size means some players play more games than others in the SAME standings —
-// flagged so you can reshape until every division is internally fair.
+// math (planByRating) entirely in the browser, so you can twist the tier shape
+// and watch where everyone would land — without writing a single row. planByRating
+// is pure, so this projection is exactly what a real build would produce from the
+// same inputs. Each division is a full round-robin (everyone plays everyone).
 
 import { useMemo, useState } from "react";
 import { planByRating, type TierConfig } from "@/lib/season-plan";
-import { balanceSubGroups, groupLetter } from "@/lib/sub-grouping";
 
 export interface SandboxPlayer {
   discordId: string;
@@ -24,16 +19,16 @@ export interface SandboxPlayer {
 export function PlacementSandbox({
   players,
   initialTiers,
-  initialSubGroupSize = 5,
+  initialTargetGroupSize = 5,
 }: {
   players: SandboxPlayer[];
   initialTiers: TierConfig[];
-  initialSubGroupSize?: number;
+  initialTargetGroupSize?: number;
 }) {
   const [tiers, setTiers] = useState<TierConfig[]>(
     initialTiers.length ? initialTiers : [{ name: "Common", divisionCount: 1 }],
   );
-  const [subGroupSize, setSubGroupSize] = useState(initialSubGroupSize);
+  const [targetGroupSize, setTargetGroupSize] = useState(initialTargetGroupSize);
 
   const lookup = useMemo(() => new Map(players.map((p) => [p.discordId, p])), [players]);
   const ranked = useMemo(
@@ -42,31 +37,19 @@ export function PlacementSandbox({
   );
 
   const projection = useMemo(() => {
-    const plan = planByRating(ranked, tiers, subGroupSize);
+    const plan = planByRating(ranked, tiers, targetGroupSize);
     let totalDivs = 0;
-    let totalGroups = 0;
-    let unevenDivs = 0;
     let placed = 0;
     const tiersOut = plan.map((pt) => {
       const divisions = pt.divisions.map((divIds, gi) => {
         totalDivs++;
         placed += divIds.length;
-        const { groups, groupCount } = balanceSubGroups(divIds, subGroupSize);
-        totalGroups += groupCount;
-        const members: string[][] = Array.from({ length: groupCount }, () => []);
-        divIds.forEach((id, i) => {
-          const g = (groups[i] ?? 1) - 1;
-          if (members[g]) members[g]!.push(id);
-        });
-        const sizes = members.map((m) => m.length);
-        const uneven = sizes.length > 1 && new Set(sizes).size > 1;
-        if (uneven) unevenDivs++;
-        return { name: `${pt.tier.name} ${gi + 1}`, size: divIds.length, members, sizes, uneven };
+        return { name: `${pt.tier.name} ${gi + 1}`, size: divIds.length, members: divIds };
       });
       return { name: pt.tier.name, position: pt.position, size: divisions.reduce((s, d) => s + d.size, 0), divisions };
     });
-    return { tiersOut, totalDivs, totalGroups, unevenDivs, placed };
-  }, [ranked, tiers, subGroupSize]);
+    return { tiersOut, totalDivs, placed };
+  }, [ranked, tiers, targetGroupSize]);
 
   const updateTier = (i: number, patch: Partial<TierConfig>) =>
     setTiers(tiers.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
@@ -80,16 +63,16 @@ export function PlacementSandbox({
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <strong>Structure</strong>
           <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
-            Group size
+            Division size
             <input
               type="number"
               min={2}
               max={20}
-              value={subGroupSize}
-              onChange={(e) => setSubGroupSize(Math.max(2, Math.min(20, Number(e.target.value) || 5)))}
+              value={targetGroupSize}
+              onChange={(e) => setTargetGroupSize(Math.max(2, Math.min(20, Number(e.target.value) || 5)))}
               style={{ width: 56, padding: "2px 4px" }}
             />
-            <span className="muted">→ {subGroupSize - 1} games each</span>
+            <span className="muted">→ {targetGroupSize - 1} games each</span>
           </label>
         </div>
 
@@ -134,12 +117,7 @@ export function PlacementSandbox({
         </div>
 
         <div className="muted" style={{ fontSize: 12, marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 8 }}>
-          {projection.placed} players · {projection.totalDivs} divisions · {projection.totalGroups} groups ·{" "}
-          {projection.unevenDivs === 0 ? (
-            <span style={{ color: "#2ecc71" }}>every division splits evenly ✓</span>
-          ) : (
-            <span style={{ color: "#f1c40f" }}>⚠ {projection.unevenDivs} division{projection.unevenDivs === 1 ? "" : "s"} with uneven groups (unequal games)</span>
-          )}
+          {projection.placed} players · {projection.totalDivs} divisions
         </div>
         <p className="muted" style={{ fontSize: 11, margin: "6px 0 0" }}>
           Dry-run only — nothing here is saved. Division sizes are derived from how many divisions you give each tier.
@@ -160,49 +138,38 @@ export function PlacementSandbox({
               <div key={div.name} className="card" style={{ margin: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>
                   {div.name}{" "}
-                  <span className="muted" style={{ fontWeight: 400 }}>— {div.size} players</span>
-                  {div.uneven && (
-                    <span style={{ color: "#f1c40f", fontWeight: 400, marginLeft: 8, fontSize: 12 }}>
-                      ⚠ uneven groups ({[...new Set(div.sizes)].sort((a, b) => b - a).join("/")}) — some play more games
-                    </span>
-                  )}
+                  <span className="muted" style={{ fontWeight: 400 }}>
+                    — {div.size} players · {Math.max(0, div.size - 1)} games each
+                  </span>
                 </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "nowrap", overflowX: "auto", paddingBottom: 4 }}>
-                  {div.members.map((groupIds, gi) => (
-                    <div key={gi} style={{ border: "1px solid var(--border)", borderRadius: 6, padding: 8, width: 190, flex: "0 0 auto" }}>
-                      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
-                        Group {groupLetter(gi + 1)}{" "}
-                        <span className="muted" style={{ fontWeight: 400 }}>· {groupIds.length}p · {Math.max(0, groupIds.length - 1)} games</span>
+                <div>
+                  {div.members.map((id, idx) => {
+                    const p = lookup.get(id);
+                    return (
+                      <div
+                        key={id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 5,
+                          padding: "3px 4px",
+                          fontSize: 13,
+                          borderTop: idx === 0 ? undefined : "1px solid rgba(255,255,255,0.06)",
+                        }}
+                      >
+                        <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {p?.displayName ?? id}
+                        </span>
+                        <span
+                          className="muted"
+                          style={{ fontSize: 11, fontVariantNumeric: "tabular-nums", color: p?.rating == null ? "#666" : undefined }}
+                          title="League seed (rating)"
+                        >
+                          {p?.rating == null ? "L —" : `L#${p.rating}`}
+                        </span>
                       </div>
-                      {groupIds.map((id, idx) => {
-                        const p = lookup.get(id);
-                        return (
-                          <div
-                            key={id}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 5,
-                              padding: "3px 4px",
-                              fontSize: 13,
-                              borderTop: idx === 0 ? undefined : "1px solid rgba(255,255,255,0.06)",
-                            }}
-                          >
-                            <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {p?.displayName ?? id}
-                            </span>
-                            <span
-                              className="muted"
-                              style={{ fontSize: 11, fontVariantNumeric: "tabular-nums", color: p?.rating == null ? "#666" : undefined }}
-                              title="League seed (rating)"
-                            >
-                              {p?.rating == null ? "L —" : `L#${p.rating}`}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}

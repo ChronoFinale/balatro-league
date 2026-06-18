@@ -18,7 +18,6 @@ import { formatSeasonLabel } from "@/lib/format-season";
 
 export async function runSeasonDiscordBootstrap(
   seasonId: string,
-  opts: { rebuildThreads?: boolean } = {},
 ): Promise<number | null> {
   const guildId = process.env.DISCORD_GUILD_ID;
   if (!guildId) {
@@ -34,8 +33,7 @@ export async function runSeasonDiscordBootstrap(
           id: true,
           discordRoleId: true,
           discordChannelId: true,
-          subGroupThreadIds: true,
-          members: { where: { status: "ACTIVE" }, select: { assignmentGroup: true } },
+          members: { where: { status: "ACTIVE" }, select: { id: true } },
         },
       },
     },
@@ -70,21 +68,9 @@ export async function runSeasonDiscordBootstrap(
   let queued = 0;
   for (const div of season.divisions) {
     if (div.members.length === 0) continue;
-    const hasGroups = div.members.some((m) => m.assignmentGroup != null);
-    // Rebuild pass: only divisions that already have a channel + sub-groups,
-    // forced (delete + recreate their threads from the current grouping).
-    if (opts.rebuildThreads) {
-      if (!div.discordChannelId || !hasGroups) continue;
-      await enqueueBootstrapDivision({ divisionId: div.id, guildId, rebuildThreads: true });
-      queued++;
-      continue;
-    }
-    // Normal pass: re-enqueue when role/channel are missing OR any sub-group
-    // thread is — the worker is idempotent and creates only what's absent.
-    const groups = new Set(div.members.map((m) => m.assignmentGroup).filter((g): g is number => g != null));
-    const threads = (div.subGroupThreadIds as Record<string, string> | null) ?? {};
-    const threadsComplete = [...groups].every((g) => threads[String(g)]);
-    if (div.discordRoleId && div.discordChannelId && threadsComplete) continue;
+    // Re-enqueue when role/channel are missing — the worker is idempotent
+    // and creates only what's absent.
+    if (div.discordRoleId && div.discordChannelId) continue;
     await enqueueBootstrapDivision({ divisionId: div.id, guildId });
     queued++;
   }

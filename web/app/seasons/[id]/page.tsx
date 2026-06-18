@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormSelect } from "@/components/FormSelect";
 import { DraggableDivisionsEditor, type EditorMember, type EditorTier } from "@/components/DraggableDivisionsEditor";
-import { SubGroupsPanel } from "@/components/SubGroupsPanel";
 import { LocalDateTimeField } from "@/components/LocalDateTimeField";
 import { LocalDateTime } from "@/components/LocalDateTime";
 import { SeasonDeckPresetPicker } from "@/components/SeasonDeckPresetPicker";
@@ -37,7 +36,6 @@ import {
   archiveSeasonChannels,
   awardSeasonChampionRoles,
   bootstrapSeasonDiscord,
-  rebuildSeasonSubGroupThreads,
   setSeasonDiscordCategory,
   setSeasonResultsChannel,
   setSeasonResultsWebhook,
@@ -358,10 +356,10 @@ async function AdminSeasonPanel({
                   {justBuilt ? "✓ Season built — review below" : "📝 Draft mode"}
                 </strong>{" "}
                 <span className="muted" style={{ fontSize: 12 }}>
-                  Fine-tune the two steps below — changes save instantly — then <strong>Start season →</strong> at the bottom.
+                  Fine-tune the placement below — changes save instantly — then <strong>Start season →</strong> at the bottom.
                 </span>
               </div>
-              <h4 style={{ margin: "16px 0 2px" }}>Step 1 · Place players into divisions</h4>
+              <h4 style={{ margin: "16px 0 2px" }}>Place players into divisions</h4>
               <p className="muted" style={{ fontSize: 12, margin: 0 }}>
                 Drag a player between divisions to reseed them, or use a card&apos;s <strong>+ Add player</strong>.
               </p>
@@ -419,15 +417,6 @@ async function AdminSeasonPanel({
               />
             );
           })()}
-
-          {/* After placement: generate + review the balanced sub-groups that
-              scope who-plays-whom (admin-only; promotion stays division-wide). */}
-          {!season.isActive && !season.endedAt && (
-            <>
-              <h4 style={{ margin: "22px 0 2px" }}>Step 2 · Split each division into groups</h4>
-              <SubGroupsPanel seasonId={season.id} />
-            </>
-          )}
 
           {/* Tier/division summary block used to render here for
               active/ended seasons — top-3 + "+ N more" duplicating
@@ -732,55 +721,25 @@ function DiscordBootstrap({
     divisions: Array<{
       discordRoleId: string | null;
       discordChannelId: string | null;
-      members: Array<{ assignmentGroup: number | null }>;
-      subGroupThreadIds: unknown;
     }>;
   };
 }) {
   const total = season.divisions.length;
   const ready = season.divisions.filter((d) => d.discordRoleId && d.discordChannelId).length;
   const channelsRemaining = total - ready;
-  // Per-sub-group "Group N" threads: expected = distinct sub-groups, created =
-  // ids actually recorded on the division. Lets the status show real progress
-  // and the button re-run to backfill any missing threads.
-  let threadsExpected = 0;
-  let threadsCreated = 0;
-  for (const d of season.divisions) {
-    const groups = new Set(d.members.map((m) => m.assignmentGroup).filter((g): g is number => g != null));
-    threadsExpected += groups.size;
-    threadsCreated +=
-      d.subGroupThreadIds && typeof d.subGroupThreadIds === "object"
-        ? Object.keys(d.subGroupThreadIds as Record<string, unknown>).length
-        : 0;
-  }
-  const threadsMissing = Math.max(0, threadsExpected - threadsCreated);
-  const allDone = channelsRemaining === 0 && threadsMissing === 0;
+  const allDone = channelsRemaining === 0;
   return (
     <details style={{ marginLeft: 8 }}>
       <summary className="muted" style={{ cursor: "pointer", fontSize: 12 }}>
         🎭 Discord: {ready}/{total} channel{total === 1 ? "" : "s"}
-        {threadsExpected > 0 ? ` · ${threadsCreated}/${threadsExpected} group threads` : ""}
       </summary>
       <div style={{ marginTop: 8, padding: 8, background: "var(--surface-2)", borderRadius: 4, display: "grid", gap: 6, minWidth: 320 }}>
         <form action={bootstrapSeasonDiscord}>
           <input type="hidden" name="id" value={season.id} />
           <Button type="submit" disabled={allDone}>
-            {allDone
-              ? "All set up"
-              : channelsRemaining > 0
-                ? `Set up ${channelsRemaining} division(s)${threadsMissing > 0 ? ` + ${threadsMissing} thread(s)` : ""}`
-                : `Create ${threadsMissing} missing thread(s)`}
+            {allDone ? "All set up" : `Set up ${channelsRemaining} division(s)`}
           </Button>
         </form>
-        {threadsExpected > 0 && (
-          <form action={rebuildSeasonSubGroupThreads}>
-            <input type="hidden" name="id" value={season.id} />
-            <Button type="submit" variant="secondary">↻ Rebuild group threads</Button>
-            <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>
-              delete + recreate from the current grouping (use after a regenerate)
-            </span>
-          </form>
-        )}
       </div>
     </details>
   );

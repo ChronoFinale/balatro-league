@@ -10,8 +10,8 @@ import { MmrSeedingTable } from "@/components/MmrSeedingTable";
 export const dynamic = "force-dynamic";
 
 // Dry-run placement sandbox for an OPEN/CLOSED signup round. Runs the current
-// signups through the real build + sub-grouping math live in the browser so you
-// can twist the structure and see where everyone lands — writing nothing.
+// signups through the real build math live in the browser so you can twist the
+// structure and see where everyone lands — writing nothing.
 export default async function PlacementPreviewPage({
   params,
 }: {
@@ -52,7 +52,7 @@ export default async function PlacementPreviewPage({
           </Link>
         </div>
         <p className="muted">
-          A sandbox over the <strong>current</strong> signups — change the tier shape and group size
+          A sandbox over the <strong>current</strong> signups — change the tier shape and division size
           and watch where everyone would land. Nothing is saved; signups can still be open. Ratings
           come from each player&apos;s current league seed (returners) / BMP MMR fill (new), same as
           setting up the season for real. Use it to tune the structure, or to show people roughly how their season will look.
@@ -63,7 +63,7 @@ export default async function PlacementPreviewPage({
         ) : (
           <>
             <MmrSeedingTable players={players} />
-            <PlacementSandbox players={players} initialTiers={initialTiers} initialSubGroupSize={5} />
+            <PlacementSandbox players={players} initialTiers={initialTiers} initialTargetGroupSize={5} />
           </>
         )}
       </main>

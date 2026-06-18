@@ -89,7 +89,6 @@ async function loadActiveDivisionContext(
       division: { season: { isActive: true } },
     },
     select: {
-      assignmentGroup: true,
       division: {
         select: {
           id: true,
@@ -101,7 +100,7 @@ async function loadActiveDivisionContext(
           // tiny — id + displayName.
           members: {
             where: { status: "ACTIVE" },
-            select: { playerId: true, assignmentGroup: true, player: { select: { id: true, displayName: true } } },
+            select: { playerId: true, player: { select: { id: true, displayName: true } } },
           },
         },
       },
@@ -126,15 +125,10 @@ async function loadActiveDivisionContext(
     if (p.playerAId === playerId) playedOpponentIds.add(p.playerBId);
     else if (p.playerBId === playerId) playedOpponentIds.add(p.playerAId);
   }
-  // Scope to your sub-group (null = legacy whole-division round-robin).
-  const myGroup = membership.assignmentGroup;
+  // Opponents = every other ACTIVE member of the division you haven't
+  // played yet (full round-robin).
   const reportableOpponents = div.members
-    .filter(
-      (m) =>
-        m.playerId !== playerId &&
-        !playedOpponentIds.has(m.playerId) &&
-        (myGroup == null || m.assignmentGroup === myGroup),
-    )
+    .filter((m) => m.playerId !== playerId && !playedOpponentIds.has(m.playerId))
     .map((m) => ({ playerId: m.playerId, displayName: m.player.displayName }));
 
   // Cached standings row for this player. Falls back to deriving from
