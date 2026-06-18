@@ -37,9 +37,10 @@ export default async function SignupMmrPage({
           <span className="pill" style={{ background: "rgba(149,165,166,0.2)", color: "#c0c8cb" }}>{round.status}</span>
           <span className="muted" style={{ fontSize: 12 }}>{round.signupCount} signed up</span>
           {round.status !== "BUILT" && (
-            <Link href={`/admin/signups/${round.id}/build`} style={{ marginLeft: "auto", fontSize: 13 }}>
-              Build season →
-            </Link>
+            <span style={{ marginLeft: "auto", display: "inline-flex", gap: 12, fontSize: 13 }}>
+              <Link href={`/admin/signups/${round.id}/preview`}>🔬 Preview placement →</Link>
+              <Link href={`/admin/signups/${round.id}/build`}>Build season →</Link>
+            </span>
           )}
         </div>
         <p className="muted" style={{ marginTop: 4, fontSize: 12 }}>

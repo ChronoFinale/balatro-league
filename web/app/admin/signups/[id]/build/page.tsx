@@ -69,7 +69,10 @@ export default async function BuildSeasonPage({
           <span className="pill" style={{ background: "rgba(46,204,113,0.2)", color: "#2ecc71" }}>
             {playerCount} signups
           </span>
-          <Link href="/admin/seasons" className="muted" style={{ marginLeft: "auto" }}>
+          <Link href={`/admin/signups/${round.id}/preview`} style={{ marginLeft: "auto" }}>
+            🔬 Preview placement →
+          </Link>
+          <Link href="/admin/seasons" className="muted">
             ← Back to seasons
           </Link>
         </div>
