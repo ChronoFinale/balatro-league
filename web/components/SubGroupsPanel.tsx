@@ -9,7 +9,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { groupLetter } from "@/lib/sub-grouping";
+import { DraggableSubGroups } from "@/components/DraggableSubGroups";
 import { generateSubGroups, setSubGroupSize } from "@/app/seasons/[id]/actions";
 
 export async function SubGroupsPanel({ seasonId }: { seasonId: string }) {
@@ -62,8 +62,8 @@ export async function SubGroupsPanel({ seasonId }: { seasonId: string }) {
       </div>
       <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
         Splits each division into balanced groups of ~{groupSize} (snake-seeded). You round-robin within your
-        group ({groupSize - 1} games); standings + promotion still run across the whole division. Regenerate after
-        moving players. Hidden from players.
+        group ({groupSize - 1} games); standings + promotion still run across the whole division. Drag players
+        between groups to nudge, or regenerate to re-balance. Hidden from players.
       </p>
 
       {!anyGenerated ? (
@@ -73,49 +73,29 @@ export async function SubGroupsPanel({ seasonId }: { seasonId: string }) {
       ) : (
         <div style={{ display: "grid", gap: 14, marginTop: 10 }}>
           {divisions.map((d) => {
-            // Seed = position in draft order; group members for display + avg-seed balance.
-            const seedOf = new Map(d.members.map((m, i) => [m.id, i + 1]));
-            const groups = new Map<number, typeof d.members>();
-            const ungrouped: typeof d.members = [];
-            for (const m of d.members) {
-              if (m.assignmentGroup == null) {
-                ungrouped.push(m);
-              } else {
-                const arr = groups.get(m.assignmentGroup) ?? [];
-                arr.push(m);
-                groups.set(m.assignmentGroup, arr);
-              }
-            }
-            const sorted = [...groups.entries()].sort((a, b) => a[0] - b[0]);
+            const grouped = d.members.filter((m) => m.assignmentGroup != null);
+            const ungrouped = d.members.filter((m) => m.assignmentGroup == null);
+            const groupCount = grouped.reduce((max, m) => Math.max(max, m.assignmentGroup ?? 0), 0);
             return (
               <div key={d.id}>
                 <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
-                  {d.name} <span className="muted" style={{ fontWeight: 400 }}>— {d.members.length} players · {sorted.length} group(s)</span>
+                  {d.name} <span className="muted" style={{ fontWeight: 400 }}>— {d.members.length} players · {groupCount} group(s)</span>
                 </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  {sorted.map(([g, ms]) => {
-                    const avgSeed = ms.reduce((s, m) => s + (seedOf.get(m.id) ?? 0), 0) / ms.length;
-                    return (
-                      <div key={g} style={{ border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, padding: "8px 10px", minWidth: 150 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600 }}>
-                          Group {groupLetter(g)}{" "}
-                          <span className="muted" style={{ fontWeight: 400 }}>· {ms.length}p · {ms.length - 1} games · avg #{avgSeed.toFixed(1)}</span>
-                        </div>
-                        <ul style={{ margin: "4px 0 0", paddingLeft: 16, fontSize: 12 }}>
-                          {ms.map((m) => (
-                            <li key={m.id}>{m.player.displayName} <span className="muted">#{seedOf.get(m.id)}</span></li>
-                          ))}
-                        </ul>
-                      </div>
-                    );
-                  })}
-                  {ungrouped.length > 0 && (
-                    <div style={{ border: "1px dashed rgba(241,196,15,0.5)", borderRadius: 6, padding: "8px 10px", minWidth: 150, fontSize: 12 }}>
-                      <div style={{ fontWeight: 600, color: "#f1c40f" }}>Ungrouped ({ungrouped.length})</div>
-                      <div className="muted">Regenerate to assign.</div>
-                    </div>
-                  )}
-                </div>
+                <DraggableSubGroups
+                  seasonId={seasonId}
+                  groupCount={groupCount}
+                  initialMembers={grouped.map((m) => ({
+                    memberId: m.id,
+                    playerName: m.player.displayName,
+                    group: m.assignmentGroup!,
+                  }))}
+                />
+                {ungrouped.length > 0 && (
+                  <div style={{ border: "1px dashed rgba(241,196,15,0.5)", borderRadius: 6, padding: "8px 10px", marginTop: 6, fontSize: 12 }}>
+                    <span style={{ fontWeight: 600, color: "#f1c40f" }}>Ungrouped ({ungrouped.length})</span>{" "}
+                    <span className="muted">— {ungrouped.map((m) => m.player.displayName).join(", ")}. Regenerate to assign.</span>
+                  </div>
+                )}
               </div>
             );
           })}

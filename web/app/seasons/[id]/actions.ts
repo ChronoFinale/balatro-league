@@ -12,6 +12,22 @@ import { actorFromAdminUser, recordAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { planSeasonSubGroups } from "@/lib/sub-grouping-service";
 
+// Move one member to a different sub-group (drag-drop in the panel). Draft-time
+// edit — just sets DivisionMember.assignmentGroup; the bootstrap reads the final
+// layout. Safe to call repeatedly.
+export async function setMemberSubGroup(formData: FormData) {
+  await requireAdmin();
+  const seasonId = String(formData.get("seasonId") ?? "").trim();
+  const memberId = String(formData.get("memberId") ?? "").trim();
+  const group = Number.parseInt(String(formData.get("group") ?? ""), 10);
+  if (!memberId || !Number.isFinite(group) || group < 1) return;
+  await prisma.divisionMember.update({
+    where: { id: memberId },
+    data: { assignmentGroup: group },
+  });
+  if (seasonId) revalidatePath(`/seasons/${seasonId}`);
+}
+
 // Set the sub-group size for a season (the size each division is split into
 // when you generate). Doesn't regenerate — hit Generate after to apply.
 export async function setSubGroupSize(formData: FormData) {
