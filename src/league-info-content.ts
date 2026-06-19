@@ -18,7 +18,7 @@ import { webUrl } from "./web-url.js";
 const STATIC_INTRO = [
   "# 🃏 Balatro League",
   "",
-  "Each season you're put in a division by skill. Play everyone in it once, best-of-2. Top of each division moves up next season, bottom moves down.",
+  "Each season you're put in a division by skill, then given a set of opponents to play (best-of-2). Run `/standings` to see your matchups. Top of each division moves up next season, bottom moves down.",
   "",
   "**Scoring:** `2-0` = 3 pts · `1-1` = 1 pt each · `0-2` = 0.",
   "",

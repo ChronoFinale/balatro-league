@@ -47,11 +47,13 @@ export const schedule: SlashCommand = {
     }
 
     const div = membership.division;
-    // You play a full round-robin against every other ACTIVE member of your
-    // division.
-    const opponents = div.members
-      .filter((m) => m.playerId !== me.id && m.status === "ACTIVE")
-      .map((m) => m.player);
+    // Opponents = whoever you have an assigned match against (the graph schedule).
+    // Legacy fallback (no pre-created matches): every other ACTIVE member.
+    const myMatches = div.matches.filter((m) => m.playerAId === me.id || m.playerBId === me.id);
+    const opponents =
+      myMatches.length > 0
+        ? myMatches.map((m) => (m.playerAId === me.id ? m.playerB : m.playerA))
+        : div.members.filter((m) => m.playerId !== me.id && m.status === "ACTIVE").map((m) => m.player);
 
     // Categorize each opponent. `tz` is only set on opponents you still have to
     // play (the scheduling-relevant list) and only when they've shared one.
@@ -77,7 +79,10 @@ export const schedule: SlashCommand = {
       } else if (p.status === "DISPUTED") {
         disputed.push({ name: opp.displayName, status: "" });
       } else if (p.status === "PENDING") {
-        if (p.reporterId === me.id) {
+        if (p.gamesWonA === 0 && p.gamesWonB === 0) {
+          // Pre-created, not played yet → still on your to-play list.
+          remaining.push({ name: opp.displayName, status: "", tz: opp.timezone });
+        } else if (p.reporterId === me.id) {
           const myGames = p.playerAId === me.id ? p.gamesWonA : p.gamesWonB;
           const oppGames = p.playerAId === me.id ? p.gamesWonB : p.gamesWonA;
           youReported.push({ name: opp.displayName, status: `${myGames}-${oppGames} (you reported)` });

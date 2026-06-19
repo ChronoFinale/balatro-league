@@ -10,7 +10,7 @@ import { applyMmrLadder, fillMissingMmr, markMatchesSettled, recomputeMmr, setLi
 
 export const dynamic = "force-dynamic";
 
-// Secret-MMR onboarding screen. Seed everyone's hidden MMR from BMP (×1.5),
+// Hidden-MMR onboarding screen. Seed everyone's hidden MMR from BMP (×1.5),
 // hand-tweak the ones the scrape gets wrong, save. This is the source of truth
 // the placement + schedule previews read from.
 export default async function MmrAdminPage() {
@@ -47,7 +47,7 @@ export default async function MmrAdminPage() {
       <AdminNav activePath="/admin/mmr" />
       <main>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <h2 style={{ margin: 0 }}>Secret MMR</h2>
+          <h2 style={{ margin: 0 }}>Hidden MMR</h2>
           <span className="pill" style={{ background: "rgba(118,199,255,0.2)", color: "#76c7ff" }}>
             {set} set · {unset} unset
           </span>

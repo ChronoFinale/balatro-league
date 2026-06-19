@@ -151,8 +151,8 @@ async function renderAllDivisions(
         include: {
           members: { include: { player: true } },
           matches: {
-            where: { status: "CONFIRMED", format: "LEAGUE_BO2" },
-            select: { playerAId: true, playerBId: true, gamesWonA: true, gamesWonB: true },
+            where: { format: "LEAGUE_BO2" },
+            select: { playerAId: true, playerBId: true, gamesWonA: true, gamesWonB: true, status: true },
           },
         },
       },
@@ -180,15 +180,20 @@ async function renderAllDivisions(
       const droppedIds = new Set(
         div.members.filter((m) => m.status === "DROPPED").map((m) => m.playerId),
       );
+      const confirmed = div.matches.filter((m) => m.status === "CONFIRMED");
       const rows = computeStandings(
         div.members.map((m) => m.player),
-        div.matches,
+        confirmed,
       ).map((r) => ({ ...r, dropped: droppedIds.has(r.player.id) }));
-      // Compact progress bar: matches played vs expected. The division is a
-      // full round-robin, so expected = C(N,2) over ACTIVE members.
+      // Compact progress bar: matches played vs expected. If a schedule was
+      // locked (pre-created matches exist), expected = the assigned count;
+      // otherwise (legacy on-demand) it's a full round-robin = C(N,2).
       const activeCount = div.members.filter((m) => m.status === "ACTIVE").length;
-      const expectedMatches = (activeCount * (activeCount - 1)) / 2;
-      const playedMatches = div.matches.length;
+      // Pre-created schedule = a 0–0 PENDING match exists (never reported). If so,
+      // expected = the assigned count; otherwise on-demand round-robin = C(N,2).
+      const locked = div.matches.some((m) => m.status === "PENDING" && m.gamesWonA === 0 && m.gamesWonB === 0);
+      const expectedMatches = locked ? div.matches.length : (activeCount * (activeCount - 1)) / 2;
+      const playedMatches = confirmed.length;
       const barWidth = 12;
       const pct = expectedMatches === 0 ? 0 : playedMatches / expectedMatches;
       const filled = Math.round(pct * barWidth);

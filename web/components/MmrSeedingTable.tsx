@@ -1,11 +1,11 @@
-// Read-only readout of each signup's stored secret MMR (set on /admin/mmr).
+// Read-only readout of each signup's stored hidden MMR (set on /admin/mmr).
 // No longer computes anything — the MMR is real now; this just shows it sorted,
 // with BMP peak alongside and a nudge if any are unset.
 
 export interface SeedPlayer {
   discordId: string;
   displayName: string;
-  hiddenMmr: number | null; // the secret league MMR
+  hiddenMmr: number | null; // the hidden league MMR
   mmr: number | null;       // BMP ranked MMR (reference)
 }
 
@@ -20,7 +20,7 @@ export function MmrSeedingTable({ players }: { players: SeedPlayer[] }) {
   return (
     <div className="card">
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <strong>Secret MMR</strong>
+        <strong>Hidden MMR</strong>
         <span className="muted" style={{ fontSize: 12 }}>
           stored per player · set on <a href="/admin/mmr">/admin/mmr</a>
         </span>
@@ -36,7 +36,7 @@ export function MmrSeedingTable({ players }: { players: SeedPlayer[] }) {
           <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
             <th style={{ padding: "4px 8px", width: 40 }}>#</th>
             <th style={{ padding: "4px 8px" }}>Player</th>
-            <th style={{ padding: "4px 8px", textAlign: "right" }}>Secret MMR</th>
+            <th style={{ padding: "4px 8px", textAlign: "right" }}>Hidden MMR</th>
             <th style={{ padding: "4px 8px", textAlign: "right" }} className="muted">BMP MMR</th>
           </tr>
         </thead>

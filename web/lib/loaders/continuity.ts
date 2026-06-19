@@ -5,7 +5,7 @@ import "server-only";
 // count), not the current season's shape. Each returner's current division maps
 // onto the ladder (promotion/relegation applied), rookies slot in by
 // greatest-lower-bound MMR, divisions overflow-balance to ~ceil(total/#divs), and
-// the floor protects returners from being dropped. One MMR scale (stored secret
+// the floor protects returners from being dropped. One MMR scale (stored hidden
 // MMR else BMP peak ×1.5). Pure projection; nothing is written.
 
 import type { Player } from "@prisma/client";
@@ -129,7 +129,7 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
     if (cand > prev) peakByDiscord.set(s.discordId, cand);
   }
 
-  // One consistent MMR scale: stored secret MMR, else BMP peak ×1.5.
+  // One consistent MMR scale: stored hidden MMR, else BMP peak ×1.5.
   // Stored MMR, else BMP peak ×1.5, else the base seed (BMP base 200 × 1.5 = 300).
   const mmrOf = (discordId: string) => {
     const stored = playerByDiscord.get(discordId)?.hiddenMmr;

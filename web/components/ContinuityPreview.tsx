@@ -2,7 +2,7 @@
 
 // The "send to Owen" view: next season projected from the current one, with all
 // the signal visible — each player's movement (↑ promoted / ↓ relegated / held /
-// NEW), where they came from, last-season standing, BMP vs internal MMR; and an
+// NEW), where they came from, last-season standing, BMP vs hidden MMR; and an
 // optional schedule view (round-robin at the top, 4 opponents below + SoS).
 // Returners are locked to their finish; only rookies fill gaps; Legendary is a
 // fixed 6, round-robin.
@@ -82,7 +82,7 @@ export function ContinuityPreview({
           Returners hold their finish division (with promotion ↑ / relegation ↓); only newcomers fill gaps,
           by MMR. <strong>Finishers are never shuffled by size-balancing.</strong> Top division is a fixed 6,
           round-robin. Each row shows movement, last-season standing, <strong>BMP</strong> (balatromp ranked)
-          and our <strong>internal MMR</strong> (right). To hand-move anyone, build it and drag on the season
+          and our <strong>hidden MMR</strong> (right). To hand-move anyone, build it and drag on the season
           page. Nothing here is saved.
         </p>
       </div>
@@ -143,7 +143,7 @@ export function ContinuityPreview({
                   <span className="muted" style={{ fontSize: 11, fontVariantNumeric: "tabular-nums", minWidth: 64, textAlign: "right" }} title="BMP ranked MMR">
                     {m.bmp != null ? `BMP ${m.bmp}` : "BMP —"}
                   </span>
-                  <span style={{ fontSize: 12, fontVariantNumeric: "tabular-nums", minWidth: 48, textAlign: "right", fontWeight: 600 }} title="Internal (secret) MMR">
+                  <span style={{ fontSize: 12, fontVariantNumeric: "tabular-nums", minWidth: 48, textAlign: "right", fontWeight: 600 }} title="Hidden MMR">
                     {m.mmr}
                   </span>
                 </div>

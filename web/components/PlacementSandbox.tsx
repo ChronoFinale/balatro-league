@@ -16,7 +16,7 @@ export interface SandboxPlayer {
   displayName: string;
   rating: number | null; // legacy league rank (1 = strongest); null = unrated
   mmr: number | null;     // BMP ranked MMR
-  hiddenMmr: number | null; // the secret league MMR (BMP ×1.5 scale); null = unset
+  hiddenMmr: number | null; // the hidden league MMR (BMP ×1.5 scale); null = unset
 }
 
 export function PlacementSandbox({
@@ -36,7 +36,7 @@ export function PlacementSandbox({
 
   const lookup = useMemo(() => new Map(players.map((p) => [p.discordId, p])), [players]);
 
-  // Place by the stored secret MMR: rank players by hiddenMmr desc (highest =
+  // Place by the stored hidden MMR: rank players by hiddenMmr desc (highest =
   // top division), unset → last. planByRating sorts by this rank ascending.
   const ranked = useMemo(() => {
     const ordered = [...players].sort((a, b) => (b.hiddenMmr ?? -Infinity) - (a.hiddenMmr ?? -Infinity));
@@ -50,7 +50,7 @@ export function PlacementSandbox({
     }));
   }, [players]);
 
-  // The schedule generator uses the real secret MMR directly.
+  // The schedule generator uses the real hidden MMR directly.
   const seedMmr = useMemo(() => {
     const m = new Map<string, number>();
     for (const p of players) m.set(p.discordId, p.hiddenMmr ?? 0);
@@ -156,7 +156,7 @@ export function PlacementSandbox({
           {projection.placed} players · {projection.totalDivs} divisions
           {unsetMmr > 0 && (
             <span style={{ color: "#f1c40f" }}>
-              {" "}· ⚠ {unsetMmr} with no secret MMR — set them on <a href="/admin/mmr">/admin/mmr</a> for an accurate preview
+              {" "}· ⚠ {unsetMmr} with no hidden MMR — set them on <a href="/admin/mmr">/admin/mmr</a> for an accurate preview
             </span>
           )}
         </div>
@@ -249,7 +249,7 @@ export function PlacementSandbox({
                           <span
                             className="muted"
                             style={{ fontSize: 11, fontVariantNumeric: "tabular-nums", color: p?.hiddenMmr == null ? "#f1c40f" : undefined }}
-                            title="Secret MMR"
+                            title="Hidden MMR"
                           >
                             {p?.hiddenMmr == null ? "no MMR" : p.hiddenMmr}
                           </span>

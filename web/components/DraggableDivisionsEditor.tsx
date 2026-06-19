@@ -36,7 +36,7 @@ export interface EditorMember {
   // component renders muted placeholders for nulls rather than
   // omitting the chip entirely, so column widths stay stable.
   leagueRating: number | null;
-  hiddenMmr: number | null; // the secret league MMR — unchanged by moves
+  hiddenMmr: number | null; // the hidden league MMR — unchanged by moves
   bmpMmr: number | null;
   bmpPeak: number | null; // all-time peak BMP MMR
   bmpPeakSeason: string | null; // BMP season of that peak

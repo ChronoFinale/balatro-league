@@ -1008,11 +1008,17 @@ async function bootstrapDivision({ divisionId, guildId }: BootstrapDivisionJob):
     const memberList = div.members
       .map((m, i) => `${i + 1}. <@${m.player.discordId}>`)
       .join("\n");
-    // Each player plays (N-1) matches — one against every other member.
-    // Total matches in the division is N*(N-1)/2 for context.
-    const matchesPerPlayer = div.members.length - 1;
-    const totalMatchesInDivision = (div.members.length * (div.members.length - 1)) / 2;
-    const playBullet = `• Play **every other person** in this list once — best-of-2 (**${matchesPerPlayer} matches per player**, ${totalMatchesInDivision} total in this division).`;
+    // Format-aware: a pre-created schedule that ISN'T a full round-robin means
+    // each player has an ASSIGNED subset of opponents (the graph). A full
+    // round-robin (top divisions) or no locked schedule (legacy on-demand) =
+    // play everyone.
+    const N = div.members.length;
+    const rrTotal = (N * (N - 1)) / 2;
+    const lockedCount = await prisma.match.count({ where: { divisionId: div.id, format: "LEAGUE_BO2" } });
+    const assignedSubset = lockedCount > 0 && lockedCount < rrTotal;
+    const playBullet = assignedSubset
+      ? `• Play **your assigned opponents** (best-of-2 each) — run \`/standings\` to see exactly who you play.`
+      : `• Round-robin: play **every other person** in this list once — best-of-2 (**${N - 1} matches each**, ${rrTotal} total in this division).`;
     const welcome = [
       `# 🃏 Welcome to ${div.name}`,
       `_${seasonLabel} · ${div.name} division_`,
