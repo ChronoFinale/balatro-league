@@ -2,11 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { loadSignupMmrOverview } from "@/lib/loaders/admin";
+import { prisma } from "@/lib/prisma";
 import { SiteNav } from "@/components/SiteNav";
 import { AdminNav } from "@/components/AdminNav";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { PlayerSearch } from "@/components/PlayerSearch";
 import { SignupMmrTable } from "@/components/SignupMmrTable";
-import { refreshSignupMmrs } from "./actions";
+import { refreshSignupMmrs, addSignupToRound } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -15,13 +18,17 @@ export default async function SignupMmrPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ refreshing?: string }>;
+  searchParams: Promise<{ refreshing?: string; err?: string }>;
 }) {
   await requireAdmin();
   const { id } = await params;
-  const { refreshing } = await searchParams;
+  const { refreshing, err } = await searchParams;
   const data = await loadSignupMmrOverview(id);
   if (!data) notFound();
+  const allPlayers = await prisma.player.findMany({
+    select: { id: true, displayName: true, discordId: true, username: true },
+    orderBy: { displayName: "asc" },
+  });
 
   const { round, rows, withData, withoutData, min, max, median, avg, byTier, bmpCurrentSeason } = data;
   const maxTierCount = Math.max(1, ...byTier.map((t) => t.count));
@@ -54,6 +61,26 @@ export default async function SignupMmrPage({
             seconds) — refresh this page in a minute to see updated numbers.
           </div>
         )}
+
+        {/* Add a sign-up directly — by Discord ID or an existing player. */}
+        <div className="card" style={{ display: "grid", gap: 8 }}>
+          <strong>➕ Add a sign-up</strong>
+          {err && <span style={{ color: "#e74c3c", fontSize: 12 }}>{err}</span>}
+          <form action={addSignupToRound} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <input type="hidden" name="roundId" value={round.id} />
+            <Input name="discordId" placeholder="Discord ID (17–20 digits)" pattern="\d{17,20}" style={{ flex: "1 1 200px" }} />
+            <Input name="displayName" placeholder="Display name (optional)" style={{ flex: "1 1 160px" }} />
+            <Button type="submit" variant="secondary" size="sm">Add by Discord ID</Button>
+          </form>
+          <form action={addSignupToRound} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <input type="hidden" name="roundId" value={round.id} />
+            <PlayerSearch players={allPlayers} name="playerId" placeholder="…or add an existing player by name" />
+            <Button type="submit" variant="secondary" size="sm">Add player</Button>
+          </form>
+          <span className="muted" style={{ fontSize: 11 }}>
+            Creates a real sign-up (counts toward the roster). The draft auto-absorbs them when you next open the arranger.
+          </span>
+        </div>
 
         {/* Summary */}
         <div className="grid grid-3" style={{ marginTop: 12 }}>

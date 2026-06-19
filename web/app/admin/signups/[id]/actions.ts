@@ -1,9 +1,56 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 import { enqueueMmrSnapshot } from "@/lib/queue";
+import { resolveDiscordIdToDisplayName } from "@/lib/add-player";
+
+// Add a sign-up to a round straight from the round page — by Discord ID, or an
+// existing player picked by name. Either way it creates a Signup row (so they're
+// in the count + roster), and the draft auto-absorbs them next time it's opened.
+export async function addSignupToRound(formData: FormData) {
+  await requireAdmin();
+  const roundId = String(formData.get("roundId") ?? "");
+  if (!roundId) return;
+  const playerId = String(formData.get("playerId") ?? "").trim();
+  const discordIdRaw = String(formData.get("discordId") ?? "").trim();
+  const displayNameOverride = String(formData.get("displayName") ?? "").trim();
+
+  const upsert = (discordId: string, displayName: string) =>
+    prisma.signup.upsert({
+      where: { roundId_discordId: { roundId, discordId } },
+      create: { roundId, discordId, displayName, withdrawn: false },
+      update: { displayName, withdrawn: false },
+    });
+
+  if (playerId) {
+    const player = await prisma.player.findUnique({ where: { id: playerId }, select: { discordId: true, displayName: true } });
+    if (!player) redirect(`/admin/signups/${roundId}?err=${encodeURIComponent("Player not found")}`);
+    await upsert(player!.discordId, player!.displayName);
+    revalidatePath(`/admin/signups/${roundId}`);
+    return;
+  }
+
+  if (discordIdRaw) {
+    const guildId = process.env.DISCORD_GUILD_ID;
+    let discordId = discordIdRaw;
+    let displayName = displayNameOverride;
+    if (guildId) {
+      const resolved = await resolveDiscordIdToDisplayName(guildId, discordIdRaw);
+      if ("error" in resolved) redirect(`/admin/signups/${roundId}?err=${encodeURIComponent(resolved.error)}`);
+      discordId = resolved.discordId;
+      if (!displayName) displayName = resolved.displayName;
+    }
+    if (!displayName) displayName = discordId;
+    await upsert(discordId, displayName);
+    revalidatePath(`/admin/signups/${roundId}`);
+    return;
+  }
+
+  redirect(`/admin/signups/${roundId}?err=${encodeURIComponent("Enter a Discord ID or pick a player")}`);
+}
 
 // Enqueue a fresh balatromp.com MMR fetch for every non-withdrawn signup in a
 // round, so the pre-season MMR distribution can be populated/refreshed even
