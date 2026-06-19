@@ -8,6 +8,20 @@ import { actorFromAdminUser } from "@/lib/audit";
 import { buildSeasonFromContinuity } from "@/lib/build-season-continuity";
 import { buildSignupPayload } from "@/lib/signup-discord";
 import { editChannelMessage } from "@/lib/discord";
+import { setPlacementRules } from "@/lib/placement-rules";
+
+// Save the promotion/relegation + structure rules from the preview page, then
+// reload so the projection reflects them.
+export async function savePlacementRules(formData: FormData) {
+  const { user } = await requireAdmin();
+  const roundId = String(formData.get("roundId") ?? "");
+  const topFixedSize = Math.max(0, Number.parseInt(String(formData.get("topFixedSize")), 10) || 0);
+  const roundRobinTopDivisions = Math.max(0, Number.parseInt(String(formData.get("roundRobinTopDivisions")), 10) || 0);
+  const tightenTopTiers = formData.get("tightenTopTiers") != null;
+  await setPlacementRules({ topFixedSize, roundRobinTopDivisions, tightenTopTiers }, user.discordId);
+  revalidatePath(`/admin/signups/${roundId}/preview`);
+  redirect(`/admin/signups/${roundId}/preview?basis=current`);
+}
 
 // Re-open a round that got wrongly closed (e.g. an old "built" draft). Flips it
 // back to OPEN, clears closedAt, and re-renders the Discord signup message to the

@@ -74,6 +74,10 @@ export function buildOwenPlacement(
   // The top division (Legendary) is a fixed size — an elite round-robin of this
   // many. When set, overflow keeps division 0 at this cap instead of targetSize.
   topTarget?: number,
+  // When true (default), the boundaries Rare 1↔Rare 2 and Rare 2↔Rare 3 use an
+  // asymmetric 1-up / 2-down to tighten the top. When false they're symmetric
+  // (count-based like the lower boundaries).
+  tightenTopTiers = true,
 ): PlacementDivision[] {
   const n = divisions.length;
   const divs: PlacementDivision[] = divisions.map((d) => ({ tierName: d.tierName, name: d.name, members: [] }));
@@ -109,7 +113,9 @@ export function buildOwenPlacement(
   const boundaryK = (i: number): { up: number; down: number } => {
     const upper = groupOf[i]!;
     if (upper.tier === "Legendary") return { up: 1, down: 1 };
-    if (upper.tier === "Rare" && (upper.group === 1 || upper.group === 2)) return { up: 1, down: 2 };
+    if (tightenTopTiers && upper.tier === "Rare" && (upper.group === 1 || upper.group === 2)) {
+      return { up: 1, down: 2 };
+    }
     const k = counts[i]! >= 8 && counts[i + 1]! >= 8 ? 2 : 1;
     return { up: k, down: k };
   };

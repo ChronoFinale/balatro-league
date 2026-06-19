@@ -23,6 +23,7 @@ export function ContinuityPreview({
   basedOnSeason,
   roundId,
   onBuild,
+  roundRobinTop = 2,
 }: {
   divisions: ContinuityDivision[];
   returnerCount: number;
@@ -31,6 +32,7 @@ export function ContinuityPreview({
   roundId?: string;
   // Server action: commit this arrangement as a draft season (then drag-edit it).
   onBuild?: (formData: FormData) => void | Promise<void>;
+  roundRobinTop?: number; // how many top divisions are round-robin
 }) {
   const [showSchedules, setShowSchedules] = useState(false);
   const names = useMemo(() => divisions.map((d) => d.name), [divisions]);
@@ -51,16 +53,16 @@ export function ContinuityPreview({
       } | null = null;
       if (showSchedules && members.length >= 2) {
         const sp = members.map((m) => ({ id: m.discordId, mmr: m.mmr }));
-        // Legendary + Rare 1 (the top two) play a full round-robin; lower
-        // divisions use the balanced 4-opponent graph.
-        const degree = divIdx <= 1 ? members.length - 1 : 4;
+        // Top `roundRobinTop` divisions play a full round-robin; lower divisions
+        // use the balanced 4-opponent graph.
+        const degree = divIdx < roundRobinTop ? members.length - 1 : 4;
         const r = generateSchedule(sp, { degree, seed: 1 });
         schedule = { opponents: r.opponents, sos: r.sos, summary: summariseSchedule(r, sp, degree) };
       }
       const nameOf = new Map(members.map((m) => [m.discordId, m.displayName]));
       return { name: d.name, divIdx, members, backCount, newCount, avgMmr, schedule, nameOf };
     });
-  }, [divisions, showSchedules]);
+  }, [divisions, showSchedules, roundRobinTop]);
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -92,10 +94,10 @@ export function ContinuityPreview({
             {d.name}{" "}
             <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>
               — {d.members.length} players ({d.backCount} back · {d.newCount} new) · avg MMR {d.avgMmr}
-              {d.divIdx <= 1 ? " · round-robin" : ""}
+              {d.divIdx < roundRobinTop ? " · round-robin" : ""}
               {d.schedule ? ` · SoS ${d.schedule.summary.minSos}–${d.schedule.summary.maxSos} (spread ${d.schedule.summary.spread})` : ""}
             </span>
-            {d.divIdx > 1 && d.members.length < 5 && (
+            {d.divIdx >= roundRobinTop && d.members.length < 5 && (
               <span style={{ fontWeight: 400, marginLeft: 8, color: "#f1c40f", fontSize: 12 }}>
                 ⚠ thin (&lt;5)
               </span>

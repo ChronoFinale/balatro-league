@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { formatSeasonLabel, formatDivisionName } from "@/lib/format-season";
 import { owenLadder } from "@/lib/season-plan";
 import { computeStandings } from "@/lib/standings";
+import { getPlacementRules } from "@/lib/placement-rules";
 import {
   buildOwenPlacement,
   type ReturnerInput,
@@ -167,11 +168,13 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
     }
   }
 
-  // Legendary is a fixed top of 6 (elite round-robin); the rest split evenly.
-  const TOP_TARGET = 6;
+  // Configurable rules (top fixed size, tighten-top-tiers); rest split evenly.
+  const rules = await getPlacementRules();
+  const topTarget = rules.topFixedSize > 0 ? rules.topFixedSize : undefined;
+  const reserved = topTarget ?? 0;
   const restDivs = Math.max(1, owenDivs.length - 1);
-  const targetSize = Math.max(1, Math.ceil(Math.max(0, round.signups.length - TOP_TARGET) / restDivs));
-  const placed = buildOwenPlacement(owenDivs, returners, rookies, targetSize, TOP_TARGET);
+  const targetSize = Math.max(1, Math.ceil(Math.max(0, round.signups.length - reserved) / restDivs));
+  const placed = buildOwenPlacement(owenDivs, returners, rookies, targetSize, topTarget, rules.tightenTopTiers);
 
   return {
     divisions: placed,

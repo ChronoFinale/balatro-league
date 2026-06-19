@@ -10,8 +10,10 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { generateSchedule } from "@/lib/schedule";
+import { getPlacementRules } from "@/lib/placement-rules";
 
 export async function lockDivisionSchedules(seasonId: string): Promise<{ created: number; divisions: number }> {
+  const rules = await getPlacementRules();
   const season = await prisma.season.findUnique({
     where: { id: seasonId },
     include: {
@@ -43,9 +45,9 @@ export async function lockDivisionSchedules(seasonId: string): Promise<{ created
     const avg = seeded.length ? Math.round(seeded.reduce((a, b) => a + b, 0) / seeded.length) : 1000;
     const sp = members.map((m) => ({ id: m.id, mmr: m.hiddenMmr ?? avg }));
 
-    // Legendary (0) + Rare 1 (1) play a full round-robin; everyone else gets a
-    // balanced 4-opponent graph (or round-robin if the division is ≤ 5).
-    const degree = idx <= 1 ? members.length - 1 : 4;
+    // Top N divisions play a full round-robin; everyone else gets a balanced
+    // 4-opponent graph (or round-robin if the division is ≤ 5).
+    const degree = idx < rules.roundRobinTopDivisions ? members.length - 1 : 4;
     const { opponents } = generateSchedule(sp, { degree, seed: 1 });
 
     // Dedupe to canonical pairs (A.id < B.id, matching the Match convention).

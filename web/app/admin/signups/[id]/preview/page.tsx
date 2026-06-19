@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { loadBuildSeasonPage } from "@/lib/loaders/admin";
 import { SiteNav } from "@/components/SiteNav";
 import { AdminNav } from "@/components/AdminNav";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { PlacementSandbox, type SandboxPlayer } from "@/components/PlacementSandbox";
 import { MmrSeedingTable } from "@/components/MmrSeedingTable";
 import { ContinuityPreview } from "@/components/ContinuityPreview";
@@ -13,7 +15,8 @@ import { DraftArranger } from "@/components/DraftArranger";
 import { owenLadder } from "@/lib/season-plan";
 import { loadContinuityPlacement } from "@/lib/loaders/continuity";
 import { absorbSignupsIntoDraft } from "@/lib/build-season-continuity";
-import { buildContinuitySeason, reopenSignupRound } from "./actions";
+import { getPlacementRules } from "@/lib/placement-rules";
+import { buildContinuitySeason, reopenSignupRound, savePlacementRules } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +41,8 @@ export default async function PlacementPreviewPage({
     select: { id: true, name: true, resultingSeasonId: true, status: true },
   });
   if (!round) notFound();
+
+  const rules = await getPlacementRules();
 
   // Resolve the round's resulting season: a DRAFT we can edit, or LIVE/ended.
   let draftSeasonId: string | null = null;
@@ -99,6 +104,7 @@ export default async function PlacementPreviewPage({
             basedOnSeason={continuity.basedOnSeason}
             roundId={round.id}
             onBuild={buildContinuitySeason}
+            roundRobinTop={rules.roundRobinTopDivisions}
           />
         </>
       );
@@ -198,6 +204,37 @@ export default async function PlacementPreviewPage({
             </>
           )}
         </p>
+
+        {mode === "current" && (
+          <details className="card" style={{ padding: 12 }}>
+            <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 13 }}>
+              ⚙ Promotion &amp; relegation rules
+              <span className="muted" style={{ fontWeight: 400, marginLeft: 8, fontSize: 12 }}>
+                top {rules.topFixedSize || "—"} · {rules.roundRobinTopDivisions} round-robin · {rules.tightenTopTiers ? "tightened top" : "symmetric top"}
+              </span>
+            </summary>
+            <form action={savePlacementRules} style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap", marginTop: 10 }}>
+              <input type="hidden" name="roundId" value={round.id} />
+              <label style={{ fontSize: 12, display: "grid", gap: 2 }} className="muted">
+                Top division fixed size
+                <Input type="number" name="topFixedSize" defaultValue={rules.topFixedSize} min={0} max={50} style={{ width: 80 }} />
+              </label>
+              <label style={{ fontSize: 12, display: "grid", gap: 2 }} className="muted">
+                Round-robin top divisions
+                <Input type="number" name="roundRobinTopDivisions" defaultValue={rules.roundRobinTopDivisions} min={0} max={10} style={{ width: 80 }} />
+              </label>
+              <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                <input type="checkbox" name="tightenTopTiers" defaultChecked={rules.tightenTopTiers} />
+                Tighten top tiers (1 up / 2 down on Rare 1↔2, 2↔3)
+              </label>
+              <Button type="submit" variant="secondary" size="sm">Save rules</Button>
+            </form>
+            <p className="muted" style={{ fontSize: 11, margin: "8px 0 0" }}>
+              Saved league-wide. The projection above + the next build + the schedule lock at activation all use these.
+              Lower boundaries always swap 2 when both divisions have ≥8, else 1.
+            </p>
+          </details>
+        )}
 
         {body}
       </main>
