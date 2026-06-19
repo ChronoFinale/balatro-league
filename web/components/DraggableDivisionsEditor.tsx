@@ -449,7 +449,7 @@ export function DraggableDivisionsEditor({
                           <span style={{ textAlign: "right" }} title="Hidden league MMR">MMR</span>
                           <span>Last season</span>
                           <span title="balatromp ranked MMR">BMP</span>
-                          <span style={{ textAlign: "right" }} title="Last-season finish — place in their division (e.g. 5th in Legendary)">Finish</span>
+                          <span style={{ textAlign: "right" }} title="Overall finish last season (1 = top across all divisions)">Finish</span>
                           <span>Move</span>
                         </div>
                         {divMembers.map((m, idx) => {
@@ -528,7 +528,7 @@ export function DraggableDivisionsEditor({
                               >
                                 {m.bmpMmr != null ? `${m.bmpMmr}${m.bmpTier ? ` ${m.bmpTier}` : ""}` : "—"}
                               </span>
-                              <span title="Last-season finish — place in their division" style={{ fontSize: 11, textAlign: "right", color: m.priorRank == null ? "#666" : "var(--text)" }}>
+                              <span title="Overall finish last season (across all divisions)" style={{ fontSize: 11, textAlign: "right", color: m.priorRank == null ? "#666" : "var(--text)" }}>
                                 {m.priorRank == null ? "—" : `#${m.priorRank}`}
                               </span>
                               <select

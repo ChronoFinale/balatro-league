@@ -57,11 +57,27 @@ export async function DraftArranger({ seasonId, roundId }: { seasonId: string; r
             idx: mm.fromIndex,
             name: mm.fromIndex != null ? cont.divisions[mm.fromIndex]?.name ?? null : null,
             record: mm.standing ? mm.standing.record : null, // W-L-D
-            rank: mm.standing?.rank ?? null, // finish place in their division (e.g. 5th in Legendary)
+            rank: null, // overall finish, filled below
             floor,
             floorName: floor != null ? cont.divisions[floor]?.name ?? null : null,
           });
         }
+      });
+      // OVERALL finish: order everyone who played by their finish division, then
+      // their place within it — so "#5" means 5th across the whole league, not
+      // 5th-in-division (benbop finished 5th in Legendary → ~5th overall).
+      const finishers: { id: string; fi: number; r: number }[] = [];
+      for (const dv of cont.divisions) {
+        for (const mm of dv.members) {
+          if (!mm.isRookie && mm.standing && mm.fromIndex != null) {
+            finishers.push({ id: mm.discordId, fi: mm.fromIndex, r: mm.standing.rank });
+          }
+        }
+      }
+      finishers.sort((a, b) => a.fi - b.fi || a.r - b.r);
+      finishers.forEach((f, i) => {
+        const e = priorByDiscord.get(f.id);
+        if (e) e.rank = i + 1;
       });
     }
   }
