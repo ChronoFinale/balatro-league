@@ -10,7 +10,11 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { elowen1v1 } from "@/lib/elowen";
 
-const DEFAULT_SEED = 1000; // no BMP data → start mid-pack, let games sort it out
+// No BMP data → start at the base (BMP starts everyone at 200; ×1.5 onto the
+// league scale = 300). A true unknown begins at the bottom, like a fresh account,
+// and climbs from results — or gets hand-set. Owen's call for newcomers the
+// scrape can't reach is to ballpark them manually.
+const DEFAULT_SEED = 300;
 
 export interface RecomputeRow {
   playerId: string;

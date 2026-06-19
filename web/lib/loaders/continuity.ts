@@ -109,11 +109,12 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
   const peakByDiscord = new Map(snaps.map((s) => [s.discordId, s.peakMmr ?? s.rankedMmr ?? 0]));
 
   // One consistent MMR scale: stored secret MMR, else BMP peak ×1.5.
+  // Stored MMR, else BMP peak ×1.5, else the base seed (BMP base 200 × 1.5 = 300).
   const mmrOf = (discordId: string) => {
     const stored = playerByDiscord.get(discordId)?.hiddenMmr;
     if (stored != null) return stored;
     const peak = peakByDiscord.get(discordId);
-    return peak ? Math.round(peak * 1.5) : 0;
+    return peak ? Math.round(peak * 1.5) : 300;
   };
 
   const returners: ReturnerInput[] = [];

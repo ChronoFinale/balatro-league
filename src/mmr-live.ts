@@ -9,7 +9,8 @@ import { prisma } from "./db.js";
 import { elowen1v1 } from "./elowen.js";
 import { getConfig, LeagueConfigKey } from "./league-config.js";
 
-const DEFAULT_SEED = 1000;
+// No BMP data → base seed (BMP base 200 × 1.5 onto the league scale = 300).
+const DEFAULT_SEED = 300;
 
 export async function applyPendingMatchMmr(): Promise<number> {
   // Off by default — MMR stays preview-only until live MMR is explicitly enabled.
