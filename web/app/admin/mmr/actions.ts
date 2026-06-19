@@ -33,10 +33,10 @@ export async function recomputeMmr() {
   revalidatePath("/admin/mmr");
 }
 
-// Apply the ladder order as evenly-spaced MMR: hiddenMmr = (N − index) × 10, so
-// #1 is the highest and everyone is exactly 10 apart — the clean cold-start
-// ladder. Order is a JSON array of playerIds, top → bottom. (Recompute is the
-// other path: results-based spread instead of even spacing.)
+// Apply the ladder order as evenly-spaced MMR: hiddenMmr = top − index × 10, so
+// #1 sits at `top` and everyone below is exactly 10 lower (2200, 2190, 2180, …).
+// The clean cold-start ladder. Order is a JSON array of playerIds, top → bottom;
+// `top` defaults to 2200. (Recompute is the other path: results-based spread.)
 export async function applyMmrLadder(formData: FormData) {
   await requireAdmin();
   let order: string[] = [];
@@ -47,10 +47,11 @@ export async function applyMmrLadder(formData: FormData) {
     return;
   }
   if (order.length === 0) return;
-  const n = order.length;
+  const topRaw = Number.parseInt(String(formData.get("top") ?? ""), 10);
+  const top = Number.isFinite(topRaw) ? topRaw : 2200;
   await prisma.$transaction(
     order.map((playerId, i) =>
-      prisma.player.update({ where: { id: playerId }, data: { hiddenMmr: (n - i) * 10 } }),
+      prisma.player.update({ where: { id: playerId }, data: { hiddenMmr: Math.max(0, top - i * 10) } }),
     ),
   );
   revalidatePath("/admin/mmr");

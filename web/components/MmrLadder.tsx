@@ -29,6 +29,7 @@ export function MmrLadder({
   applyOrder: (formData: FormData) => void | Promise<void>;
 }) {
   const [rows, setRows] = useState<MmrLadderRow[]>(initial);
+  const [top, setTop] = useState(2200); // #1's MMR; everyone below is −10 per slot
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
@@ -36,7 +37,7 @@ export function MmrLadder({
   const pendingStart = useRef<{ x: number; y: number } | null>(null);
 
   const N = rows.length;
-  const mmrFor = (index: number) => (N - index) * 10;
+  const mmrFor = (index: number) => Math.max(0, top - index * 10);
 
   const onRowPointerDown = (e: React.PointerEvent<HTMLTableRowElement>, idx: number) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -86,24 +87,27 @@ export function MmrLadder({
     pendingStart.current = null;
   };
 
-  const order = useMemo(() => JSON.stringify(rows.map((r) => r.playerId)), [rows]);
+  const order = useMemo(() => rows.map((r) => r.playerId), [rows]);
+  const stateKey = useMemo(() => JSON.stringify({ order, top }), [order, top]);
 
-  // Autosave on reorder (skip the initial render so we don't re-save the
-  // server's order back to itself). The explicit "Space everyone 10 apart"
-  // button below commits the even spacing even without a drag, for the first
-  // time you set it up.
+  // Autosave on reorder or top change (skip the initial render so we don't
+  // re-save the server's order back to itself). The explicit "Space everyone 10
+  // apart" button below commits the even spacing even without a drag, for the
+  // first time you set it up.
   const [isPending, startTransition] = useTransition();
-  const [savedHash, setSavedHash] = useState<string>(() => order);
+  const [savedHash, setSavedHash] = useState<string>(() => stateKey);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const commit = (nextOrder: string) => {
+  const commit = () => {
     setSaveError(null);
+    const key = JSON.stringify({ order, top });
     startTransition(async () => {
       try {
         const fd = new FormData();
-        fd.append("order", nextOrder);
+        fd.append("order", JSON.stringify(order));
+        fd.append("top", String(top));
         await applyOrder(fd);
-        setSavedHash(nextOrder);
+        setSavedHash(key);
       } catch (err) {
         setSaveError(err instanceof Error ? err.message : "save failed");
       }
@@ -111,10 +115,10 @@ export function MmrLadder({
   };
 
   useEffect(() => {
-    if (order === savedHash) return;
-    commit(order);
+    if (stateKey === savedHash) return;
+    commit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order]);
+  }, [stateKey]);
 
   if (rows.length === 0) return <p className="muted">No players yet.</p>;
 
@@ -122,17 +126,29 @@ export function MmrLadder({
     <div>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
         <strong>{N} players</strong>
+        <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }} className="muted">
+          Top MMR
+          <input
+            type="number"
+            value={top}
+            min={N * 10}
+            step={10}
+            onChange={(e) => setTop(Math.max(0, Number(e.target.value) || 0))}
+            style={{ width: 64, padding: "2px 4px", fontSize: 12 }}
+            title="The #1 player's MMR. Everyone below is 10 lower per slot."
+          />
+        </label>
         <button
           type="button"
           className="secondary"
           style={{ fontSize: 12, padding: "3px 10px" }}
-          onClick={() => commit(order)}
+          onClick={commit}
           disabled={isPending}
         >
           Space everyone 10 apart now
         </button>
         <span className="muted" style={{ fontSize: 11 }}>
-          Drag to reorder — #1 = {N * 10}, each step −10, #{N} = 10. Saves automatically.
+          Drag to reorder — #1 = {top}, each step −10, #{N} = {mmrFor(N - 1)}. Saves automatically.
         </span>
         <span className="muted" style={{ fontSize: 11, marginLeft: "auto" }}>
           {saveError ? <span style={{ color: "#e74c3c" }}>⚠ {saveError}</span> : isPending ? "Saving…" : "✓ Saved"}
