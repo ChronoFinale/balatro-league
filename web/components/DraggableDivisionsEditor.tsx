@@ -91,6 +91,10 @@ function bmpTierColor(tier: string | null): string {
   return "#888";
 }
 
+// Shared column template for the member header + rows so they line up.
+// handle | Player | MMR | Last season | BMP | Rank | Move
+const COLS = "14px minmax(96px, 1.5fr) 56px minmax(130px, 1.7fr) minmax(64px, 0.9fr) 36px 92px";
+
 export function DraggableDivisionsEditor({
   seasonId,
   tiers,
@@ -373,7 +377,7 @@ export function DraggableDivisionsEditor({
                 </button>
               </form>
             </h4>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(540px, 1fr))", gap: 8 }}>
               {tierDivs.map((d) => {
                 const divMembers = byDivision.get(d.id) ?? [];
                 const isDropTarget = hoverDivId === d.id && dragPlayerId !== null;
@@ -434,6 +438,19 @@ export function DraggableDivisionsEditor({
                       </div>
                     ) : (
                       <div style={{ marginTop: 4 }}>
+                        {/* Column headers */}
+                        <div
+                          className="muted"
+                          style={{ display: "grid", gridTemplateColumns: COLS, gap: 8, fontSize: 10, padding: "0 4px 3px", borderBottom: "1px solid var(--border)" }}
+                        >
+                          <span />
+                          <span>Player</span>
+                          <span style={{ textAlign: "right" }}>MMR</span>
+                          <span>Last season</span>
+                          <span>BMP</span>
+                          <span style={{ textAlign: "right" }}>Rank</span>
+                          <span>Move</span>
+                        </div>
                         {divMembers.map((m, idx) => {
                           const isDragged = dragPlayerId === m.playerId;
                           const showLineAbove = activeIndex === idx;
@@ -444,10 +461,11 @@ export function DraggableDivisionsEditor({
                               ref={(el) => { rowRefs.current.set(`${d.id}:${m.id}`, el); }}
                               onPointerDown={(e) => onRowPointerDown(e, m.playerId, d.id)}
                               style={{
-                                display: "flex",
+                                display: "grid",
+                                gridTemplateColumns: COLS,
                                 alignItems: "center",
-                                gap: 6,
-                                padding: "3px 4px",
+                                gap: 8,
+                                padding: "4px",
                                 cursor: isDragged ? "grabbing" : "grab",
                                 opacity: isDragged ? 0.4 : 1,
                                 touchAction: "none",
@@ -458,52 +476,62 @@ export function DraggableDivisionsEditor({
                               }}
                             >
                               <span style={{ color: "#888" }} title="Drag to move">⋮⋮</span>
-                              <MovementMark member={m} currentGlobalIndex={d.globalIndex} />
-                              <FloorWarn member={m} currentGlobalIndex={d.globalIndex} />
                               <Link
                                 href={`/profile/${m.playerId}`}
-                                style={{ color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: "1 1 auto", minWidth: 110 }}
+                                style={{ color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
                                 onPointerDown={(e) => e.stopPropagation()}
                               >
                                 {m.playerName}
                               </Link>
-                              <label
+                              <input
+                                type="number"
                                 title="Hidden league MMR — edit to set (moving a player never changes it)"
-                                style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 10, color: "#2ecc71" }}
+                                value={m.hiddenMmr ?? ""}
                                 onPointerDown={(e) => e.stopPropagation()}
+                                onChange={(e) =>
+                                  setMembers((prev) =>
+                                    prev.map((mm) =>
+                                      mm.playerId === m.playerId
+                                        ? { ...mm, hiddenMmr: e.target.value === "" ? null : Number(e.target.value) }
+                                        : mm,
+                                    ),
+                                  )
+                                }
+                                onBlur={(e) => saveMmr(m.playerId, e.target.value)}
+                                style={{
+                                  width: "100%",
+                                  fontSize: 11,
+                                  padding: "1px 3px",
+                                  textAlign: "right",
+                                  color: m.hiddenMmr == null ? "#f1c40f" : "#2ecc71",
+                                  fontWeight: 600,
+                                  background: "transparent",
+                                  border: `1px solid ${m.hiddenMmr == null ? "rgba(241,196,15,0.4)" : "rgba(46,204,113,0.3)"}`,
+                                  borderRadius: 3,
+                                }}
+                              />
+                              {/* Last season: movement + prior division + record + floor warning */}
+                              <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, overflow: "hidden" }}>
+                                <MovementMark member={m} currentGlobalIndex={d.globalIndex} />
+                                <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {m.priorDivisionName ?? ""}
+                                  {m.priorStanding && (
+                                    <span className="muted" style={{ marginLeft: 4 }}>{m.priorStanding}</span>
+                                  )}
+                                </span>
+                                <FloorWarn member={m} currentGlobalIndex={d.globalIndex} />
+                              </span>
+                              <span
+                                title={`BMP MMR${m.bmpTier ? ` (${m.bmpTier})` : ""}`}
+                                style={{ fontSize: 11, color: bmpTierColor(m.bmpTier), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
                               >
-                                MMR
-                                <input
-                                  type="number"
-                                  value={m.hiddenMmr ?? ""}
-                                  onPointerDown={(e) => e.stopPropagation()}
-                                  onChange={(e) =>
-                                    setMembers((prev) =>
-                                      prev.map((mm) =>
-                                        mm.playerId === m.playerId
-                                          ? { ...mm, hiddenMmr: e.target.value === "" ? null : Number(e.target.value) }
-                                          : mm,
-                                      ),
-                                    )
-                                  }
-                                  onBlur={(e) => saveMmr(m.playerId, e.target.value)}
-                                  style={{
-                                    width: 48,
-                                    fontSize: 11,
-                                    padding: "0 2px",
-                                    textAlign: "right",
-                                    color: "#2ecc71",
-                                    fontWeight: 600,
-                                    background: "transparent",
-                                    border: "1px solid rgba(46,204,113,0.3)",
-                                    borderRadius: 3,
-                                  }}
-                                />
-                              </label>
-                              <MemberChips member={m} />
+                                {m.bmpMmr != null ? `${m.bmpMmr}${m.bmpTier ? ` ${m.bmpTier}` : ""}` : "—"}
+                              </span>
+                              <span title="Current league rank" style={{ fontSize: 11, textAlign: "right", color: m.leagueRating == null ? "#666" : "var(--text)" }}>
+                                {m.leagueRating == null ? "—" : `#${m.leagueRating}`}
+                              </span>
                               <select
-                                className="dd-move"
-                                title="Or pick a target division from the dropdown (accessibility fallback)"
+                                title="Move to another division"
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onChange={async (e) => {
                                   const targetDivisionId = e.currentTarget.value;
@@ -527,9 +555,9 @@ export function DraggableDivisionsEditor({
                                   e.currentTarget.value = "";
                                 }}
                                 defaultValue=""
-                                style={{ marginLeft: 4, fontSize: 11, padding: "1px 4px", maxWidth: 72 }}
+                                style={{ width: "100%", fontSize: 11, padding: "1px 2px" }}
                               >
-                                <option value="" disabled>↪</option>
+                                <option value="" disabled>move…</option>
                                 {divisions.filter((other) => other.id !== d.id).map((other) => (
                                   <option key={other.id} value={other.id}>{other.name}</option>
                                 ))}
@@ -625,10 +653,6 @@ function AddPlayerControls({
   );
 }
 
-// Inline per-row context chips: league rank, BMP MMR + tier, and
-// (for returners only) prior-season finishing global rank. Compact
-// styling — 11px chips, neutral palette — so they fit on a 280px
-// division card without breaking the layout.
 // Live promotion/relegation marker: compares the player's CURRENT division
 // (where they are right now, updates as you drag) to their last-season division.
 // ↑ promoted (green), ↓ relegated (red), = same level, NEW (blue). Renders
@@ -676,52 +700,3 @@ function FloorWarn({ member, currentGlobalIndex }: { member: EditorMember; curre
   );
 }
 
-function MemberChips({ member }: { member: EditorMember }) {
-  const tierColor = bmpTierColor(member.bmpTier);
-  return (
-    <span
-      style={{
-        marginLeft: "auto",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-        fontSize: 11,
-        whiteSpace: "nowrap",
-      }}
-    >
-      <span
-        title="Current league rank (Player.rating)"
-        style={{
-          color: member.leagueRating == null ? "#666" : "var(--text)",
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
-        {member.leagueRating == null ? "L —" : `L#${member.leagueRating}`}
-      </span>
-      {member.bmpMmr != null && (
-        <span
-          title={`Latest BMP MMR${member.bmpTier ? ` (${member.bmpTier})` : ""}`}
-          style={{
-            color: tierColor,
-            fontVariantNumeric: "tabular-nums",
-            background: "rgba(255,255,255,0.04)",
-            padding: "0 4px",
-            borderRadius: 3,
-          }}
-        >
-          🃏 {member.bmpMmr}
-          {member.bmpTier ? <span style={{ marginLeft: 2, opacity: 0.85 }}>{member.bmpTier}</span> : null}
-        </span>
-      )}
-      {member.priorFinalGlobalRank != null && (
-        <span
-          className="muted"
-          title="Global rank when their last season ended"
-          style={{ fontSize: 10, fontVariantNumeric: "tabular-nums" }}
-        >
-          (was #{member.priorFinalGlobalRank})
-        </span>
-      )}
-    </span>
-  );
-}
