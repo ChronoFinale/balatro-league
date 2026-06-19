@@ -80,10 +80,16 @@ export async function recomputeMmrFromHistory(): Promise<RecomputeRow[]> {
 
 export async function applyRecomputedMmr(): Promise<{ updated: number }> {
   const rows = await recomputeMmrFromHistory();
-  await prisma.$transaction(
-    rows.map((r) =>
+  await prisma.$transaction([
+    ...rows.map((r) =>
       prisma.player.update({ where: { id: r.playerId }, data: { hiddenMmr: r.final, mmrVolatility: r.volatility } }),
     ),
-  );
+    // The full replay already accounted for every confirmed match — flag them so
+    // the live sweep doesn't apply them a second time.
+    prisma.match.updateMany({
+      where: { status: "CONFIRMED", format: "LEAGUE_BO2" },
+      data: { mmrApplied: true },
+    }),
+  ]);
   return { updated: rows.length };
 }

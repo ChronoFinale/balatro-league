@@ -34,6 +34,7 @@ import { formatSeasonLabel } from "./format-season.js";
 import { logDiscordError } from "./log-discord-error.js";
 import { enqueueBootstrapDivision, enqueueLeagueInfoRefresh } from "./queue.js";
 import { recordAudit, SYSTEM_ACTOR } from "./audit.js";
+import { applyPendingMatchMmr } from "./mmr-live.js";
 
 const SWEEP_INTERVAL_MS = 60 * 1000;
 const IDLE_CANCEL_HOURS = 24;
@@ -356,11 +357,17 @@ export function startMatchSweep(): void {
   sweepPausedSessions().catch((err) => console.warn("[match-sweep] boot paused sweep failed:", err));
   sweepLeakedThreads().catch((err) => console.warn("[match-sweep] boot leaked sweep failed:", err));
   sweepScheduledStarts().catch((err) => console.warn("[match-sweep] boot scheduled-start sweep failed:", err));
+  applyPendingMatchMmr()
+    .then((n) => n > 0 && console.log(`[match-sweep mmr] applied ${n} match(es)`))
+    .catch((err) => console.warn("[match-sweep] boot mmr apply failed:", err));
   setInterval(() => {
     sweepExpiredInvites().catch((err) => console.warn("[match-sweep] expiry tick failed:", err));
     sweepIdleSessions().catch((err) => console.warn("[match-sweep] idle tick failed:", err));
     sweepPausedSessions().catch((err) => console.warn("[match-sweep] paused tick failed:", err));
     sweepLeakedThreads().catch((err) => console.warn("[match-sweep] leaked tick failed:", err));
     sweepScheduledStarts().catch((err) => console.warn("[match-sweep] scheduled-start tick failed:", err));
+    applyPendingMatchMmr()
+      .then((n) => n > 0 && console.log(`[match-sweep mmr] applied ${n} match(es)`))
+      .catch((err) => console.warn("[match-sweep] mmr apply tick failed:", err));
   }, SWEEP_INTERVAL_MS);
 }

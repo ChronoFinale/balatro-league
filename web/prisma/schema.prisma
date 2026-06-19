@@ -679,6 +679,10 @@ model Match {
   recordedBy               String?
   notes                    String?
   createdAt                DateTime      @default(now())
+  // True once Elowen has applied this match's result to both players' hiddenMmr.
+  // The match-sweep picks up confirmed matches where this is false and nudges
+  // MMR, so every confirm path is covered with no double-apply.
+  mmrApplied               Boolean       @default(false)
 
   division Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   playerA  Player   @relation("MatchPlayerA", fields: [playerAId], references: [id])
