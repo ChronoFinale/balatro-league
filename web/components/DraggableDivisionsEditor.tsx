@@ -92,8 +92,8 @@ function bmpTierColor(tier: string | null): string {
 }
 
 // Shared column template for the member header + rows so they line up.
-// handle | Player | MMR | Last season | BMP | Move
-const COLS = "14px minmax(96px, 1.6fr) 58px minmax(140px, 1.8fr) minmax(70px, 1fr) 96px";
+// handle | Player | MMR | Last season | BMP | Rank | Move
+const COLS = "14px minmax(96px, 1.5fr) 56px minmax(135px, 1.7fr) minmax(68px, 0.9fr) 46px 92px";
 
 export function DraggableDivisionsEditor({
   seasonId,
@@ -448,6 +448,7 @@ export function DraggableDivisionsEditor({
                           <span style={{ textAlign: "right" }} title="Hidden league MMR">MMR</span>
                           <span>Last season</span>
                           <span title="balatromp ranked MMR">BMP</span>
+                          <span style={{ textAlign: "right" }} title="League rank (1 = top) — from last season's finish">Rank</span>
                           <span>Move</span>
                         </div>
                         {divMembers.map((m, idx) => {
@@ -525,6 +526,9 @@ export function DraggableDivisionsEditor({
                                 style={{ fontSize: 11, color: bmpTierColor(m.bmpTier), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
                               >
                                 {m.bmpMmr != null ? `${m.bmpMmr}${m.bmpTier ? ` ${m.bmpTier}` : ""}` : "—"}
+                              </span>
+                              <span title="League rank (1 = top) — from last season's finish" style={{ fontSize: 11, textAlign: "right", color: m.leagueRating == null ? "#666" : "var(--text)" }}>
+                                {m.leagueRating == null ? "—" : `#${m.leagueRating}`}
                               </span>
                               <select
                                 title="Move to another division"
