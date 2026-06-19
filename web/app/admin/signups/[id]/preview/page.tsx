@@ -210,7 +210,7 @@ export default async function PlacementPreviewPage({
             <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 13 }}>
               ⚙ Promotion &amp; relegation rules
               <span className="muted" style={{ fontWeight: 400, marginLeft: 8, fontSize: 12 }}>
-                top {rules.topFixedSize || "—"} · {rules.roundRobinTopDivisions} round-robin · {rules.tightenTopTiers ? "tightened top" : "symmetric top"}
+                top {rules.topFixedSize || "—"} · {rules.roundRobinTopDivisions} round-robin · swap {rules.baseSwap}/{rules.bigSwap}@≥{rules.swapThreshold} · {rules.tightenTopTiers ? "tightened top" : "symmetric top"}
               </span>
             </summary>
             <form action={savePlacementRules} style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap", marginTop: 10 }}>
@@ -223,6 +223,18 @@ export default async function PlacementPreviewPage({
                 Round-robin top divisions
                 <Input type="number" name="roundRobinTopDivisions" defaultValue={rules.roundRobinTopDivisions} min={0} max={10} style={{ width: 80 }} />
               </label>
+              <label style={{ fontSize: 12, display: "grid", gap: 2 }} className="muted">
+                Swap when both divisions ≥
+                <Input type="number" name="swapThreshold" defaultValue={rules.swapThreshold} min={1} max={50} style={{ width: 80 }} />
+              </label>
+              <label style={{ fontSize: 12, display: "grid", gap: 2 }} className="muted">
+                Normal swap
+                <Input type="number" name="baseSwap" defaultValue={rules.baseSwap} min={0} max={20} style={{ width: 70 }} />
+              </label>
+              <label style={{ fontSize: 12, display: "grid", gap: 2 }} className="muted">
+                Big swap (≥ threshold)
+                <Input type="number" name="bigSwap" defaultValue={rules.bigSwap} min={0} max={20} style={{ width: 70 }} />
+              </label>
               <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
                 <input type="checkbox" name="tightenTopTiers" defaultChecked={rules.tightenTopTiers} />
                 Tighten top tiers (1 up / 2 down on Rare 1↔2, 2↔3)
@@ -231,7 +243,8 @@ export default async function PlacementPreviewPage({
             </form>
             <p className="muted" style={{ fontSize: 11, margin: "8px 0 0" }}>
               Saved league-wide. The projection above + the next build + the schedule lock at activation all use these.
-              Lower boundaries always swap 2 when both divisions have ≥8, else 1.
+              Lower boundaries swap <strong>{rules.bigSwap}</strong> when both divisions have ≥{rules.swapThreshold} finishers,
+              else <strong>{rules.baseSwap}</strong>.
             </p>
           </details>
         )}

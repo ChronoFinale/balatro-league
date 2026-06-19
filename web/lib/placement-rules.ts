@@ -11,12 +11,18 @@ export interface PlacementRules {
   topFixedSize: number; // Legendary's hard cap (0 = no cap)
   roundRobinTopDivisions: number; // how many top divisions play a full round-robin
   tightenTopTiers: boolean; // Rare 1↔2 and Rare 2↔3 use 1-up/2-down (else symmetric)
+  swapThreshold: number; // count-based boundaries swap `bigSwap` when both divisions ≥ this
+  baseSwap: number; // normal swap count
+  bigSwap: number; // swap count when both divisions ≥ swapThreshold
 }
 
 export const DEFAULT_PLACEMENT_RULES: PlacementRules = {
   topFixedSize: 6,
   roundRobinTopDivisions: 2,
   tightenTopTiers: true,
+  swapThreshold: 8,
+  baseSwap: 1,
+  bigSwap: 2,
 };
 
 const KEY = "placement_rules";
@@ -30,6 +36,9 @@ export async function getPlacementRules(): Promise<PlacementRules> {
       topFixedSize: Number.isFinite(p.topFixedSize) ? Math.max(0, Math.floor(p.topFixedSize as number)) : DEFAULT_PLACEMENT_RULES.topFixedSize,
       roundRobinTopDivisions: Number.isFinite(p.roundRobinTopDivisions) ? Math.max(0, Math.floor(p.roundRobinTopDivisions as number)) : DEFAULT_PLACEMENT_RULES.roundRobinTopDivisions,
       tightenTopTiers: typeof p.tightenTopTiers === "boolean" ? p.tightenTopTiers : DEFAULT_PLACEMENT_RULES.tightenTopTiers,
+      swapThreshold: Number.isFinite(p.swapThreshold) ? Math.max(1, Math.floor(p.swapThreshold as number)) : DEFAULT_PLACEMENT_RULES.swapThreshold,
+      baseSwap: Number.isFinite(p.baseSwap) ? Math.max(0, Math.floor(p.baseSwap as number)) : DEFAULT_PLACEMENT_RULES.baseSwap,
+      bigSwap: Number.isFinite(p.bigSwap) ? Math.max(0, Math.floor(p.bigSwap as number)) : DEFAULT_PLACEMENT_RULES.bigSwap,
     };
   } catch {
     return DEFAULT_PLACEMENT_RULES;

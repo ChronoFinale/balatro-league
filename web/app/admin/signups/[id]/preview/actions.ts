@@ -15,10 +15,21 @@ import { setPlacementRules } from "@/lib/placement-rules";
 export async function savePlacementRules(formData: FormData) {
   const { user } = await requireAdmin();
   const roundId = String(formData.get("roundId") ?? "");
-  const topFixedSize = Math.max(0, Number.parseInt(String(formData.get("topFixedSize")), 10) || 0);
-  const roundRobinTopDivisions = Math.max(0, Number.parseInt(String(formData.get("roundRobinTopDivisions")), 10) || 0);
-  const tightenTopTiers = formData.get("tightenTopTiers") != null;
-  await setPlacementRules({ topFixedSize, roundRobinTopDivisions, tightenTopTiers }, user.discordId);
+  const num = (k: string, min: number, dflt: number) => {
+    const n = Number.parseInt(String(formData.get(k)), 10);
+    return Number.isFinite(n) ? Math.max(min, n) : dflt;
+  };
+  await setPlacementRules(
+    {
+      topFixedSize: num("topFixedSize", 0, 6),
+      roundRobinTopDivisions: num("roundRobinTopDivisions", 0, 2),
+      tightenTopTiers: formData.get("tightenTopTiers") != null,
+      swapThreshold: num("swapThreshold", 1, 8),
+      baseSwap: num("baseSwap", 0, 1),
+      bigSwap: num("bigSwap", 0, 2),
+    },
+    user.discordId,
+  );
   revalidatePath(`/admin/signups/${roundId}/preview`);
   redirect(`/admin/signups/${roundId}/preview?basis=current`);
 }

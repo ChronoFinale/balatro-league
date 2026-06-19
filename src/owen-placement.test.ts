@@ -62,6 +62,15 @@ describe("pairwise boundary promotion/relegation — count-based tiers", () => {
     expect(idsIn(out, 5)).toContain("r4-8"); // one relegated
     expect(idsIn(out, 5)).not.toContain("r4-7");
   });
+
+  it("honors a configured threshold + big swap (≥6 → swap 3)", () => {
+    const rare4 = Array.from({ length: 6 }, (_, i) => returner(`r4-${i + 1}`, 4, i + 1, 900));
+    const unc1 = Array.from({ length: 6 }, (_, i) => returner(`u1-${i + 1}`, 5, i + 1, 700));
+    const out = buildOwenPlacement(DIVS, [...rare4, ...unc1], [], 100, { swapThreshold: 6, bigSwap: 3 });
+    // Both 6 ≥ threshold 6 → 3 swap: Unc 1's top 3 promote, Rare 4's bottom 3 relegate.
+    expect(idsIn(out, 4)).toEqual(expect.arrayContaining(["u1-1", "u1-2", "u1-3"]));
+    expect(idsIn(out, 5)).toEqual(expect.arrayContaining(["r4-4", "r4-5", "r4-6"]));
+  });
 });
 
 describe("buildOwenPlacement — rookies", () => {
@@ -84,7 +93,7 @@ describe("buildOwenPlacement — fixed top division", () => {
     // 8 Legendary finishers, nothing in Rare 1 to backfill → after the 1-down
     // boundary it's 7, then the cap trims to 6.
     const leg = Array.from({ length: 8 }, (_, i) => returner(`leg${i + 1}`, 0, i + 1, 2000 - i * 10));
-    const out = buildOwenPlacement(DIVS, leg, [], 100, 6);
+    const out = buildOwenPlacement(DIVS, leg, [], 100, { topTarget: 6 });
     expect(out[0]!.members).toHaveLength(6);
   });
 });

@@ -174,7 +174,13 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
   const reserved = topTarget ?? 0;
   const restDivs = Math.max(1, owenDivs.length - 1);
   const targetSize = Math.max(1, Math.ceil(Math.max(0, round.signups.length - reserved) / restDivs));
-  const placed = buildOwenPlacement(owenDivs, returners, rookies, targetSize, topTarget, rules.tightenTopTiers);
+  const placed = buildOwenPlacement(owenDivs, returners, rookies, targetSize, {
+    topTarget,
+    tightenTopTiers: rules.tightenTopTiers,
+    swapThreshold: rules.swapThreshold,
+    baseSwap: rules.baseSwap,
+    bigSwap: rules.bigSwap,
+  });
 
   return {
     divisions: placed,
