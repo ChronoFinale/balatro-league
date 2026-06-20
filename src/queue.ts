@@ -949,10 +949,11 @@ export async function renderDivisionWelcome(
     `**Your division (${div.members.length} players):**`,
     memberList,
     ``,
-    `**What to do**`,
+    `**How it works**`,
     playBullet,
-    `• Schedule in this channel. DMs work too.`,
-    `• Use \`/start-match @opponent\` for the guided flow — you'll both be walked through banning and picking decks/stakes for each game. OR just play in Balatro on your own and use \`/report @opponent result:2-0|1-1|0-2\` to log it.`,
+    `• Run \`/start-match @opponent\` and you'll both be guided through everything — banning, picking the deck/stake, and recording each game. No manual reporting.`,
+    `• Each matchup is **2 games**. Bans are fresh each game — they **don't carry over to the next game**. (The winner's leftover lives are noted each game for possible future tiebreakers — nothing for you to do.)`,
+    `• Schedule here in the channel, or by DM.`,
     ``,
     `**Standings + your schedule:** <${webUrl(`divisions/${div.id}`)}>`,
     ``,
@@ -1044,12 +1045,12 @@ async function bootstrapDivision({ divisionId, guildId }: BootstrapDivisionJob):
     if (!channel) throw new Error(`createGuildTextChannel failed for division ${div.id}`);
     channelId = channel.id;
 
-    // 4) Welcome message — full onboarding for everyone in this division.
-    // Posted ping-free (postChannelMessage suppresses the @mentions): members
-    // already got the role, so they discover the channel via their sidebar, not a
-    // ping. Remember the message id so /league refresh-welcome can edit it later.
+    // 4) Welcome message — full onboarding for everyone in this division. Posted
+    // WITH a ping (pingUsers) so members get pulled into their channel at kickoff;
+    // roles are already assigned (step 2) so everyone can see it. Remember the
+    // message id so /league refresh-welcome can edit it later (ping-free).
     const welcome = await renderDivisionWelcome(div, seasonLabel);
-    welcomeMessageId = await postChannelMessage(channelId, welcome);
+    welcomeMessageId = await postChannelMessage(channelId, welcome, true);
   }
 
   await prisma.division.update({
@@ -1167,7 +1168,7 @@ async function queueSeasonOnboardingDms(seasonId: string): Promise<void> {
         `🎴 **Welcome to ${label}!**\n` +
         `You're in **${div.name}**.\n\n` +
         `**Your matchups this season:**\n${oppLine}\n\n` +
-        `Play each **2 games** — \`/start-match @opponent\` (guided) or \`/report @opponent result:2-0\`. ` +
+        `Play each **2 games** — just run \`/start-match @opponent\` and it guides you through it. ` +
         `Track your progress with \`/standings\`, and run \`/league\` anytime for how it all works. Good luck!`;
       await enqueueDm({ discordId: m.player.discordId, content }).catch((err) =>
         console.warn(`[season.onboard] enqueue DM failed for ${m.player.discordId}:`, err),

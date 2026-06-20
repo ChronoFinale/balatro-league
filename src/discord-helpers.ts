@@ -260,22 +260,38 @@ export async function createGuildTextChannel(
 export async function postChannelMessage(
   channelId: string,
   content: string,
+  // Default never pings — a stray @everyone / role mention (e.g. via a user-set
+  // display name) renders as inert text. Pass pingUsers=true to notify the USER
+  // @mentions in the content (and only users — never @everyone/here/roles), e.g.
+  // the division welcome at season kickoff.
+  pingUsers = false,
 ): Promise<string | null> {
   try {
     const channel = await getDiscordClient().channels.fetch(channelId);
     if (!channel || !channel.isTextBased() || !("send" in channel)) return null;
-    // Generic poster: never pings. A content field with a stray @everyone / role
-    // mention (e.g. injected via a user-settable display name) renders as inert
-    // text. The one message that intentionally pings — the dispute-thread opener
-    // in dispute-thread.ts — builds its own explicit allowlist at the call site.
     const msg = await channel.send({
       content,
-      allowedMentions: { parse: [] },
+      allowedMentions: { parse: pingUsers ? ["users"] : [] },
     });
     return msg.id;
   } catch (err) {
     console.warn(`[bot] postChannelMessage(${channelId}) failed:`, err);
     return null;
+  }
+}
+
+// Delete a message we posted (best-effort) — used when re-posting a fresh
+// (pinging) welcome to replace the old silent one.
+export async function deleteChannelMessage(channelId: string, messageId: string): Promise<boolean> {
+  try {
+    const channel = await getDiscordClient().channels.fetch(channelId);
+    if (!channel || !channel.isTextBased() || !("messages" in channel)) return false;
+    const msg = await channel.messages.fetch(messageId);
+    await msg.delete();
+    return true;
+  } catch (err) {
+    console.warn(`[bot] deleteChannelMessage(${channelId}/${messageId}) failed:`, err);
+    return false;
   }
 }
 

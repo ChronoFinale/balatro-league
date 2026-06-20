@@ -14,7 +14,7 @@ import {
 import { PLAYER_COMMANDS } from "./help.js";
 import { PermissionTier } from "@prisma/client";
 import { prisma } from "../db.js";
-import { PERM_PRESETS, editChannelMessage, postChannelMessage, findWelcomeMessageId } from "../discord-helpers.js";
+import { PERM_PRESETS, editChannelMessage, postChannelMessage, findWelcomeMessageId, deleteChannelMessage } from "../discord-helpers.js";
 import { webUrl, WEB_HOST } from "../web-url.js";
 import { clearConfig, getConfig, LeagueConfigKey, setConfig } from "../league-config.js";
 import { requireOwner } from "../permissions.js";
@@ -120,7 +120,12 @@ export const league: SlashCommand = {
     .addSubcommand((sub) =>
       sub
         .setName("refresh-welcome")
-        .setDescription("Re-render each division's welcome message in place (no re-post, no re-ping)."),
+        .setDescription("Re-render each division's welcome message. Edits in place (silent) unless you set ping.")
+        .addBooleanOption((opt) =>
+          opt
+            .setName("ping")
+            .setDescription("Re-post a fresh welcome that PINGS the division (use for kickoff). Default: silent edit."),
+        ),
     ),
 
   async execute(interaction: ChatInputCommandInteraction) {
@@ -145,6 +150,7 @@ export const league: SlashCommand = {
 // new post or a re-ping. Re-posts only if the original message is gone.
 async function refreshWelcome(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const ping = interaction.options.getBoolean("ping") ?? false;
   const season = await activePublicSeason();
   if (!season) {
     await interaction.editReply("No active season right now.");
@@ -167,28 +173,43 @@ async function refreshWelcome(interaction: ChatInputCommandInteraction) {
   for (const div of divisions) {
     if (!div.discordChannelId || div.members.length === 0) continue;
     const content = await renderDivisionWelcome(div, label);
-    // Target message: the stored id, or — for channels bootstrapped before we
-    // stored it — the bot's existing welcome post discovered in the channel.
-    let msgId = div.welcomeMessageId ?? (await findWelcomeMessageId(div.discordChannelId));
+    const existingId = div.welcomeMessageId ?? (await findWelcomeMessageId(div.discordChannelId));
+
+    if (ping) {
+      // Kickoff notification: delete the old (silent) welcome and post a fresh one
+      // that pings the division — names included. So everyone gets pulled in.
+      if (existingId) await deleteChannelMessage(div.discordChannelId, existingId);
+      const newId = await postChannelMessage(div.discordChannelId, content, true);
+      if (newId) {
+        await prisma.division.update({ where: { id: div.id }, data: { welcomeMessageId: newId } });
+        reposted++;
+      } else {
+        failed++;
+      }
+      continue;
+    }
+
+    // Default: edit the existing message in place — silent, no re-ping.
+    let msgId = existingId;
     const ok = msgId ? await editChannelMessage(div.discordChannelId, msgId, content) : false;
     if (ok) {
       edited++;
     } else {
-      // Nothing to edit (no message / it was deleted) → fresh ping-free post.
       msgId = await postChannelMessage(div.discordChannelId, content);
       if (msgId) reposted++;
       else { failed++; continue; }
     }
-    // Remember the id we used so future runs edit it directly.
     if (msgId !== div.welcomeMessageId) {
       await prisma.division.update({ where: { id: div.id }, data: { welcomeMessageId: msgId } });
     }
   }
   await interaction.editReply(
-    `🔄 Welcome messages refreshed — **${edited}** edited in place` +
-      (reposted ? `, **${reposted}** re-posted (no existing message found)` : "") +
-      (failed ? `, **${failed}** failed` : "") +
-      `. No pings sent.`,
+    ping
+      ? `📣 Re-posted **${reposted}** welcome message(s) and pinged each division.` + (failed ? ` **${failed}** failed.` : "")
+      : `🔄 Welcome messages refreshed — **${edited}** edited in place` +
+          (reposted ? `, **${reposted}** re-posted (no existing message found)` : "") +
+          (failed ? `, **${failed}** failed` : "") +
+          `. No pings sent.`,
   );
 }
 
@@ -645,8 +666,7 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       "• `/standings` — current division table",
       "• `/profile` — your match history & ranks",
       "• `/schedule` — matches you still need to play",
-      "• `/start-match @opponent` — bot walks you and your opponent through ban/pick for each game",
-      "• `/report @opponent result:2-0` — log a played match (auto-confirmed)",
+      "• `/start-match @opponent` — guided ban/pick for each game; the result is recorded automatically",
       "• `/help` — full command list",
       "",
       `**Website:** <${webUrl()}> — standings, profiles, signup, settings.`,
