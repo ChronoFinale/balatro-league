@@ -15,6 +15,7 @@ const PUBLIC_LINKS = [
   { href: "/players", label: "Players" },
   { href: "/stats", label: "Stats" },
   { href: "/traits", label: "Traits" },
+  { href: "/hall-of-fame", label: "Hall of Fame" },
   { href: "/seasons", label: "Past seasons" },
   { href: "/join", label: "Join" },
 ] as const;
