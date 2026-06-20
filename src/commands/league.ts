@@ -573,7 +573,7 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       "",
       "**How it works**",
       "• Each season splits players into tiers + divisions by rating.",
-      "• Inside a division you're given a set of opponents to play (best-of-2) — top divisions play everyone, the rest a balanced subset. `/standings` shows your matchups.",
+      "• Inside a division you're given a set of opponents to play (best-of-2) — top divisions play everyone, the rest a balanced subset. `/schedule` shows your matchups.",
       "• Top finishers promote up a tier; bottom finishers drop down.",
       "",
       "**Scoring**",

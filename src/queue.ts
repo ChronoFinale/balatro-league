@@ -1019,7 +1019,7 @@ async function bootstrapDivision({ divisionId, guildId }: BootstrapDivisionJob):
     const lockedCount = await prisma.match.count({ where: { divisionId: div.id, format: "LEAGUE_BO2" } });
     const assignedSubset = lockedCount > 0 && lockedCount < rrTotal;
     const playBullet = assignedSubset
-      ? `• Play **your assigned opponents** (best-of-2 each) — run \`/standings\` to see exactly who you play.`
+      ? `• Play **your assigned opponents** (best-of-2 each) — run \`/schedule\` to see exactly who you play.`
       : `• Round-robin: play **every other person** in this list once — best-of-2 (**${N - 1} matches each**, ${rrTotal} total in this division).`;
     const welcome = [
       `# 🃏 Welcome to ${div.name}`,
@@ -1104,7 +1104,7 @@ async function announceSeasonStartIfComplete(seasonId: string): Promise<void> {
   const client = tryGetDiscordClient();
   if (!client) return;
   // Ping-free: no more @everyone-go-play. The matchups went out as DMs.
-  const content = `🃏 **${formatSeasonLabel(season)}** is live! Check your **DMs** for your matchups, or run \`/standings\` anytime. Good luck.`;
+  const content = `🃏 **${formatSeasonLabel(season)}** is live! Check your **DMs** for your matchups, or run \`/schedule\` anytime. Good luck.`;
   try {
     const channel = await client.channels.fetch(channelId);
     if (channel && channel.isTextBased() && "send" in channel) {
@@ -1156,7 +1156,7 @@ async function queueSeasonOnboardingDms(seasonId: string): Promise<void> {
       const opps = oppsById.get(m.player.id) ?? [];
       const oppLine = opps.length
         ? opps.map((o) => `• ${o}`).join("\n")
-        : "_(your matchups will show with_ `/standings`_)_";
+        : "_(your matchups will show with_ `/schedule`_)_";
       const content =
         `🎴 **Welcome to ${label}!**\n` +
         `You're in **${div.name}**.\n\n` +
