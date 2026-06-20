@@ -6,7 +6,7 @@ import { loadMmrAdmin } from "@/lib/mmr-admin";
 import { prisma } from "@/lib/prisma";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { MmrLadder, type MmrLadderRow } from "@/components/MmrLadder";
-import { applyMmrLadder, fillMissingMmr, markMatchesSettled, recomputeMmr, setLiveMmr } from "./actions";
+import { applyMmrLadder, fillMissingMmr, markMatchesSettled, recomputeMmr, setLiveMmr, saveMmrs } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -110,6 +110,30 @@ export default async function MmrAdminPage() {
         <div className="card">
           <MmrLadder initial={ladderRows} applyOrder={applyMmrLadder} />
         </div>
+
+        <details className="card">
+          <summary style={{ cursor: "pointer" }}>
+            <strong>Set exact MMR per player</strong>{" "}
+            <span className="muted" style={{ fontSize: 12 }}>— type a number for each, blank = unset. Save applies all.</span>
+          </summary>
+          <form action={saveMmrs} style={{ marginTop: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "6px 16px" }}>
+              {ladderRows.map((r) => (
+                <label key={r.playerId} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.displayName}</span>
+                  <input
+                    type="number"
+                    name={`mmr:${r.playerId}`}
+                    defaultValue={r.hiddenMmr ?? ""}
+                    min={0}
+                    style={{ width: 72, padding: "3px 6px", borderRadius: 6, border: "1px solid var(--border, rgba(255,255,255,0.12))", background: "var(--surface-2, rgba(255,255,255,0.05))", color: "var(--text)" }}
+                  />
+                </label>
+              ))}
+            </div>
+            <Button type="submit" style={{ marginTop: 10 }}>Save all MMRs</Button>
+          </form>
+        </details>
       </main>
     </>
   );

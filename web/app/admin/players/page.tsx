@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { FormSelect } from "@/components/FormSelect";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { addFakePlayer, deletePlayer, dropPlayer, refreshActiveSeasonMmrs, reinstatePlayer, setPlayerDiscordId } from "./actions";
+import { addFakePlayer, deletePlayer, dropPlayer, movePlayer, refreshActiveSeasonMmrs, reinstatePlayer, setPlayerDiscordId } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -218,14 +218,26 @@ export default async function AdminPlayersPage({
                   </td>
                   <td>{p.rating ?? <span className="muted">unranked</span>}</td>
                   <td>
-                    {p.membership ? (
+                    {nav.divisionsInSelectedSeason.length > 0 ? (
+                      <form action={movePlayer} style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                        <input type="hidden" name="playerId" value={p.id} />
+                        <FormSelect
+                          name="divisionId"
+                          defaultValue={p.membership?.divisionId ?? ""}
+                          options={[
+                            { value: "", label: "— none —" },
+                            ...nav.divisionsInSelectedSeason.map((d) => ({ value: d.id, label: d.name })),
+                          ]}
+                        />
+                        <Button type="submit" variant="secondary" size="sm">Set</Button>
+                        {p.membership?.dropped && <Badge variant="destructive">DROPPED</Badge>}
+                      </form>
+                    ) : p.membership ? (
                       <>
                         <Link href={`/admin/players?season=${p.membership.seasonId}&division=${p.membership.divisionId}`} style={{ textDecoration: "none" }}>
                           <TierPill name={p.membership.divisionName} position={p.membership.tierPosition} />
                         </Link>
-                        {p.membership.dropped && (
-                          <Badge variant="destructive" className="ml-1.5">DROPPED</Badge>
-                        )}
+                        {p.membership.dropped && <Badge variant="destructive" className="ml-1.5">DROPPED</Badge>}
                       </>
                     ) : (
                       <span className="muted">—</span>
