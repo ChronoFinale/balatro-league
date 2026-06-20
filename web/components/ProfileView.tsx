@@ -241,7 +241,9 @@ export async function ProfileView({
             </div>
             {ownActiveDivision.reportableOpponents.length === 0 ? (
               <p className="muted" style={{ marginTop: 8, marginBottom: 0 }}>
-                You&apos;ve played everyone in your division.
+                {ownActiveDivision.scheduleLocked
+                  ? "You've played all your scheduled opponents. Your season is complete."
+                  : "You've played everyone in your division."}
               </p>
             ) : (
               <div style={{ marginTop: 8 }}>

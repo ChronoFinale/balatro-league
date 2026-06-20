@@ -53,6 +53,9 @@ export interface OwnActiveDivision {
   seasonId: string;
   seasonName: string;
   reportableOpponents: Array<{ playerId: string; displayName: string }>;
+  // True when this division runs a fixed/locked schedule (graph or pre-created
+  // round-robin) rather than legacy on-demand round-robin — drives copy.
+  scheduleLocked: boolean;
 }
 
 export interface ProfileExtras {
@@ -202,20 +205,29 @@ async function loadOwnActiveDivision(playerId: string): Promise<OwnActiveDivisio
   const myPairings = await prisma.match.findMany({
     where: {
       divisionId: div.id,
-      status: "CONFIRMED",
       format: "LEAGUE_BO2",
       OR: [{ playerAId: playerId }, { playerBId: playerId }],
     },
-    select: { playerAId: true, playerBId: true },
+    select: { playerAId: true, playerBId: true, status: true, gamesWonA: true, gamesWonB: true },
   });
-  const played = new Set<string>();
+  const played = new Set<string>(); // CONFIRMED
+  const assigned = new Set<string>(); // any status = on your schedule
   for (const p of myPairings) {
-    played.add(p.playerAId === playerId ? p.playerBId : p.playerAId);
+    const opp = p.playerAId === playerId ? p.playerBId : p.playerAId;
+    assigned.add(opp);
+    if (p.status === "CONFIRMED") played.add(opp);
   }
-  // Opponents = every other ACTIVE member of the division you haven't
-  // played yet (full round-robin).
+  // A locked schedule = a pre-created (0-0 PENDING) match exists. Then reportable
+  // = your ASSIGNED, not-yet-confirmed opponents; with no locked schedule (legacy
+  // on-demand round-robin) it's every other member you haven't played.
+  const scheduleLocked = myPairings.some((p) => p.status === "PENDING" && p.gamesWonA === 0 && p.gamesWonB === 0);
   const reportableOpponents = div.members
-    .filter((m) => m.playerId !== playerId && !played.has(m.playerId))
+    .filter(
+      (m) =>
+        m.playerId !== playerId &&
+        !played.has(m.playerId) &&
+        (!scheduleLocked || assigned.has(m.playerId)),
+    )
     .map((m) => ({ playerId: m.playerId, displayName: m.player.displayName }));
   return {
     divisionId: div.id,
@@ -223,6 +235,7 @@ async function loadOwnActiveDivision(playerId: string): Promise<OwnActiveDivisio
     seasonId: div.seasonId,
     seasonName: formatSeasonLabel(div.season),
     reportableOpponents,
+    scheduleLocked,
   };
 }
 
@@ -238,8 +251,8 @@ async function loadAdminRecordContext(playerId: string): Promise<AdminRecordCont
         include: {
           members: { where: { status: "ACTIVE" }, include: { player: true } },
           matches: {
-            where: { status: "CONFIRMED", format: "LEAGUE_BO2" },
-            select: { playerAId: true, playerBId: true, gamesWonA: true, gamesWonB: true },
+            where: { format: "LEAGUE_BO2" },
+            select: { playerAId: true, playerBId: true, gamesWonA: true, gamesWonB: true, status: true },
           },
         },
       },
@@ -248,19 +261,28 @@ async function loadAdminRecordContext(playerId: string): Promise<AdminRecordCont
   if (!membership) return null;
   const div = membership.division;
 
-  // This player's confirmed matches → "fix" pairs with a score/void summary.
   const myMatches = div.matches.filter((p) => p.playerAId === playerId || p.playerBId === playerId);
-  const playedOpponents = new Set(
-    myMatches.map((p) => (p.playerAId === playerId ? p.playerBId : p.playerAId)),
-  );
-  const played = myMatches.map((p) => ({
-    p1Id: p.playerAId,
-    p2Id: p.playerBId,
-    summary: p.gamesWonA === 0 && p.gamesWonB === 0 ? "0-0 void" : `${p.gamesWonA}-${p.gamesWonB}`,
-  }));
+  const oppOf = (p: (typeof myMatches)[number]) => (p.playerAId === playerId ? p.playerBId : p.playerAId);
+  // CONFIRMED matches → "fix" pairs with a score/void summary.
+  const playedOpponents = new Set(myMatches.filter((p) => p.status === "CONFIRMED").map(oppOf));
+  const assignedOpponents = new Set(myMatches.map(oppOf)); // any status = on the schedule
+  const scheduleLocked = myMatches.some((p) => p.status === "PENDING" && p.gamesWonA === 0 && p.gamesWonB === 0);
+  const played = myMatches
+    .filter((p) => p.status === "CONFIRMED")
+    .map((p) => ({
+      p1Id: p.playerAId,
+      p2Id: p.playerBId,
+      summary: p.gamesWonA === 0 && p.gamesWonB === 0 ? "0-0 void" : `${p.gamesWonA}-${p.gamesWonB}`,
+    }));
   // Unplayed matchups for this player → "resolve" pairs (this player first).
+  // With a locked schedule, only their assigned opponents; else full round-robin.
   const unplayed = div.members
-    .filter((m) => m.playerId !== playerId && !playedOpponents.has(m.playerId))
+    .filter(
+      (m) =>
+        m.playerId !== playerId &&
+        !playedOpponents.has(m.playerId) &&
+        (!scheduleLocked || assignedOpponents.has(m.playerId)),
+    )
     .map((m) => ({ p1Id: playerId, p2Id: m.playerId }));
   const members = div.members.map((m) => ({ playerId: m.playerId, displayName: m.player.displayName }));
   return { divisionId: div.id, divisionName: div.name, members, unplayed, played };

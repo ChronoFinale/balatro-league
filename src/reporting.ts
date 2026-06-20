@@ -71,11 +71,31 @@ export async function reportSet(input: ReportInput): Promise<ReportResult> {
       reason: `This match is already recorded (${existing.gamesWonA}-${existing.gamesWonB}). Ask an admin if it needs to change.`,
     };
   }
-  if (existing && existing.status === "PENDING") {
+  // A pre-created (locked-schedule) match is PENDING with no reporter yet — that's
+  // an UNPLAYED assigned matchup, not a pending report, so let the report below
+  // fill it in. A PENDING row WITH a reporter is a real report awaiting confirm.
+  if (existing && existing.status === "PENDING" && existing.reporterId) {
     return {
       ok: false,
       reason: "There's already a pending report for this match. The opponent needs to confirm or dispute it first.",
     };
+  }
+
+  // Schedule enforcement: when the division runs a locked schedule, the only valid
+  // matchups are the pre-created ones. No row for this pair means it isn't on the
+  // schedule — reject. With no locked schedule (legacy on-demand round-robin) any
+  // same-division pair is allowed.
+  if (!existing) {
+    const lockedSchedule = await prisma.match.findFirst({
+      where: { divisionId: division.id, format: "LEAGUE_BO2", status: "PENDING", gamesWonA: 0, gamesWonB: 0 },
+      select: { id: true },
+    });
+    if (lockedSchedule) {
+      return {
+        ok: false,
+        reason: "That opponent isn't on your schedule this season — you only play your assigned matchups.",
+      };
+    }
   }
 
   // PENDING by default — opponent confirms via the embed buttons in

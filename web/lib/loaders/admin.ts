@@ -433,16 +433,17 @@ export async function loadAdminPlayersDivisionView(
       tier: { select: { name: true, position: true } },
       members: { include: { player: true } },
       matches: {
-        where: { status: "CONFIRMED", format: "LEAGUE_BO2" },
-        select: { playerAId: true, playerBId: true, gamesWonA: true, gamesWonB: true },
+        where: { format: "LEAGUE_BO2" },
+        select: { playerAId: true, playerBId: true, gamesWonA: true, gamesWonB: true, status: true },
       },
     },
   });
   if (!division) return null;
 
+  const confirmedMatches = division.matches.filter((m) => m.status === "CONFIRMED");
   const standings = computeStandings(
     division.members.map((m) => m.player),
-    division.matches,
+    confirmedMatches,
   );
   const standingByPlayer = new Map(
     standings.map((r, i) => [r.player.id, { rank: i + 1, points: r.points, wins: r.wins, draws: r.draws, losses: r.losses }]),
@@ -451,13 +452,19 @@ export async function loadAdminPlayersDivisionView(
   const active = division.members.filter((m) => m.status === "ACTIVE");
   const rowFor = (m: typeof division.members[number]): AdminDivisionMemberRow => {
     const s = standingByPlayer.get(m.playerId);
-    const playedThisPlayer = new Set(
-      division.matches
-        .filter((p) => p.playerAId === m.playerId || p.playerBId === m.playerId)
-        .map((p) => (p.playerAId === m.playerId ? p.playerBId : p.playerAId)),
-    );
+    const mine = division.matches.filter((p) => p.playerAId === m.playerId || p.playerBId === m.playerId);
+    const oppOf = (p: (typeof mine)[number]) => (p.playerAId === m.playerId ? p.playerBId : p.playerAId);
+    const playedThisPlayer = new Set(mine.filter((p) => p.status === "CONFIRMED").map(oppOf));
+    const assignedThisPlayer = new Set(mine.map(oppOf)); // any status = on their schedule
+    // Locked = a pre-created (0-0 PENDING) match exists; else legacy round-robin.
+    const locked = mine.some((p) => p.status === "PENDING" && p.gamesWonA === 0 && p.gamesWonB === 0);
     const unplayed = active
-      .filter((o) => o.playerId !== m.playerId && !playedThisPlayer.has(o.playerId))
+      .filter(
+        (o) =>
+          o.playerId !== m.playerId &&
+          !playedThisPlayer.has(o.playerId) &&
+          (!locked || assignedThisPlayer.has(o.playerId)),
+      )
       .map((o) => ({ playerId: o.playerId, displayName: o.player.displayName }));
     return {
       membershipId: m.id,
@@ -564,16 +571,30 @@ export async function loadAdminPlayersListView(opts: {
       membersByDivision.set(m.divisionId, bucket);
     }
     const pairings = await prisma.match.findMany({
-      where: { status: "CONFIRMED", format: "LEAGUE_BO2", division: { seasonId: selectedSeason.id } },
-      select: { divisionId: true, playerAId: true, playerBId: true },
+      where: { format: "LEAGUE_BO2", division: { seasonId: selectedSeason.id } },
+      select: { divisionId: true, playerAId: true, playerBId: true, status: true, gamesWonA: true, gamesWonB: true },
     });
-    const playedKey = (divisionId: string, a: string, b: string) =>
+    const pairKey = (divisionId: string, a: string, b: string) =>
       `${divisionId}|${a < b ? `${a}-${b}` : `${b}-${a}`}`;
-    const playedSet = new Set(pairings.map((p) => playedKey(p.divisionId, p.playerAId, p.playerBId)));
+    const playedSet = new Set<string>(); // CONFIRMED pairs
+    const assignedSet = new Set<string>(); // any-status pairs = on the schedule
+    const lockedDivisions = new Set<string>(); // has a pre-created 0-0 PENDING match
+    for (const p of pairings) {
+      const k = pairKey(p.divisionId, p.playerAId, p.playerBId);
+      assignedSet.add(k);
+      if (p.status === "CONFIRMED") playedSet.add(k);
+      else if (p.gamesWonA === 0 && p.gamesWonB === 0) lockedDivisions.add(p.divisionId);
+    }
     for (const [divisionId, list] of membersByDivision) {
+      const locked = lockedDivisions.has(divisionId);
       for (const meId of list.map((m) => m.playerId)) {
-        const unplayed = list
-          .filter((m) => m.playerId !== meId && !playedSet.has(playedKey(divisionId, meId, m.playerId)));
+        const unplayed = list.filter((m) => {
+          if (m.playerId === meId) return false;
+          const k = pairKey(divisionId, meId, m.playerId);
+          if (playedSet.has(k)) return false;
+          // Locked schedule: only the opponents actually on their schedule.
+          return !locked || assignedSet.has(k);
+        });
         unplayedByKey.set(`${divisionId}|${meId}`, unplayed);
       }
     }

@@ -111,15 +111,26 @@ export async function loadReportPageData(discordId: string): Promise<ReportPageD
 
   const confirmedOpponentIds = new Set<string>();
   const pendingOpponentIds = new Set<string>();
+  const assignedOpponentIds = new Set<string>(); // any status = on your schedule
+  let scheduleLocked = false; // a pre-created (0-0 PENDING) match exists
   for (const p of myPairings) {
     const opp = p.playerAId === player.id ? p.playerBId : p.playerAId;
+    assignedOpponentIds.add(opp);
     if (p.status === "CONFIRMED") confirmedOpponentIds.add(opp);
-    else if (p.status === "PENDING") pendingOpponentIds.add(opp);
+    else if (p.status === "PENDING") {
+      pendingOpponentIds.add(opp);
+      if (p.gamesWonA === 0 && p.gamesWonB === 0) scheduleLocked = true;
+    }
   }
-  // Opponents = every other ACTIVE member of the division you haven't
-  // confirmed a result against yet (full round-robin).
+  // Opponents you still owe a result. With a locked schedule that's your ASSIGNED,
+  // not-yet-confirmed opponents; otherwise the full round-robin (legacy on-demand).
   const reportableOpponents: ReportOpponent[] = div.members
-    .filter((m) => m.playerId !== player.id && !confirmedOpponentIds.has(m.playerId))
+    .filter(
+      (m) =>
+        m.playerId !== player.id &&
+        !confirmedOpponentIds.has(m.playerId) &&
+        (!scheduleLocked || assignedOpponentIds.has(m.playerId)),
+    )
     .map((m) => ({
       playerId: m.playerId,
       displayName: m.player.displayName,

@@ -103,8 +103,8 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
               // active-vs-active pairs in JS (a void-PLAYER's cancelled games vs a
               // dropped player must NOT count — they're not expected anymore).
               matches: {
-                where: { format: "LEAGUE_BO2", status: { in: ["CONFIRMED", "CANCELLED"] } },
-                select: { playerAId: true, playerBId: true },
+                where: { format: "LEAGUE_BO2" },
+                select: { playerAId: true, playerBId: true, status: true, gamesWonA: true, gamesWonB: true },
               },
             },
           },
@@ -194,11 +194,21 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
     divisions: t.divisions.map((d): StandingsDivisionSummary => {
       const activeMembers = d.members.filter((m) => m.status === "ACTIVE");
       const activeSet = new Set(activeMembers.map((m) => m.playerId));
+      const betweenActive = (m: (typeof d.matches)[number]) =>
+        activeSet.has(m.playerAId) && activeSet.has(m.playerBId);
       // "Played" for completeness = resolved games between two ACTIVE players
       // (a void counts; games involving a dropped player don't).
       const playedMatches = d.matches.filter(
-        (m) => activeSet.has(m.playerAId) && activeSet.has(m.playerBId),
+        (m) => (m.status === "CONFIRMED" || m.status === "CANCELLED") && betweenActive(m),
       ).length;
+      // Expected = the locked schedule's matches (graph or pre-created round-robin)
+      // when one exists; otherwise a full round-robin, N*(N-1)/2.
+      const scheduleLocked = d.matches.some(
+        (m) => m.status === "PENDING" && m.gamesWonA === 0 && m.gamesWonB === 0 && betweenActive(m),
+      );
+      const expectedMatches = scheduleLocked
+        ? d.matches.filter(betweenActive).length
+        : (activeMembers.length * (activeMembers.length - 1)) / 2;
       return {
         id: d.id,
         name: d.name,
@@ -206,7 +216,7 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
         activeMemberIds: [...activeSet],
         droppedMemberIds: d.members.filter((m) => m.status === "DROPPED").map((m) => m.playerId),
         playedMatches,
-        expectedMatches: (activeMembers.length * (activeMembers.length - 1)) / 2,
+        expectedMatches,
         rows: standingsByDivisionId.get(d.id) ?? [],
         shootouts: shootoutsByDivisionId.get(d.id) ?? [],
       };

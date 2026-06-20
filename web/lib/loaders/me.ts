@@ -109,26 +109,34 @@ async function loadActiveDivisionContext(
   if (!membership) return null;
   const div = membership.division;
 
-  // Only the player's OWN CONFIRMED pairings (to know who they've
-  // already played) — not the whole division's pairing table.
-  const myPairings = await prisma.match.findMany({
+  // The player's OWN LEAGUE_BO2 matches (all statuses) — the pre-created ones
+  // are their ASSIGNED schedule; CONFIRMED ones are already played.
+  const myMatches = await prisma.match.findMany({
     where: {
       divisionId: div.id,
-      status: "CONFIRMED",
       format: "LEAGUE_BO2",
       OR: [{ playerAId: playerId }, { playerBId: playerId }],
     },
-    select: { playerAId: true, playerBId: true },
+    select: { playerAId: true, playerBId: true, status: true, gamesWonA: true, gamesWonB: true },
   });
-  const playedOpponentIds = new Set<string>();
-  for (const p of myPairings) {
-    if (p.playerAId === playerId) playedOpponentIds.add(p.playerBId);
-    else if (p.playerBId === playerId) playedOpponentIds.add(p.playerAId);
+  const playedOpponentIds = new Set<string>(); // CONFIRMED
+  const assignedOpponentIds = new Set<string>(); // any status = on your schedule
+  for (const p of myMatches) {
+    const opp = p.playerAId === playerId ? p.playerBId : p.playerAId;
+    assignedOpponentIds.add(opp);
+    if (p.status === "CONFIRMED") playedOpponentIds.add(opp);
   }
-  // Opponents = every other ACTIVE member of the division you haven't
-  // played yet (full round-robin).
+  // A locked schedule = a pre-created (0-0 PENDING) match exists. Then reportable
+  // = your ASSIGNED, not-yet-confirmed opponents. With no locked schedule (legacy
+  // on-demand round-robin), it's every other member you haven't played.
+  const scheduleLocked = myMatches.some((p) => p.status === "PENDING" && p.gamesWonA === 0 && p.gamesWonB === 0);
   const reportableOpponents = div.members
-    .filter((m) => m.playerId !== playerId && !playedOpponentIds.has(m.playerId))
+    .filter(
+      (m) =>
+        m.playerId !== playerId &&
+        !playedOpponentIds.has(m.playerId) &&
+        (!scheduleLocked || assignedOpponentIds.has(m.playerId)),
+    )
     .map((m) => ({ playerId: m.playerId, displayName: m.player.displayName }));
 
   // Cached standings row for this player. Falls back to deriving from

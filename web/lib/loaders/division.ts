@@ -139,18 +139,26 @@ export async function loadDivisionPageData(divisionId: string): Promise<Division
       forfeit: p.forfeit,
     }));
 
-  // Unplayed matchups across ACTIVE members — a full round-robin, so every
-  // pair of active members that haven't played yet is a real matchup.
+  // Unplayed matchups across ACTIVE members. With a locked schedule (graph or
+  // pre-created round-robin) only the ASSIGNED pairs are real matchups; with no
+  // locked schedule it's a full round-robin (every not-yet-played pair).
   const playedKey = (a: string, b: string) => (a < b ? `${a}-${b}` : `${b}-${a}`);
   const playedSet = new Set(pairings.map((p) => playedKey(p.playerAId, p.playerBId)));
+  const scheduleMatches = await prisma.match.findMany({
+    where: { divisionId, format: "LEAGUE_BO2" },
+    select: { playerAId: true, playerBId: true, status: true, gamesWonA: true, gamesWonB: true },
+  });
+  const assignedSet = new Set(scheduleMatches.map((p) => playedKey(p.playerAId, p.playerBId)));
+  const scheduleLocked = scheduleMatches.some((p) => p.status === "PENDING" && p.gamesWonA === 0 && p.gamesWonB === 0);
   const unplayed: DivisionUnplayed[] = [];
   for (let i = 0; i < activeMembers.length; i++) {
     for (let j = i + 1; j < activeMembers.length; j++) {
       const a = activeMembers[i]!.player;
       const b = activeMembers[j]!.player;
-      if (!playedSet.has(playedKey(a.id, b.id))) {
-        unplayed.push({ a, b });
-      }
+      const key = playedKey(a.id, b.id);
+      if (playedSet.has(key)) continue;
+      if (scheduleLocked && !assignedSet.has(key)) continue; // not on the schedule
+      unplayed.push({ a, b });
     }
   }
 
