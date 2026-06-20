@@ -368,6 +368,42 @@ async function refreshPublicMatchMessage(interaction: AnyInteraction, session: M
   }
 }
 
+// Periodic sweep: any active match whose controls have been buried by chatter gets
+// them re-posted at the bottom of the thread — which also re-pings the player whose
+// turn it is (bumpMatchControls sends, and a send notifies the @mention). Driven by
+// a timer (startMatchControlBumper) so people don't have to scroll up to keep
+// playing while they're chatting in the thread.
+const CONTROL_BUMP_INTERVAL_MS = 2 * 60 * 1000;
+export async function bumpStaleMatchControls(client: Client): Promise<void> {
+  const sessions = await prisma.matchSession.findMany({
+    where: {
+      threadId: { not: null },
+      matchMessageId: { not: null },
+      state: { notIn: [MatchSessionState.COMPLETE, MatchSessionState.CANCELLED] },
+    },
+    take: 50,
+  });
+  for (const session of sessions) {
+    if (!session.threadId) continue;
+    try {
+      const channel = await client.channels.fetch(session.threadId);
+      if (!channel || !("lastMessageId" in channel)) continue;
+      // Controls are buried if the thread's last message isn't ours.
+      if (channel.lastMessageId && channel.lastMessageId !== session.matchMessageId) {
+        await bumpMatchControls(client, session);
+      }
+    } catch (err) {
+      console.warn(`[bump-stale-controls] ${session.id} failed:`, err);
+    }
+  }
+}
+
+export function startMatchControlBumper(client: Client): void {
+  setInterval(() => {
+    bumpStaleMatchControls(client).catch((err) => console.warn("[bump-stale-controls] tick failed:", err));
+  }, CONTROL_BUMP_INTERVAL_MS);
+}
+
 // Active banner selected from the PUBLIC ban dropdown. The selection
 // itself is client-local — the opponent never saw it — so closing the
 // dropdown commits directly (BMP-style, what players are used to). No
