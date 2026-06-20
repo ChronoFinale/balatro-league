@@ -176,6 +176,13 @@ model Season {
   // for old seasons you want kept-but-out-of-the-way.
   archivedAt       DateTime?
   isActive         Boolean   @default(true)
+  // True once this season's division schedules are LOCKED — i.e. the assigned
+  // matchups were pre-created as PENDING Match rows at activation (graph format
+  // or pre-created round-robin). The single source of truth for "this season
+  // uses a fixed schedule, not on-demand round-robin": code reads this instead
+  // of sniffing for a leftover 0-0 PENDING row (which vanishes once every
+  // assigned match is played). Legacy/on-demand seasons stay false.
+  scheduleLocked   Boolean   @default(false)
   // Target players per DIVISION (the build auto-expands a tier into more
   // divisions to keep each ≤ this).
   targetGroupSize  Int       @default(5)

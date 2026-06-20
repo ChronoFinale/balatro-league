@@ -191,7 +191,7 @@ async function loadOwnActiveDivision(playerId: string): Promise<OwnActiveDivisio
           id: true,
           name: true,
           seasonId: true,
-          season: { select: { number: true, subtitle: true } },
+          season: { select: { number: true, subtitle: true, scheduleLocked: true } },
           members: {
             where: { status: "ACTIVE" },
             select: { playerId: true, player: { select: { id: true, displayName: true } } },
@@ -208,7 +208,7 @@ async function loadOwnActiveDivision(playerId: string): Promise<OwnActiveDivisio
       format: "LEAGUE_BO2",
       OR: [{ playerAId: playerId }, { playerBId: playerId }],
     },
-    select: { playerAId: true, playerBId: true, status: true, gamesWonA: true, gamesWonB: true },
+    select: { playerAId: true, playerBId: true, status: true },
   });
   const played = new Set<string>(); // CONFIRMED
   const assigned = new Set<string>(); // any status = on your schedule
@@ -217,10 +217,10 @@ async function loadOwnActiveDivision(playerId: string): Promise<OwnActiveDivisio
     assigned.add(opp);
     if (p.status === "CONFIRMED") played.add(opp);
   }
-  // A locked schedule = a pre-created (0-0 PENDING) match exists. Then reportable
-  // = your ASSIGNED, not-yet-confirmed opponents; with no locked schedule (legacy
-  // on-demand round-robin) it's every other member you haven't played.
-  const scheduleLocked = myPairings.some((p) => p.status === "PENDING" && p.gamesWonA === 0 && p.gamesWonB === 0);
+  // With a locked schedule, reportable = your ASSIGNED, not-yet-confirmed
+  // opponents; with no locked schedule (legacy on-demand round-robin) it's every
+  // other member you haven't played.
+  const scheduleLocked = div.season.scheduleLocked;
   const reportableOpponents = div.members
     .filter(
       (m) =>
@@ -249,6 +249,7 @@ async function loadAdminRecordContext(playerId: string): Promise<AdminRecordCont
     include: {
       division: {
         include: {
+          season: { select: { scheduleLocked: true } },
           members: { where: { status: "ACTIVE" }, include: { player: true } },
           matches: {
             where: { format: "LEAGUE_BO2" },
@@ -266,7 +267,7 @@ async function loadAdminRecordContext(playerId: string): Promise<AdminRecordCont
   // CONFIRMED matches → "fix" pairs with a score/void summary.
   const playedOpponents = new Set(myMatches.filter((p) => p.status === "CONFIRMED").map(oppOf));
   const assignedOpponents = new Set(myMatches.map(oppOf)); // any status = on the schedule
-  const scheduleLocked = myMatches.some((p) => p.status === "PENDING" && p.gamesWonA === 0 && p.gamesWonB === 0);
+  const scheduleLocked = div.season.scheduleLocked;
   const played = myMatches
     .filter((p) => p.status === "CONFIRMED")
     .map((p) => ({

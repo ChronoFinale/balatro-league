@@ -130,21 +130,15 @@ export async function reportSetFromWeb(
     };
   }
 
-  // Schedule enforcement: when the division runs a locked schedule, the only valid
+  // Schedule enforcement: when the season is schedule-locked, the only valid
   // matchups are the pre-created ones. No row for this pair means it isn't on the
   // schedule — reject (you only play your assigned opponents). With no locked
   // schedule (legacy on-demand round-robin) any same-division pair is allowed.
-  if (!existing) {
-    const lockedSchedule = await prisma.match.findFirst({
-      where: { divisionId: division.id, format: "LEAGUE_BO2", status: "PENDING", gamesWonA: 0, gamesWonB: 0 },
-      select: { id: true },
-    });
-    if (lockedSchedule) {
-      return {
-        ok: false,
-        reason: "That opponent isn't on your schedule this season — you only play your assigned matchups.",
-      };
-    }
+  if (!existing && activeSeason.scheduleLocked) {
+    return {
+      ok: false,
+      reason: "That opponent isn't on your schedule this season — you only play your assigned matchups.",
+    };
   }
 
   // Web reports finalize immediately — the reporter is signed in and

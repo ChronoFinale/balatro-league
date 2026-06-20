@@ -82,6 +82,7 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
       id: true,
       number: true,
       subtitle: true,
+      scheduleLocked: true,
       tiers: {
         orderBy: { position: "asc" },
         select: {
@@ -202,11 +203,8 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
         (m) => (m.status === "CONFIRMED" || m.status === "CANCELLED") && betweenActive(m),
       ).length;
       // Expected = the locked schedule's matches (graph or pre-created round-robin)
-      // when one exists; otherwise a full round-robin, N*(N-1)/2.
-      const scheduleLocked = d.matches.some(
-        (m) => m.status === "PENDING" && m.gamesWonA === 0 && m.gamesWonB === 0 && betweenActive(m),
-      );
-      const expectedMatches = scheduleLocked
+      // when this season is schedule-locked; otherwise a full round-robin.
+      const expectedMatches = season.scheduleLocked
         ? d.matches.filter(betweenActive).length
         : (activeMembers.length * (activeMembers.length - 1)) / 2;
       return {

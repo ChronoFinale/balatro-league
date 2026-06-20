@@ -73,5 +73,12 @@ export async function lockDivisionSchedules(seasonId: string): Promise<{ created
     }
   }
 
+  // Mark the season as schedule-locked — the single source of truth every
+  // consumer reads (instead of sniffing for a 0-0 PENDING row). Set whenever any
+  // division has a schedule, so a re-run also backfills the flag idempotently.
+  if (divisionsWithSchedule > 0) {
+    await prisma.season.update({ where: { id: seasonId }, data: { scheduleLocked: true } });
+  }
+
   return { created, divisions: divisionsWithSchedule };
 }

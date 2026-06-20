@@ -164,6 +164,10 @@ async function renderAllDivisions(
     await interaction.editReply("No divisions in the active season yet.");
     return;
   }
+  // Single source of truth for "this season uses a fixed schedule" — drives the
+  // progress-bar denominator (assigned count vs full round-robin).
+  const season = await prisma.season.findUnique({ where: { id: seasonId }, select: { scheduleLocked: true } });
+  const scheduleLocked = season?.scheduleLocked ?? false;
 
   const embeds: EmbedBuilder[] = [];
   if (mySchedule) embeds.push(mySchedule); // caller's own schedule first
@@ -189,10 +193,9 @@ async function renderAllDivisions(
       // locked (pre-created matches exist), expected = the assigned count;
       // otherwise (legacy on-demand) it's a full round-robin = C(N,2).
       const activeCount = div.members.filter((m) => m.status === "ACTIVE").length;
-      // Pre-created schedule = a 0–0 PENDING match exists (never reported). If so,
-      // expected = the assigned count; otherwise on-demand round-robin = C(N,2).
-      const locked = div.matches.some((m) => m.status === "PENDING" && m.gamesWonA === 0 && m.gamesWonB === 0);
-      const expectedMatches = locked ? div.matches.length : (activeCount * (activeCount - 1)) / 2;
+      // Locked schedule → expected = the assigned (pre-created) count; otherwise
+      // on-demand round-robin = C(N,2).
+      const expectedMatches = scheduleLocked ? div.matches.length : (activeCount * (activeCount - 1)) / 2;
       const playedMatches = confirmed.length;
       const barWidth = 12;
       const pct = expectedMatches === 0 ? 0 : playedMatches / expectedMatches;

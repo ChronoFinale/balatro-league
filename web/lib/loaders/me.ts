@@ -95,7 +95,7 @@ async function loadActiveDivisionContext(
           name: true,
           seasonId: true,
           tier: { select: { name: true, position: true } },
-          season: { select: { number: true, subtitle: true } },
+          season: { select: { number: true, subtitle: true, scheduleLocked: true } },
           // All ACTIVE members so we can list opponents. Player rows are
           // tiny — id + displayName.
           members: {
@@ -117,7 +117,7 @@ async function loadActiveDivisionContext(
       format: "LEAGUE_BO2",
       OR: [{ playerAId: playerId }, { playerBId: playerId }],
     },
-    select: { playerAId: true, playerBId: true, status: true, gamesWonA: true, gamesWonB: true },
+    select: { playerAId: true, playerBId: true, status: true },
   });
   const playedOpponentIds = new Set<string>(); // CONFIRMED
   const assignedOpponentIds = new Set<string>(); // any status = on your schedule
@@ -126,10 +126,10 @@ async function loadActiveDivisionContext(
     assignedOpponentIds.add(opp);
     if (p.status === "CONFIRMED") playedOpponentIds.add(opp);
   }
-  // A locked schedule = a pre-created (0-0 PENDING) match exists. Then reportable
-  // = your ASSIGNED, not-yet-confirmed opponents. With no locked schedule (legacy
-  // on-demand round-robin), it's every other member you haven't played.
-  const scheduleLocked = myMatches.some((p) => p.status === "PENDING" && p.gamesWonA === 0 && p.gamesWonB === 0);
+  // With a locked schedule, reportable = your ASSIGNED, not-yet-confirmed
+  // opponents. With no locked schedule (legacy on-demand round-robin), it's every
+  // other member you haven't played.
+  const scheduleLocked = div.season.scheduleLocked;
   const reportableOpponents = div.members
     .filter(
       (m) =>

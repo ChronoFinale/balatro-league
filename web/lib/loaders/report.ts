@@ -71,7 +71,7 @@ export async function loadReportPageData(discordId: string): Promise<ReportPageD
           id: true,
           name: true,
           tier: { select: { name: true, position: true } },
-          season: { select: { number: true, subtitle: true } },
+          season: { select: { number: true, subtitle: true, scheduleLocked: true } },
           members: {
             where: { status: "ACTIVE" },
             select: { playerId: true, player: { select: { displayName: true } } },
@@ -112,15 +112,12 @@ export async function loadReportPageData(discordId: string): Promise<ReportPageD
   const confirmedOpponentIds = new Set<string>();
   const pendingOpponentIds = new Set<string>();
   const assignedOpponentIds = new Set<string>(); // any status = on your schedule
-  let scheduleLocked = false; // a pre-created (0-0 PENDING) match exists
+  const scheduleLocked = div.season.scheduleLocked;
   for (const p of myPairings) {
     const opp = p.playerAId === player.id ? p.playerBId : p.playerAId;
     assignedOpponentIds.add(opp);
     if (p.status === "CONFIRMED") confirmedOpponentIds.add(opp);
-    else if (p.status === "PENDING") {
-      pendingOpponentIds.add(opp);
-      if (p.gamesWonA === 0 && p.gamesWonB === 0) scheduleLocked = true;
-    }
+    else if (p.status === "PENDING") pendingOpponentIds.add(opp);
   }
   // Opponents you still owe a result. With a locked schedule that's your ASSIGNED,
   // not-yet-confirmed opponents; otherwise the full round-robin (legacy on-demand).
