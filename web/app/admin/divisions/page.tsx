@@ -5,12 +5,18 @@ import { tierColors } from "@/lib/tier-colors";
 import { SiteNav } from "@/components/SiteNav";
 import { AdminNav } from "@/components/AdminNav";
 import { Button } from "@/components/ui/button";
-import { relabelDivisions, resyncSchedules } from "@/app/admin/seasons/actions";
+import { ConfirmButton } from "@/components/ConfirmButton";
+import { relabelDivisions, resyncSchedules, regenerateSchedules } from "@/app/admin/seasons/actions";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminDivisionsPage() {
+export default async function AdminDivisionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ok?: string; err?: string }>;
+}) {
   await requireAdmin();
+  const { ok, err } = await searchParams;
   const { season, tiers } = await loadAdminDivisionsIndex();
 
   return (
@@ -51,6 +57,36 @@ export default async function AdminDivisionsPage() {
                 </Button>
               </form>
             )}
+            {season.scheduleLocked && (
+              <form action={regenerateSchedules}>
+                <input type="hidden" name="seasonId" value={season.id} />
+                <ConfirmButton
+                  message="Wipe the entire pre-created schedule and rebuild it from scratch with the current rules + roster? This only works BEFORE any games are played — it refuses if a single match has a result. Use it after changing the round-robin/promotion rules or adding players pre-kickoff."
+                  style={{
+                    fontSize: 13,
+                    padding: "5px 12px",
+                    border: "1px solid var(--border, rgba(255,255,255,0.12))",
+                    borderRadius: 6,
+                    background: "var(--surface-2, rgba(255,255,255,0.05))",
+                    color: "var(--text)",
+                    cursor: "pointer",
+                  }}
+                >
+                  ♻️ Regenerate schedule
+                </ConfirmButton>
+              </form>
+            )}
+          </div>
+        )}
+
+        {ok?.startsWith("regenerated-") && (
+          <div className="card" style={{ borderColor: "#2ecc71", color: "#2ecc71", marginBottom: 12 }}>
+            ♻️ Schedule regenerated — {ok.slice("regenerated-".length)} matches created.
+          </div>
+        )}
+        {err === "games-already-played" && (
+          <div className="card" style={{ borderColor: "#e74c3c", color: "#e74c3c", marginBottom: 12 }}>
+            Can&apos;t regenerate — a game has already been played or reported this season. Regenerate is only available before kickoff.
           </div>
         )}
 

@@ -7,6 +7,7 @@ import { requireAdmin } from "@/lib/admin";
 import { actorFromAdminUser, recordAudit } from "@/lib/audit";
 import { performSeasonActivation } from "@/lib/season-activation";
 import { resyncSeasonSchedules } from "@/lib/schedule-sync";
+import { lockDivisionSchedules } from "@/lib/lock-schedule";
 import { formatSeasonLabel, formatDivisionName, nextSeasonNumber } from "@/lib/format-season";
 import {
   createChannelInvite,
@@ -439,6 +440,43 @@ export async function resyncSchedules(formData: FormData) {
 
   revalidatePath("/admin/divisions");
   redirect(`/admin/divisions?ok=resynced-${pruned}-${created}`);
+}
+
+// Wipe the pre-created schedule and rebuild it from scratch with the CURRENT
+// placement rules + roster (e.g. after changing roundRobinTopDivisions, or adding
+// players). Only safe BEFORE any games are played/reported — guarded so it refuses
+// once a single LEAGUE_BO2 match has a result. Unlike resync (which patches), this
+// regenerates the SoS-balanced graph cleanly, so everyone gets an even slate.
+export async function regenerateSchedules(formData: FormData) {
+  const { user } = await requireAdmin();
+  const seasonId = String(formData.get("seasonId") ?? "");
+  if (!seasonId) redirect("/admin/divisions?err=missing-fields");
+
+  const touched = await prisma.match.count({
+    where: {
+      division: { seasonId },
+      format: "LEAGUE_BO2",
+      OR: [{ status: { not: "PENDING" } }, { gamesWonA: { gt: 0 } }, { gamesWonB: { gt: 0 } }],
+    },
+  });
+  if (touched > 0) {
+    redirect("/admin/divisions?err=games-already-played");
+  }
+
+  const deleted = await prisma.match.deleteMany({ where: { division: { seasonId }, format: "LEAGUE_BO2" } });
+  const { created, divisions } = await lockDivisionSchedules(seasonId);
+
+  recordAudit({
+    actor: actorFromAdminUser(user),
+    action: "season.regenerate-schedules",
+    targetType: "Season",
+    targetId: seasonId,
+    summary: `Regenerated schedules: cleared ${deleted.count}, created ${created} match(es) across ${divisions} division(s)`,
+    metadata: { seasonId, cleared: deleted.count, created, divisions },
+  });
+
+  revalidatePath("/admin/divisions");
+  redirect(`/admin/divisions?ok=regenerated-${created}`);
 }
 
 // Open a signup round bound to a specific season. The round's
