@@ -125,6 +125,17 @@ export const schedule: SlashCommand = {
         ...(youReported.length ? [{ name: `⏳ Waiting on opponent (${youReported.length})`, value: fmt(youReported) }] : []),
         ...(disputed.length ? [{ name: `🔴 Disputed (${disputed.length})`, value: fmt(disputed) }] : []),
         ...(done.length ? [{ name: `✅ Done (${done.length})`, value: fmt(done) }] : []),
+        // Scheduling helper — only worth showing when there's still someone to
+        // play. hammertime.cyou builds a Discord timestamp from the clicker's
+        // own browser time; pasted into chat it renders in each viewer's local
+        // timezone, so nobody has to know anyone else's zone.
+        ...(remaining.length
+          ? [{
+              name: "📅 Need to set a time?",
+              value:
+                "Make a timestamp everyone sees in their **own** timezone → **[hammertime.cyou](https://hammertime.cyou)** — then paste the code it gives you into your match chat.",
+            }]
+          : []),
       );
 
     if (theyReported.length === 0 && remaining.length === 0 && youReported.length === 0 && disputed.length === 0) {
