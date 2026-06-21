@@ -8,6 +8,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { isScheduleLocked } from "@/lib/schedule-locked";
+import { opponentSetsFor, owesResultAgainst } from "@/lib/opponents";
 import { formatSeasonLabel } from "@/lib/format-season";
 
 export interface ProfileViewer {
@@ -211,22 +212,11 @@ async function loadOwnActiveDivision(playerId: string): Promise<OwnActiveDivisio
     },
     select: { playerAId: true, playerBId: true, status: true, gamesWonA: true, gamesWonB: true },
   });
-  const played = new Set<string>(); // CONFIRMED
-  const assigned = new Set<string>(); // any status = on your schedule
-  for (const p of myPairings) {
-    const opp = p.playerAId === playerId ? p.playerBId : p.playerAId;
-    assigned.add(opp);
-    if (p.status === "CONFIRMED") played.add(opp);
-  }
+  const sets = opponentSetsFor(playerId, myPairings);
   // Locked = the flag OR a pre-created 0-0 PENDING match (robust to a stale flag).
   const scheduleLocked = isScheduleLocked(div.season.scheduleLocked, myPairings);
   const reportableOpponents = div.members
-    .filter(
-      (m) =>
-        m.playerId !== playerId &&
-        !played.has(m.playerId) &&
-        (!scheduleLocked || assigned.has(m.playerId)),
-    )
+    .filter((m) => m.playerId !== playerId && owesResultAgainst(sets, m.playerId, scheduleLocked))
     .map((m) => ({ playerId: m.playerId, displayName: m.player.displayName }));
   return {
     divisionId: div.id,
@@ -262,13 +252,11 @@ async function loadAdminRecordContext(playerId: string): Promise<AdminRecordCont
   const div = membership.division;
 
   const myMatches = div.matches.filter((p) => p.playerAId === playerId || p.playerBId === playerId);
-  const oppOf = (p: (typeof myMatches)[number]) => (p.playerAId === playerId ? p.playerBId : p.playerAId);
-  // CONFIRMED matches → "fix" pairs with a score/void summary.
-  const playedOpponents = new Set(myMatches.filter((p) => p.status === "CONFIRMED").map(oppOf));
-  const assignedOpponents = new Set(myMatches.map(oppOf)); // any status = on the schedule
-  // Locked = the flag OR (ground truth) the division has a pre-created 0-0 PENDING
-  // match — so a stale/false flag can't make this fall back to a full round-robin.
+  const sets = opponentSetsFor(playerId, myMatches);
+  // Locked uses the WHOLE division's matches (ground truth) — a stale/false flag
+  // can't make this fall back to a full round-robin.
   const scheduleLocked = isScheduleLocked(div.season.scheduleLocked, div.matches);
+  // CONFIRMED matches → "fix" pairs with a score/void summary.
   const played = myMatches
     .filter((p) => p.status === "CONFIRMED")
     .map((p) => ({
@@ -279,12 +267,7 @@ async function loadAdminRecordContext(playerId: string): Promise<AdminRecordCont
   // Unplayed matchups for this player → "resolve" pairs (this player first).
   // With a locked schedule, only their assigned opponents; else full round-robin.
   const unplayed = div.members
-    .filter(
-      (m) =>
-        m.playerId !== playerId &&
-        !playedOpponents.has(m.playerId) &&
-        (!scheduleLocked || assignedOpponents.has(m.playerId)),
-    )
+    .filter((m) => m.playerId !== playerId && owesResultAgainst(sets, m.playerId, scheduleLocked))
     .map((m) => ({ p1Id: playerId, p2Id: m.playerId }));
   const members = div.members.map((m) => ({ playerId: m.playerId, displayName: m.player.displayName }));
   return { divisionId: div.id, divisionName: div.name, members, unplayed, played };

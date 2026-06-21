@@ -15,6 +15,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { isScheduleLocked } from "@/lib/schedule-locked";
+import { opponentSetsFor, owesResultAgainst } from "@/lib/opponents";
 import { formatSeasonLabel } from "@/lib/format-season";
 
 export interface ReportOpponent {
@@ -110,30 +111,17 @@ export async function loadReportPageData(discordId: string): Promise<ReportPageD
     orderBy: { confirmedAt: "desc" },
   });
 
-  const confirmedOpponentIds = new Set<string>();
-  const pendingOpponentIds = new Set<string>();
-  const assignedOpponentIds = new Set<string>(); // any status = on your schedule
+  const sets = opponentSetsFor(player.id, myPairings);
   // Flag OR a pre-created 0-0 PENDING match (robust against a stale flag).
   const scheduleLocked = isScheduleLocked(div.season.scheduleLocked, myPairings);
-  for (const p of myPairings) {
-    const opp = p.playerAId === player.id ? p.playerBId : p.playerAId;
-    assignedOpponentIds.add(opp);
-    if (p.status === "CONFIRMED") confirmedOpponentIds.add(opp);
-    else if (p.status === "PENDING") pendingOpponentIds.add(opp);
-  }
   // Opponents you still owe a result. With a locked schedule that's your ASSIGNED,
   // not-yet-confirmed opponents; otherwise the full round-robin (legacy on-demand).
   const reportableOpponents: ReportOpponent[] = div.members
-    .filter(
-      (m) =>
-        m.playerId !== player.id &&
-        !confirmedOpponentIds.has(m.playerId) &&
-        (!scheduleLocked || assignedOpponentIds.has(m.playerId)),
-    )
+    .filter((m) => m.playerId !== player.id && owesResultAgainst(sets, m.playerId, scheduleLocked))
     .map((m) => ({
       playerId: m.playerId,
       displayName: m.player.displayName,
-      alreadyPending: pendingOpponentIds.has(m.playerId),
+      alreadyPending: sets.pending.has(m.playerId),
     }));
 
   const recentMatches: ReportRecentMatch[] = myPairings

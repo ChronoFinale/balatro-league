@@ -11,6 +11,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { isScheduleLocked } from "@/lib/schedule-locked";
+import { opponentSetsFor, owesResultAgainst } from "@/lib/opponents";
 import { getLeagueSettingsForSeason, type ScoringConfig } from "@/lib/league-settings";
 import { formatSeasonLabel } from "@/lib/format-season";
 
@@ -120,24 +121,13 @@ async function loadActiveDivisionContext(
     },
     select: { playerAId: true, playerBId: true, status: true, gamesWonA: true, gamesWonB: true },
   });
-  const playedOpponentIds = new Set<string>(); // CONFIRMED
-  const assignedOpponentIds = new Set<string>(); // any status = on your schedule
-  for (const p of myMatches) {
-    const opp = p.playerAId === playerId ? p.playerBId : p.playerAId;
-    assignedOpponentIds.add(opp);
-    if (p.status === "CONFIRMED") playedOpponentIds.add(opp);
-  }
+  const sets = opponentSetsFor(playerId, myMatches);
   // With a locked schedule, reportable = your ASSIGNED, not-yet-confirmed
   // opponents. Locked = the flag OR a pre-created 0-0 PENDING match (robust against
   // a stale flag). No lock (legacy round-robin) = every member you haven't played.
   const scheduleLocked = isScheduleLocked(div.season.scheduleLocked, myMatches);
   const reportableOpponents = div.members
-    .filter(
-      (m) =>
-        m.playerId !== playerId &&
-        !playedOpponentIds.has(m.playerId) &&
-        (!scheduleLocked || assignedOpponentIds.has(m.playerId)),
-    )
+    .filter((m) => m.playerId !== playerId && owesResultAgainst(sets, m.playerId, scheduleLocked))
     .map((m) => ({ playerId: m.playerId, displayName: m.player.displayName }));
 
   // Cached standings row for this player. Falls back to deriving from
