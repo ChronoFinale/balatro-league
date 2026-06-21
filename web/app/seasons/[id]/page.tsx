@@ -326,17 +326,11 @@ async function AdminSeasonPanel({
             “Set up divisions from signups” (you set the tier shape there).
             {signupRound?._count.signups != null && ` ${signupRound._count.signups} signed up so far.`}
           </p>
-          <Link href={`/admin/seasons/${season.id}/bulk-import`}>
-            <Button type="button" variant="secondary" className="mt-2">📥 Or bulk-import members directly</Button>
-          </Link>
         </div>
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
             <h3 style={{ margin: 0 }}>Divisions</h3>
-            <Link href={`/admin/seasons/${season.id}/bulk-import`} style={{ marginLeft: "auto" }}>
-              <Button type="button" variant="secondary">📥 Bulk import members + pairings</Button>
-            </Link>
             <DiscordBootstrap season={season} />
           </div>
 

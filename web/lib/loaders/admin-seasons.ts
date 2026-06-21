@@ -143,31 +143,6 @@ export async function loadEndSeasonPreview(seasonId: string): Promise<EndSeasonP
   };
 }
 
-// ── /admin/seasons/[id]/bulk-import ──────────────────────────────────
-
-export interface BulkImportSeasonContext {
-  id: string;
-  name: string;
-  divisions: Array<{ id: string; name: string }>;
-}
-
-export async function loadBulkImportSeasonContext(seasonId: string): Promise<BulkImportSeasonContext | null> {
-  const season = await prisma.season.findUnique({
-    where: { id: seasonId },
-    select: {
-      id: true,
-      number: true,
-      subtitle: true,
-      divisions: {
-        orderBy: [{ tier: { position: "asc" } }, { groupNumber: "asc" }],
-        select: { id: true, name: true },
-      },
-    },
-  });
-  if (!season) return null;
-  return { id: season.id, name: formatSeasonLabel(season), divisions: season.divisions };
-}
-
 // ── /admin/signups/[id]/build ────────────────────────────────────────
 
 export interface BuildSeasonSnapshot {
