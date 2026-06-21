@@ -32,6 +32,7 @@ export async function resyncSeasonSchedules(seasonId: string): Promise<{ pruned:
         orderBy: [{ tier: { position: "asc" } }, { groupNumber: "asc" }],
         select: {
           id: true,
+          roundRobin: true,
           members: { where: { status: "ACTIVE" }, select: { playerId: true } },
           matches: {
             where: { format: "LEAGUE_BO2" },
@@ -55,9 +56,14 @@ export async function resyncSeasonSchedules(seasonId: string): Promise<{ pruned:
     const d = season.divisions[idx]!;
     const memberIds = d.members.map((m) => m.playerId);
     const matches = d.matches as ExistingMatch[];
-    // Top divisions play a full round-robin; everyone else a 4-opponent graph.
+    // Respect the per-division format OVERRIDE (Division.roundRobin); only fall
+    // back to the season default (top-N divisions are round-robin) when it's
+    // unset. This MUST match lockOneDivision / lockDivisionSchedules — otherwise
+    // a resync re-corrupts an overridden division (e.g. a top division switched
+    // to graph gets filled right back up to a full round-robin).
     // (<2 members → target 0: prune-only, no pairs to make.)
-    const target = memberIds.length < 2 ? 0 : idx < rules.roundRobinTopDivisions ? memberIds.length - 1 : 4;
+    const isRoundRobin = d.roundRobin ?? idx < rules.roundRobinTopDivisions;
+    const target = memberIds.length < 2 ? 0 : isRoundRobin ? memberIds.length - 1 : 4;
     const plan = planDivisionResync(memberIds, matches, target);
 
     if (plan.pruneIds.length) {
