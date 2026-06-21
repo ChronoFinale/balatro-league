@@ -10,7 +10,6 @@
 // is granted explicit access via permission overwrite — without it,
 // the @everyone deny applies to the bot too and posts would fail.
 
-import { ChannelType } from "discord.js";
 import { env } from "./env.js";
 import { createGuildTextChannel, resolveConfiguredCategory } from "./discord-helpers.js";
 import { getConfig, setConfig, LeagueConfigKey } from "./league-config.js";
@@ -50,5 +49,4 @@ export async function ensureDevopsChannel(): Promise<void> {
   }
   await setConfig(LeagueConfigKey.DevopsChannelId, channel.id, "bot-startup-auto-create");
   console.log(`[devops-channel] auto-created channel ${channel.id} and stored in LeagueConfig`);
-  void ChannelType;
 }

@@ -601,7 +601,6 @@ async function joinMatch(interaction: ChatInputCommandInteraction) {
     console.warn("[admin join-match] failed:", err);
     await interaction.editReply("Couldn't join — check the bot has Manage Threads / Manage Channels.");
   }
-  void PermissionFlagsBits;
 }
 
 async function recordPairing(interaction: ChatInputCommandInteraction) {

@@ -2,7 +2,6 @@ import Link from "next/link";
 import { loadStandingsPageData } from "@/lib/loaders/standings";
 import { loadOpenSignupRoundId } from "@/lib/loaders/join";
 import { getShowBmpMmr } from "@/lib/preferences";
-import { tierColors } from "@/lib/tier-colors";
 import { SiteNav } from "@/components/SiteNav";
 import { DivisionStandingsTable, type StandingsRowExtras } from "@/components/DivisionStandingsTable";
 import { type StandingRow } from "@/lib/standings";
@@ -219,7 +218,6 @@ export default async function StandingsPage() {
                           }
                         }
                       }
-                      void tierColors;
                       // Per-row badges/MMR for the shared standings table.
                       const extras = new Map<string, StandingsRowExtras>(
                         rows.map((r, i) => [r.player.id, {

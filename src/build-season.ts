@@ -19,9 +19,8 @@
 
 import { type Player, type Signup } from "@prisma/client";
 import { prisma } from "./db.js";
-import { DEFAULT_TIERS, parseTierConfig, PLAYERS_PER_DIVISION, type TierConfig } from "./pyramid.js";
+import { DEFAULT_TIERS, PLAYERS_PER_DIVISION, type TierConfig } from "./pyramid.js";
 import { computeStandings } from "./standings.js";
-import { createTiersAndDivisions } from "./tiers.js";
 import { formatDivisionName } from "./format-season.js";
 
 export interface PlacementPlan {
@@ -297,8 +296,6 @@ export async function commitSeason(
 
   // Silence unused warning (TierConfig used implicitly via opts.tiers default)
   void tierConfigs;
-  void parseTierConfig;
-  void createTiersAndDivisions;
 
   return {
     seasonId: season.id,
