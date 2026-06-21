@@ -15,6 +15,8 @@
 import { prisma } from "@/lib/prisma";
 import { addGuildMemberRole, removeGuildMemberRole } from "@/lib/discord";
 import { resyncSeasonSchedules } from "@/lib/schedule-sync";
+import { refreshStandingsCacheIfWarm } from "@/lib/standings-cache";
+import { enqueueStandingsRefresh } from "@/lib/queue";
 
 export interface PlaceResult {
   transferred: boolean;            // true if we removed an existing membership in another division
@@ -116,6 +118,14 @@ export async function placePlayerInDivision(
   // matches the player orphaned by leaving their old division and assigns them
   // opponents in the new one. No-op on unlocked (draft / legacy) seasons.
   await resyncSeasonSchedules(division.seasonId);
+
+  // Roster changed → refresh the standings cache for the new division (and the
+  // one they left, if transferred) so the #league-standings post + web reflect
+  // the new membership. Warm-only so a mid-build placement stays cheap; nudge
+  // the channel if anything actually recomputed.
+  const refreshedNew = await refreshStandingsCacheIfWarm(division.id).catch(() => false);
+  const refreshedOld = existing ? await refreshStandingsCacheIfWarm(existing.divisionId).catch(() => false) : false;
+  if (refreshedNew || refreshedOld) await enqueueStandingsRefresh().catch(() => {});
 
   return result;
 }

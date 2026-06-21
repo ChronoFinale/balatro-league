@@ -106,6 +106,14 @@ export async function enqueueWelcomeRefresh(seasonId: string): Promise<void> {
   await getBoss().send("welcome.refresh", { seasonId }, { retryLimit: 2 });
 }
 
+// Trigger an immediate re-render of the read-only #league-standings post (on top
+// of the bot's 15-min schedule) — e.g. right after a roster change recomputes
+// the standings cache, so the channel reflects it without waiting.
+export async function enqueueStandingsRefresh(): Promise<void> {
+  await ensureStarted();
+  await getBoss().send("standings.refresh", {}, { retryLimit: 2 });
+}
+
 // Enqueue an announce. Caller returns immediately — pg-boss worker on
 // the bot side picks it up and runs announceResult() at the queue's
 // natural rate (1/sec polling, batchSize 1). Far better than calling

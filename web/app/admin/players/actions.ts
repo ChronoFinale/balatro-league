@@ -6,11 +6,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
-import { enqueueMmrSnapshot, enqueueWelcomeRefresh } from "@/lib/queue";
+import { enqueueMmrSnapshot, enqueueWelcomeRefresh, enqueueStandingsRefresh } from "@/lib/queue";
 import { placePlayerInDivision } from "@/lib/division-membership";
 import { resyncSeasonSchedules } from "@/lib/schedule-sync";
 import { swapDivisionPlayers, SwapError } from "@/lib/swap-division-players";
-import { recomputeDivisionStandings } from "@/lib/standings-cache";
+import { recomputeDivisionStandings, refreshStandingsCacheIfWarm } from "@/lib/standings-cache";
 
 // Swap two players between their divisions, trading schedules wholesale (each
 // inherits the other's matchups; nobody else changes). Refuses if either player
@@ -108,12 +108,21 @@ export async function movePlayer(formData: FormData) {
     // Empty divisionId = remove from active season (preserves old behavior for the "— remove —" option)
     const active = await prisma.season.findFirst({ where: { isActive: true } });
     if (active) {
+      const removedFrom = await prisma.divisionMember.findMany({
+        where: { playerId, division: { seasonId: active.id } },
+        select: { divisionId: true },
+      });
       await prisma.divisionMember.deleteMany({
         where: { playerId, division: { seasonId: active.id } },
       });
       // Prune the matches they just orphaned + refill their ex-opponents.
       await resyncSeasonSchedules(active.id);
+      let refreshed = false;
+      for (const { divisionId } of removedFrom) {
+        if (await refreshStandingsCacheIfWarm(divisionId).catch(() => false)) refreshed = true;
+      }
       await enqueueWelcomeRefresh(active.id).catch(() => {});
+      if (refreshed) await enqueueStandingsRefresh().catch(() => {});
     }
   }
   revalidatePath("/admin/players");
@@ -145,7 +154,8 @@ export async function dropPlayer(formData: FormData) {
   });
   // Refill the dropped player's ex-opponents back toward their target slate.
   await resyncSeasonSchedules(season.id);
-  recomputeDivisionStandings(membership.divisionId).catch(() => {});
+  await recomputeDivisionStandings(membership.divisionId).catch(() => {});
+  await enqueueStandingsRefresh().catch(() => {});
   revalidatePath("/admin/players");
 }
 
@@ -165,6 +175,9 @@ export async function reinstatePlayer(formData: FormData) {
     });
     // Their matches were deleted on drop — give them a schedule again.
     await resyncSeasonSchedules(season.id);
+    if (await refreshStandingsCacheIfWarm(membership.divisionId).catch(() => false)) {
+      await enqueueStandingsRefresh().catch(() => {});
+    }
   }
   revalidatePath("/admin/players");
 }

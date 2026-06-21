@@ -5,7 +5,7 @@
 
 import { EmbedBuilder } from "discord.js";
 import { prisma } from "./db.js";
-import { loadDivisionStandings } from "./standings-cache.js";
+import { loadDivisionStandings, recomputeDivisionStandings } from "./standings-cache.js";
 import { formatSeasonLabel } from "./format-season.js";
 import { webUrl } from "./web-url.js";
 
@@ -42,6 +42,11 @@ export async function composeStandingsEmbeds(): Promise<EmbedBuilder[]> {
 
   const divisionEmbeds: EmbedBuilder[] = [];
   for (const div of divisions) {
+    // Recompute before rendering so the post reflects the live roster + results,
+    // not a cache last written on a result. This is the self-healing safety net:
+    // any roster change that slipped past an explicit recompute is corrected on
+    // the next refresh (every 15 min, or on-demand). Cheap per division.
+    await recomputeDivisionStandings(div.id).catch(() => {});
     const rows = await loadDivisionStandings(div.id);
     const lines = rows.map(
       (r, i) => `${place(i)} ${r.player.displayName} — **${r.points}** pts · ${r.wins}-${r.draws}-${r.losses}`,

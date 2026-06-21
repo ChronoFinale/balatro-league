@@ -12,6 +12,8 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { addGuildMemberRole, removeGuildMemberRole } from "@/lib/discord";
+import { refreshStandingsCacheIfWarm } from "@/lib/standings-cache";
+import { enqueueStandingsRefresh } from "@/lib/queue";
 
 export class SwapError extends Error {}
 
@@ -105,6 +107,12 @@ export async function swapDivisionPlayers(playerAId: string, playerBId: string):
     if (bRole) await addGuildMemberRole(guildId, aDc, bRole).catch(() => {});
     if (aRole) await addGuildMemberRole(guildId, bDc, aRole).catch(() => {});
   }
+
+  // Both divisions' rosters changed → refresh their standings caches so the
+  // #league-standings post + web reflect the swap (warm-only; nudge the channel).
+  const ra = await refreshStandingsCacheIfWarm(memA.divisionId).catch(() => false);
+  const rb = await refreshStandingsCacheIfWarm(memB.divisionId).catch(() => false);
+  if (ra || rb) await enqueueStandingsRefresh().catch(() => {});
 
   return {
     seasonId: memA.seasonId,

@@ -65,6 +65,20 @@ export async function recomputeDivisionStandings(divisionId: string): Promise<vo
   });
 }
 
+// Recompute a division's standings ONLY if it already has a warmed cache row.
+// Roster-change paths (move / add / swap / drop) call this so the #league-
+// standings post + web stay correct, while a mid-build placement (cache not yet
+// warmed) stays cheap and skips. Returns true if it recomputed.
+export async function refreshStandingsCacheIfWarm(divisionId: string): Promise<boolean> {
+  const has = await prisma.divisionStandings.findUnique({
+    where: { divisionId },
+    select: { divisionId: true },
+  });
+  if (!has) return false;
+  await recomputeDivisionStandings(divisionId);
+  return true;
+}
+
 export async function loadDivisionStandings(divisionId: string): Promise<StandingRow[]> {
   const cached = await prisma.divisionStandings.findUnique({ where: { divisionId } });
   if (!cached) {
