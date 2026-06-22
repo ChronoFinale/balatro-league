@@ -28,7 +28,7 @@ import { getConfig, LeagueConfigKey } from "./league-config.js";
 // path uses: season override → global LeagueConfig → env. Falls back
 // to #bot-commands when nothing is configured so the buttons still
 // land somewhere players can see them.
-export async function resolveReportChannelId(seasonId: string | null): Promise<string | null> {
+async function resolveReportChannelId(seasonId: string | null): Promise<string | null> {
   if (seasonId) {
     const season = await prisma.season.findUnique({
       where: { id: seasonId },
@@ -113,7 +113,7 @@ export function buildReportEmbed(args: {
   return embed;
 }
 
-export function pendingButtons(pairingId: string): ActionRowBuilder<ButtonBuilder> {
+function pendingButtons(pairingId: string): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`report:confirm:${pairingId}`)
