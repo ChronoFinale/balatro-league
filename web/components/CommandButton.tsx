@@ -6,6 +6,7 @@
 
 import { Search } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 
 export function CommandButton() {
   // ⌘ is a Mac key; everywhere else the shortcut is Ctrl. Detect client-side
@@ -18,18 +19,20 @@ export function CommandButton() {
   const hint = isMac === null ? null : isMac ? "⌘K" : "Ctrl K";
 
   return (
-    <button
+    <Button
       type="button"
+      variant="secondary"
+      size="sm"
       onClick={() => window.dispatchEvent(new Event("command:toggle"))}
       title="Search / jump to a page (Ctrl/⌘ K)"
       aria-label="Search"
-      className="flex items-center gap-1.5 rounded border border-border bg-secondary px-2 py-1 text-xs text-[var(--muted)] transition-colors hover:text-foreground"
+      className="gap-1.5 border-border text-[var(--muted)] hover:text-foreground"
     >
       <Search className="size-3.5" />
       <span className="hidden sm:inline">Search</span>
       {hint && (
         <kbd className="hidden rounded bg-[var(--bg)] px-1 text-[10px] leading-none sm:inline-flex">{hint}</kbd>
       )}
-    </button>
+    </Button>
   );
 }

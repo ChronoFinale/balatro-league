@@ -10,6 +10,7 @@ import { getShowBmpMmr, getShowUsernames } from "@/lib/preferences";
 import { toggleShowBmpMmr, toggleShowUsernames } from "@/app/preferences/actions";
 import { loadOpenSignupRoundId } from "@/lib/loaders/join";
 import { CommandButton } from "@/components/CommandButton";
+import { Button } from "@/components/ui/button";
 
 // Public nav links — all shown directly. The bar's short enough (Report dropped,
 // Join conditional) that hiding anything behind a "More" menu just makes things
@@ -83,25 +84,27 @@ export async function SiteNav({ activePath }: { activePath: string }) {
             <form action={toggleShowBmpMmr}>
               <input type="hidden" name="next" value={showingBmpMmr ? "0" : "1"} />
               <input type="hidden" name="returnTo" value={activePath || "/"} />
-              <button
+              <Button
                 type="submit"
-                className="flex w-full cursor-pointer items-center gap-2 rounded border-none bg-transparent px-1 py-1.5 text-left text-[13px] text-foreground hover:bg-secondary"
+                variant="ghost"
+                className="w-full justify-start gap-2 px-1 text-[13px] text-foreground"
               >
                 <span className="text-sm">{showingBmpMmr ? "☑" : "☐"}</span>
                 <span>Show BMP MMR</span>
-              </button>
+              </Button>
             </form>
             {inGuild && (
               <form action={toggleShowUsernames}>
                 <input type="hidden" name="next" value={showingUsernames ? "0" : "1"} />
                 <input type="hidden" name="returnTo" value={activePath || "/"} />
-                <button
+                <Button
                   type="submit"
-                  className="flex w-full cursor-pointer items-center gap-2 rounded border-none bg-transparent px-1 py-1.5 text-left text-[13px] text-foreground hover:bg-secondary"
+                  variant="ghost"
+                  className="w-full justify-start gap-2 px-1 text-[13px] text-foreground"
                 >
                   <span className="text-sm">{showingUsernames ? "☑" : "☐"}</span>
                   <span>Show Discord usernames</span>
-                </button>
+                </Button>
               </form>
             )}
           </div>

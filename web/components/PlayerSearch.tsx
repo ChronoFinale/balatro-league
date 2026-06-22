@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 
 export interface PlayerOption {
   id: string;
@@ -90,27 +91,19 @@ export function PlayerSearch({
         >
           {matches.map((p) => (
             <li key={p.id}>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 onMouseDown={(e) => {
                   // mousedown beats the input blur so the pick lands.
                   e.preventDefault();
                   if (blurTimer.current) clearTimeout(blurTimer.current);
                   pick(p);
                 }}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  textAlign: "left",
-                  padding: "4px 8px",
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  fontSize: 13,
-                }}
+                className="h-auto w-full justify-start rounded-none px-2 py-1 text-[13px] font-normal"
               >
                 {p.displayName}
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
