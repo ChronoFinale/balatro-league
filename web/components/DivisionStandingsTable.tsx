@@ -61,7 +61,7 @@ function renderMmrCell(entry: StandingsMmrEntry | undefined, currentBmpSeason: s
   return (
     <span
       title={`From BMP ${formatBmpSeason(entry.bmpSeason)}, not the current season. May be stale.`}
-      style={{ color: "#f1c40f" }}
+      style={{ color: "var(--accent)" }}
     >
       {entry.mmr}
       <span className="muted" style={{ fontSize: 10, marginLeft: 4 }}>
@@ -104,16 +104,16 @@ function RowBadges({
   return (
     <>
       {medal}
-      {promoting && <> <span title="Promotion spot" style={{ color: "#2ecc71" }}>↑</span></>}
-      {relegating && <> <span title="Relegation spot" style={{ color: "#e74c3c" }}>↓</span></>}
+      {promoting && <> <span title="Promotion spot" style={{ color: "var(--success)" }}>↑</span></>}
+      {relegating && <> <span title="Relegation spot" style={{ color: "var(--danger)" }}>↓</span></>}
       {clinchStatus === "up" && (
-        <> <span title="Clinched — guaranteed up" style={{ color: "#2ecc71" }}>🔒↑</span></>
+        <> <span title="Clinched — guaranteed up" style={{ color: "var(--success)" }}>🔒↑</span></>
       )}
       {clinchStatus === "down" && (
-        <> <span title="Locked — guaranteed down" style={{ color: "#e74c3c" }}>🔒↓</span></>
+        <> <span title="Locked — guaranteed down" style={{ color: "var(--danger)" }}>🔒↓</span></>
       )}
       {showdown && (
-        <span title="Tied — play a shootout (a 1-game tiebreaker)" style={{ color: "#f1c40f", marginLeft: 4 }}>⚔</span>
+        <span title="Tied — play a shootout (a 1-game tiebreaker)" style={{ color: "var(--accent)", marginLeft: 4 }}>⚔</span>
       )}
     </>
   );
@@ -124,11 +124,11 @@ function RowBadges({
 function RecordCells({ r }: { r: StandingsTableRow }) {
   return (
     <span style={{ whiteSpace: "nowrap" }}>
-      <span style={{ color: "#2ecc71" }}>{r.wins}W</span>
+      <span style={{ color: "var(--success)" }}>{r.wins}W</span>
       <span className="muted"> · </span>
       <span className="muted">{r.draws}D</span>
       <span className="muted"> · </span>
-      <span style={{ color: "#e74c3c" }}>{r.losses}L</span>
+      <span style={{ color: "var(--danger)" }}>{r.losses}L</span>
     </span>
   );
 }
@@ -236,8 +236,8 @@ export function DivisionStandingsTable({
       </div>
       <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>
         <strong>3</strong> pts per win · <strong>1</strong> per draw · Record = wins·draws·losses ·{" "}
-        <span style={{ color: "#2ecc71" }}>green = promoting</span> ·{" "}
-        <span style={{ color: "#e74c3c" }}>red = relegating</span>
+        <span style={{ color: "var(--success)" }}>green = promoting</span> ·{" "}
+        <span style={{ color: "var(--danger)" }}>red = relegating</span>
       </p>
     </>
   );
