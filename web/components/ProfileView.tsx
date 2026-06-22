@@ -177,6 +177,10 @@ export async function ProfileView({
   // What this player bans (most-banned decks/stakes + their ban rate).
   const banStats = await loadPlayerBanStats(profile.player.id);
 
+  // Current-season standing — the "where do I stand right now" summary, shown up
+  // top so it isn't buried under career stats. Only for a current ACTIVE member.
+  const activeSeason = profile.history.find((h) => h.isActive && h.status === "ACTIVE");
+
   return (
     <>
       <SiteNav activePath="" />
@@ -187,6 +191,32 @@ export async function ProfileView({
         <h2>{profile.player.displayName}<DiscordId value={profile.player.discordId} username={profile.player.username} /></h2>
         {shownTimezone && (
           <p className="muted" style={{ fontSize: 13, marginTop: -4 }}>🕐 {shownTimezone}</p>
+        )}
+
+        {activeSeason && (
+          <div className="card" style={{ marginTop: 12, borderColor: "#76c7ff" }}>
+            <strong style={{ color: "#76c7ff" }}>This season</strong>
+            <div style={{ marginTop: 4 }}>
+              In{" "}
+              <Link href={`/divisions/${activeSeason.divisionId}`} style={{ color: "var(--text)", fontWeight: 600 }}>
+                {activeSeason.divisionName}
+              </Link>{" "}
+              <span className="muted">({activeSeason.tierName})</span>
+            </div>
+            <div style={{ marginTop: 6, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "baseline" }}>
+              <span>
+                <strong style={{ fontSize: 18 }}>{activeSeason.rank > 0 ? `#${activeSeason.rank}` : "—"}</strong>{" "}
+                <span className="muted">of {activeSeason.totalMembers}</span>
+              </span>
+              <span><strong>{activeSeason.points}</strong> <span className="muted">pts</span></span>
+              <span>
+                <span style={{ color: "#2ecc71" }}>{activeSeason.wins}W</span>
+                <span className="muted"> · {activeSeason.draws}D · </span>
+                <span style={{ color: "#e74c3c" }}>{activeSeason.losses}L</span>
+              </span>
+              <span className="muted">{activeSeason.played} played</span>
+            </div>
+          </div>
         )}
 
         <div className="grid grid-2">
