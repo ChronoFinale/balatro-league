@@ -36,8 +36,8 @@ export const status: SlashCommand = {
             tier: true,
             members: { where: { status: "ACTIVE" }, include: { player: true } },
             matches: {
-              where: { format: "LEAGUE_BO2", status: "CONFIRMED" },
-              select: { playerAId: true, playerBId: true, gamesWonA: true, gamesWonB: true },
+              where: { format: "LEAGUE_BO2" },
+              select: { playerAId: true, playerBId: true, gamesWonA: true, gamesWonB: true, status: true },
             },
           },
         },
@@ -49,13 +49,27 @@ export const status: SlashCommand = {
     }
 
     const div = membership.division;
-    const rows = computeStandings(div.members.map((m) => m.player), div.matches);
+    const confirmed = div.matches.filter((m) => m.status === "CONFIRMED");
+    const rows = computeStandings(div.members.map((m) => m.player), confirmed);
     const myRow = rows.find((r) => r.player.id === me.id);
     if (!myRow) {
       await interaction.editReply(`You're in **${div.name}**, but no standings row yet — play a match and it'll show up.`);
       return;
     }
     const rank = myRow.rank ?? rows.findIndex((r) => r.player.id === me.id) + 1;
+
+    // Opponents still to play = your pre-created matchups that haven't been
+    // played yet (PENDING + 0-0). Mirrors /schedule's "still to play".
+    const nameById = new Map(div.members.map((m) => [m.player.id, m.player.displayName]));
+    const remaining = div.matches
+      .filter(
+        (m) =>
+          (m.playerAId === me.id || m.playerBId === me.id) &&
+          m.status === "PENDING" &&
+          m.gamesWonA === 0 &&
+          m.gamesWonB === 0,
+      )
+      .map((m) => nameById.get(m.playerAId === me.id ? m.playerBId : m.playerAId) ?? "?");
 
     const embed = new EmbedBuilder()
       .setTitle(`Your status — ${div.name}`)
@@ -64,7 +78,9 @@ export const status: SlashCommand = {
         `**${formatSeasonLabel(activeSeason)}** · ${div.tier.name} tier\n\n` +
           `🏅 **#${rank}** of ${rows.length}\n` +
           `**${myRow.points}** pts · ${myRow.wins}W · ${myRow.draws}D · ${myRow.losses}L  _(${myRow.played} played)_\n\n` +
-          `Run \`/schedule\` for your remaining matches.`,
+          (remaining.length
+            ? `🎮 **${remaining.length} left to play:** ${remaining.join(", ")}`
+            : "✅ All your matches are done!"),
       );
     await interaction.editReply({ embeds: [embed] });
   },
