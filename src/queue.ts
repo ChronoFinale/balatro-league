@@ -687,6 +687,8 @@ export async function renderDivisionWelcome(
   const playBullet = assignedSubset
     ? `• Play **4 other people** (2 games each) — run \`/schedule\` to see exactly who you play.`
     : `• Play **every other person** in this list once — 2 games each (**${N - 1} matchups**, ${rrTotal} total in this division).`;
+  const queueChannelId = await getConfig(LeagueConfigKey.LeagueQueueChannelId);
+  const queueRef = queueChannelId ? `<#${queueChannelId}>` : "#league-queue";
   return [
     `# 🃏 Welcome to ${div.name}`,
     `_${seasonLabel} · ${div.name} division_`,
@@ -700,7 +702,7 @@ export async function renderDivisionWelcome(
     playBullet,
     `• Run \`/start-match @opponent\` and you'll both be guided through everything — banning, picking the deck/stake, and recording each game. No manual reporting.`,
     `• Each matchup is **2 games**, each with a **fresh pool** — the combos from game 1 won't show up again in game 2. The **winner records their leftover lives** at the end of each game (used for possible future tiebreakers).`,
-    `• Schedule here in the channel, or by DM.`,
+    `• **Around and up for a game?** Hit **Queue up** in ${queueRef} — when an opponent you're scheduled against is also in the queue, I'll open your match automatically. Or just schedule here in the channel / by DM.`,
     ``,
     `**Standings + your schedule:** <${webUrl(`divisions/${div.id}`)}>`,
     ``,
