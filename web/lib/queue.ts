@@ -54,6 +54,14 @@ export async function enqueueDm(job: { discordId: string; content: string }): Pr
   });
 }
 
+// Kick off an activity scan (the bot walks league channels for who's posted).
+// Web creates the ActivityScan row; the bot's activity.scan worker does the
+// Discord reads and updates that row's progress/results.
+export async function enqueueActivityScan(scanId: string): Promise<void> {
+  await ensureStarted();
+  await getBoss().send("activity.scan", { scanId }, { retryLimit: 0 });
+}
+
 // When an admin opens a signup round: kick off the interactive "are you in?"
 // ask blast (the bot computes the audience + DMs everyone). Replaces the old
 // silent auto-enroll + one-shot notify. Bot owns the worker (signup.ask-kickoff).

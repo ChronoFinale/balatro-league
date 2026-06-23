@@ -35,6 +35,7 @@ export const ADMIN_LINKS: AdminNavLink[] = [
   { href: "/admin/divisions", label: "Divisions" },
   { href: "/admin/results", label: "Results" },
   { href: "/admin/disputes", label: "Disputes" },
+  { href: "/admin/activity", label: "Activity", system: true },
   { href: "/admin/deck-bans", label: "Deck Bans" },
   { href: "/admin/traits", label: "Traits" },
   // ── System group (behind "System ▾") ──
