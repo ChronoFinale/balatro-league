@@ -96,6 +96,10 @@ export const challenge: SlashCommand = {
       },
     });
 
+    // Starting any match drops both players from the league queue — keeps the
+    // "free right now" list honest if you challenge someone while queued.
+    await prisma.queueEntry.deleteMany({ where: { playerId: { in: [me.id, opp.id] } } }).catch(() => {});
+
     // Create a private thread for the invite itself so it doesn't blow
     // up #bot-commands with one public message per challenge. Parent is
     // the dedicated #challenges channel when configured, else the channel
