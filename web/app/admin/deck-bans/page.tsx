@@ -111,7 +111,7 @@ export default async function DeckSelectionPage({
             </div>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
             <PresetSidebar
               presets={presets}
               selectedId={selected?.id ?? null}
@@ -274,7 +274,7 @@ function PresetEditor({
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
         <ListEditor
           title="Decks"
           items={preset.decks}

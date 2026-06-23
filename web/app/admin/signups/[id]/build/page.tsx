@@ -213,7 +213,7 @@ export default async function BuildSeasonPage({
           )}
           <form action={buildSeason}>
             <input type="hidden" name="roundId" value={round.id} />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
               <label>
                 {existingSeason ? (
                   <>Subtitle — setting up <strong>Season {existingSeason.number}</strong> (edit to rename)</>

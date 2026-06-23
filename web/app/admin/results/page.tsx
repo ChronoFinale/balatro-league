@@ -136,6 +136,7 @@ export default async function ResultsPage({
               {sel.matches.length === 0 ? (
                 <p className="muted" style={{ fontSize: 12 }}>Nothing recorded in this division yet.</p>
               ) : (
+                <div className="table-scroll">
                 <table style={{ marginTop: 8 }}>
                   <thead>
                     <tr><th>Match</th><th>Score</th><th>Type</th><th>Override</th><th></th></tr>
@@ -187,6 +188,7 @@ export default async function ResultsPage({
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </section>
           </>

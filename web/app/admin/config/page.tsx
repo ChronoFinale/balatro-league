@@ -138,6 +138,7 @@ export default async function AdminConfigPage() {
             />
             <Button type="submit">Add binding</Button>
           </form>
+          <div className="table-scroll">
           <table style={{ marginTop: 12 }}>
             <thead>
               <tr><th>Tier</th><th>Discord role ID</th><th>Set by</th><th>Created</th><th></th></tr>
@@ -166,6 +167,7 @@ export default async function AdminConfigPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
         ) : (
           <div className="card muted" style={{ marginTop: 16 }}>
@@ -190,6 +192,7 @@ function ConfigSection({
   return (
     <div className="card" style={{ marginTop: 16 }}>
       <strong>{title}</strong>
+      <div className="table-scroll">
       <table style={{ marginTop: 8 }}>
         <thead>
           <tr><th style={{ width: "30%" }}>Setting</th><th>Current value</th><th></th></tr>
@@ -232,6 +235,7 @@ function ConfigSection({
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

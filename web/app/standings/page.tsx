@@ -102,28 +102,28 @@ export default async function StandingsPage() {
         ) : (
           <>
             <h2>{data.season.name} — Standings</h2>
-            <div
-              className="card"
-              style={{ marginBottom: 16, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "baseline" }}
-            >
-              <span style={{ fontSize: 15 }}>
-                <strong>{totalPlayed}</strong> <span className="muted">/ {totalExpected}</span> matches played
-              </span>
-              <span className="muted">·</span>
-              <span><strong>{totalRemaining}</strong> remaining</span>
-              <span className="muted" style={{ marginLeft: "auto" }}>{pctPlayed}% complete</span>
-            </div>
-            <details className="card" style={{ marginBottom: 16 }}>
-              <summary className="muted" style={{ cursor: "pointer", textTransform: "uppercase", letterSpacing: 0.5, fontSize: 11 }}>Key</summary>
-              <div style={{ marginTop: 8, fontSize: 12, display: "flex", flexWrap: "wrap", gap: "4px 16px", alignItems: "center" }}>
-                <span><span style={{ color: "var(--success)" }}>↑</span> promotion spot</span>
-                <span><span style={{ color: "var(--danger)" }}>↓</span> relegation spot</span>
-                <span><span style={{ color: "var(--success)" }}>🔒↑</span> clinched — guaranteed up</span>
-                <span><span style={{ color: "var(--danger)" }}>🔒↓</span> locked — guaranteed down</span>
-                <span><span style={{ color: "var(--accent)" }}>⚔</span> tied — needs a shootout (a 1-game tiebreaker)</span>
-                <span><s>name</s> dropped out</span>
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ fontSize: 15, whiteSpace: "nowrap" }}>
+                  <strong>{totalPlayed}</strong> <span className="muted">/ {totalExpected}</span> matches played · <strong>{totalRemaining}</strong> remaining
+                </span>
+                <div style={{ flex: "1 1 120px", minWidth: 100, background: "var(--surface-2)", borderRadius: 99, height: 6, overflow: "hidden" }}>
+                  <div style={{ background: "var(--accent-2)", height: "100%", width: `${pctPlayed}%` }} />
+                </div>
+                <span className="muted" style={{ fontSize: 13, whiteSpace: "nowrap" }}>{pctPlayed}% complete</span>
               </div>
-            </details>
+              <details style={{ marginTop: 8 }}>
+                <summary className="muted" style={{ cursor: "pointer", textTransform: "uppercase", letterSpacing: 0.5, fontSize: 11 }}>Key</summary>
+                <div style={{ marginTop: 8, fontSize: 12, display: "flex", flexWrap: "wrap", gap: "4px 16px", alignItems: "center" }}>
+                  <span><span style={{ color: "var(--success)" }}>↑</span> promotion spot</span>
+                  <span><span style={{ color: "var(--danger)" }}>↓</span> relegation spot</span>
+                  <span><span style={{ color: "var(--success)" }}>🔒↑</span> clinched — guaranteed up</span>
+                  <span><span style={{ color: "var(--danger)" }}>🔒↓</span> locked — guaranteed down</span>
+                  <span><span style={{ color: "var(--accent)" }}>⚔</span> tied — needs a shootout (a 1-game tiebreaker)</span>
+                  <span><s>name</s> dropped out</span>
+                </div>
+              </details>
+            </div>
             {data.tiers.filter((t) => t.divisions.length > 0).map((tier) => {
               const isTopTier = tier.position === data.minTierPosition;
               const isBottomTier = tier.position === data.maxTierPosition;

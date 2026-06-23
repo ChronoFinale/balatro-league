@@ -84,7 +84,7 @@ export default async function AdminDisputesPage({
                   </span>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 8 }}>
                   <div style={{ padding: 8, background: "var(--surface-2)", borderRadius: 4 }}>
                     <div className="muted" style={{ fontSize: 11 }}>Recorded</div>
                     <div style={{ fontSize: 18, fontWeight: 600 }}>

@@ -380,7 +380,7 @@ async function AdminSeasonPanel({
                   {justBuilt ? "✓ Season built — review below" : "📝 Draft mode"}
                 </strong>{" "}
                 <span className="muted" style={{ fontSize: 12 }}>
-                  Fine-tune the placement below — changes save instantly — then <strong>Start season →</strong> at the bottom.
+                  Fine-tune the placement below — changes save instantly — then <strong>Start season →</strong> below.
                 </span>
               </div>
               <h4 style={{ margin: "16px 0 2px" }}>Place players into divisions</h4>
@@ -524,6 +524,13 @@ async function AdminSeasonPanel({
         </details>
       )}
 
+      <LifecycleActions
+        season={season}
+        round={signupRound}
+        channels={channels}
+        playerCount={totalMembers}
+      />
+
       <div className="card">
         <strong>Settings</strong>
         <div style={{ marginTop: 8 }}>
@@ -589,13 +596,6 @@ async function AdminSeasonPanel({
           </div>
         </details>
       </div>
-
-      <LifecycleActions
-        season={season}
-        round={signupRound}
-        channels={channels}
-        playerCount={totalMembers}
-      />
 
       <details className="card" style={{ marginTop: 16 }}>
         <summary style={{ cursor: "pointer", color: "var(--danger)", fontSize: 12 }}>Danger zone</summary>
