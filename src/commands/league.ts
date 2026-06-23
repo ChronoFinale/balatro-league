@@ -889,7 +889,7 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       `📌 <#${infoChan.id}> — league-info`,
       `📝 <#${signupChan.id}> — league-signups`,
       `🏆 <#${resultsChan.id}> — league-results-bot (bot-only auto-post target)`,
-      `🎮 <#${queueChan.id}> — league-queue (click "I'm free"; matches scheduled opponents)`,
+      `🎮 <#${queueChan.id}> — league-queue (Queue up to match a free scheduled opponent)`,
       `📣 <#${announcementsChan.id}> — league-announcements (season starts, recaps)`,
       `💬 <#${chatChan.id}> — league-chat`,
       `🗣️ <#${feedbackChan.id}> — league-feedback (player suggestions + bug reports)`,
