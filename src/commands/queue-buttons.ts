@@ -66,7 +66,7 @@ export const queueButtons: ButtonHandler = {
       const s = await queueStatusFor(me.id, season.id);
       const head = s.queued
         ? "📋 **You're in the queue** ✅"
-        : "📋 **You're not in the queue.** Hit **I'm free** to join.";
+        : "📋 **You're not in the queue.** Hit **Queue up** to join.";
       await interaction.editReply([head, "", ...statusLines(s)].join("\n"));
       return;
     }
@@ -91,7 +91,7 @@ export const queueButtons: ButtonHandler = {
       const s = await queueStatusFor(me.id, season.id);
       const head = outcome.error
         ? `You're queued, but I couldn't start a match just now: ${outcome.error}`
-        : "✅ **You're in the queue.** I'll open a match the moment a scheduled opponent is also free. Hit **Leave** when you're done.";
+        : "✅ **You're in the queue.** I'll open a match the moment a scheduled opponent is also queued. Hit **Leave queue** when you're done.";
       await interaction.editReply([head, "", ...statusLines(s)].join("\n"));
       return;
     }

@@ -12,7 +12,8 @@ import { prisma } from "./db.js";
 import { activePublicSeason } from "./active-season.js";
 import { getConfig, setConfig, LeagueConfigKey } from "./league-config.js";
 import { createLeagueMatchInvite } from "./league-match-invite.js";
-import { recordAudit } from "./audit.js";
+import { recordAudit, SYSTEM_ACTOR } from "./audit.js";
+import { getDiscordClient } from "./discord.js";
 
 // The pinned message's content + Join/Leave buttons + the live "free right now"
 // list. allowedMentions is cleared so editing the message on every join/leave
@@ -20,16 +21,16 @@ import { recordAudit } from "./audit.js";
 function renderQueueMessage(players: Player[]): BaseMessageOptions {
   const lines = [
     "## 🎮 League Queue",
-    "Click **I'm free** when you're around to play. The moment an opponent you're scheduled against is also free, I'll open a match invite for you both to accept.",
+    "Hit **Queue up** when you're around to play. The moment an opponent you're scheduled against is also in the queue, I'll open a match invite for you both to accept.",
     "",
     players.length
-      ? `**Free right now (${players.length}):** ${players.map((p) => p.displayName).join(", ")}`
-      : "_Nobody's in the queue right now._",
+      ? `**In the queue (${players.length}):** ${players.map((p) => p.displayName).join(", ")}`
+      : "_Queue is empty right now._",
   ];
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("queue:join").setLabel("I'm free").setStyle(ButtonStyle.Success).setEmoji("🎮"),
-    new ButtonBuilder().setCustomId("queue:leave").setLabel("Leave").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("queue:status").setLabel("My status").setStyle(ButtonStyle.Secondary).setEmoji("📋"),
+    new ButtonBuilder().setCustomId("queue:join").setLabel("Queue up").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("queue:leave").setLabel("Leave queue").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("queue:status").setLabel("Status").setStyle(ButtonStyle.Secondary),
   );
   return { content: lines.join("\n"), components: [row], allowedMentions: { parse: [] } };
 }
@@ -163,6 +164,36 @@ export async function tryStartFromQueue(opts: {
 
   await prisma.queueEntry.deleteMany({ where: { playerId: { in: [opts.me.id, found.opp.id] } } });
   return { matched: true, oppName: found.opp.displayName, inviteUrl: result.inviteUrl };
+}
+
+// Safety-net matcher. Matching is normally event-driven (the second player to
+// hit Queue up triggers it instantly), so this usually finds nothing — it just
+// catches the rare miss: a transient invite-create failure, or two opponents who
+// ended up queued without pairing. Cheap: bails immediately on <2 queued. Run
+// from the existing match-sweep tick, so it adds no new loop.
+export async function sweepQueueMatches(): Promise<number> {
+  const season = await activePublicSeason();
+  if (!season) return 0;
+  const entries = await prisma.queueEntry.findMany({
+    where: { seasonId: season.id },
+    orderBy: { queuedAt: "asc" },
+    select: { playerId: true },
+  });
+  if (entries.length < 2) return 0;
+
+  const client = getDiscordClient();
+  let started = 0;
+  for (const { playerId } of entries) {
+    // tryStartFromQueue removes both players on a match, so skip anyone already
+    // paired earlier in this pass.
+    if (!(await isQueued(playerId))) continue;
+    const me = await prisma.player.findUnique({ where: { id: playerId } });
+    if (!me) continue;
+    const outcome = await tryStartFromQueue({ client, me, actor: SYSTEM_ACTOR });
+    if (outcome.matched) started++;
+  }
+  if (started > 0) await refreshQueueMessage(client);
+  return started;
 }
 
 // Re-render the pinned queue message in place.

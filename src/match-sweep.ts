@@ -35,6 +35,7 @@ import { logDiscordError } from "./log-discord-error.js";
 import { enqueueBootstrapDivision, enqueueLeagueInfoRefresh } from "./queue.js";
 import { recordAudit, SYSTEM_ACTOR } from "./audit.js";
 import { applyPendingMatchMmr } from "./mmr-live.js";
+import { sweepQueueMatches } from "./league-queue.js";
 
 const SWEEP_INTERVAL_MS = 60 * 1000;
 const IDLE_CANCEL_HOURS = 24;
@@ -360,6 +361,9 @@ export function startMatchSweep(): void {
   applyPendingMatchMmr()
     .then((n) => n > 0 && console.log(`[match-sweep mmr] applied ${n} match(es)`))
     .catch((err) => console.warn("[match-sweep] boot mmr apply failed:", err));
+  sweepQueueMatches()
+    .then((n) => n > 0 && console.log(`[match-sweep queue] started ${n} queued match(es)`))
+    .catch((err) => console.warn("[match-sweep] boot queue sweep failed:", err));
   setInterval(() => {
     sweepExpiredInvites().catch((err) => console.warn("[match-sweep] expiry tick failed:", err));
     sweepIdleSessions().catch((err) => console.warn("[match-sweep] idle tick failed:", err));
@@ -369,5 +373,8 @@ export function startMatchSweep(): void {
     applyPendingMatchMmr()
       .then((n) => n > 0 && console.log(`[match-sweep mmr] applied ${n} match(es)`))
       .catch((err) => console.warn("[match-sweep] mmr apply tick failed:", err));
+    sweepQueueMatches()
+      .then((n) => n > 0 && console.log(`[match-sweep queue] started ${n} queued match(es)`))
+      .catch((err) => console.warn("[match-sweep] queue sweep tick failed:", err));
   }, SWEEP_INTERVAL_MS);
 }
