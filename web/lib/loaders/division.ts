@@ -14,7 +14,7 @@ import { loadDivisionStandings } from "@/lib/standings-cache";
 import { formatSeasonLabel } from "@/lib/format-season";
 
 export interface DivisionStandingRow {
-  player: { id: string; displayName: string; discordId: string; username: string | null; rating: number | null };
+  player: { id: string; displayName: string; discordId: string; username: string | null };
   points: number;
   wins: number;
   draws: number;
@@ -101,7 +101,7 @@ export async function loadDivisionPageData(divisionId: string): Promise<Division
   // Cached standings — same source as /standings, no recompute.
   const standingsRows = await loadDivisionStandings(divisionId);
   const standings: DivisionStandingRow[] = standingsRows.map((r) => ({
-    player: { id: r.player.id, displayName: r.player.displayName, discordId: r.player.discordId, username: r.player.username, rating: r.player.rating },
+    player: { id: r.player.id, displayName: r.player.displayName, discordId: r.player.discordId, username: r.player.username },
     points: r.points,
     wins: r.wins,
     draws: r.draws,

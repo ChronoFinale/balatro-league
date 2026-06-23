@@ -431,7 +431,7 @@ export interface SignupMmrTier {
   avgMmr: number;
 }
 export interface SignupMmrOverview {
-  round: { id: string; name: string; status: string; signupCount: number; resultingSeasonId: string | null };
+  round: { id: string; name: string; status: string; signupCount: number; resultingSeasonId: string | null; resultingSeasonEndedAt: Date | null };
   rows: SignupMmrRow[]; // sorted by mmr desc, no-data last
   withData: number;
   withoutData: number;
@@ -457,6 +457,12 @@ export async function loadSignupMmrOverview(roundId: string): Promise<SignupMmrO
     },
   });
   if (!round) return null;
+
+  // Resulting season's ended state → the detail header shows "ENDED" instead of a
+  // perpetual "BUILT" once the season this round built has finished.
+  const resultingSeasonEndedAt = round.resultingSeasonId
+    ? (await prisma.season.findUnique({ where: { id: round.resultingSeasonId }, select: { endedAt: true } }))?.endedAt ?? null
+    : null;
 
   const discordIds = round.signups.map((s) => s.discordId);
   const [snaps, bmpSeasonRow] = await Promise.all([
@@ -525,7 +531,7 @@ export async function loadSignupMmrOverview(roundId: string): Promise<SignupMmrO
     .sort((a, b) => b.avgMmr - a.avgMmr);
 
   return {
-    round: { id: round.id, name: round.name, status: round.status, signupCount: round.signups.length, resultingSeasonId: round.resultingSeasonId },
+    round: { id: round.id, name: round.name, status: round.status, signupCount: round.signups.length, resultingSeasonId: round.resultingSeasonId, resultingSeasonEndedAt },
     rows,
     withData: n,
     withoutData: rows.length - n,
