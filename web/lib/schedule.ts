@@ -15,7 +15,7 @@
 // preserving 2-swaps (rewire two edges, keeping every degree fixed) that reduce
 // SoS variance, with a few seeded restarts. Trivial at division scale.
 
-import { isUnplayedPending } from "./schedule-locked.js";
+import { isUnplayedPending } from "./schedule-locked";
 
 export interface SchedulePlayer {
   id: string;
