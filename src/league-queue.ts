@@ -29,6 +29,7 @@ function renderQueueMessage(players: Player[]): BaseMessageOptions {
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("queue:join").setLabel("I'm free").setStyle(ButtonStyle.Success).setEmoji("🎮"),
     new ButtonBuilder().setCustomId("queue:leave").setLabel("Leave").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("queue:status").setLabel("My status").setStyle(ButtonStyle.Secondary).setEmoji("📋"),
   );
   return { content: lines.join("\n"), components: [row], allowedMentions: { parse: [] } };
 }
@@ -61,6 +62,38 @@ export async function leaveQueue(playerId: string): Promise<boolean> {
 
 export async function isQueued(playerId: string): Promise<boolean> {
   return (await prisma.queueEntry.count({ where: { playerId } })) > 0;
+}
+
+export interface QueueStatus {
+  queued: boolean;
+  free: Player[]; // everyone currently free (excluding the asker)
+  remainingOpponents: Player[]; // the asker's still-to-play opponents this season
+  freeOpponents: Player[]; // remainingOpponents who are free right now
+}
+
+// A snapshot for one player: are they queued, who's free, who they still have to
+// play, and which of those opponents are free right now.
+export async function queueStatusFor(playerId: string, seasonId: string): Promise<QueueStatus> {
+  const [queued, freeAll] = await Promise.all([isQueued(playerId), currentlyQueued(seasonId)]);
+  const free = freeAll.filter((p) => p.id !== playerId);
+  const pending = await prisma.match.findMany({
+    where: {
+      status: "PENDING",
+      format: "LEAGUE_BO2",
+      gamesWonA: 0,
+      gamesWonB: 0,
+      division: { seasonId },
+      OR: [{ playerAId: playerId }, { playerBId: playerId }],
+    },
+    select: { playerAId: true, playerBId: true },
+  });
+  const oppIds = [...new Set(pending.map((m) => (m.playerAId === playerId ? m.playerBId : m.playerAId)))];
+  const remainingOpponents = oppIds.length
+    ? await prisma.player.findMany({ where: { id: { in: oppIds } } })
+    : [];
+  const freeIds = new Set(free.map((p) => p.id));
+  const freeOpponents = remainingOpponents.filter((p) => freeIds.has(p.id));
+  return { queued, free, remainingOpponents, freeOpponents };
 }
 
 // Find a player this one is scheduled against (PENDING, unplayed LEAGUE_BO2 in
