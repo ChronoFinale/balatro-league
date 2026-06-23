@@ -388,6 +388,7 @@ export async function ProfileView({
         {/* Personal settings — only on your own profile (folded in from /me). */}
         {me && (
           <>
+            <h3 style={{ marginTop: 24, marginBottom: 8 }}>⚙ Your settings</h3>
             <NextSeasonCard remindersOn={me.remindersOn} />
 
             <div className="card" style={{ marginTop: 16 }}>
