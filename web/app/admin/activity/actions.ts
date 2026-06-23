@@ -55,7 +55,7 @@ export async function sendTestCheckin() {
   const { user } = await requireAdmin();
   const season = await prisma.season.findFirst({
     where: { isActive: true },
-    select: { id: true, number: true, subtitle: true },
+    select: { id: true, number: true, subtitle: true, scheduledEndAt: true },
   });
   if (!season) return;
 
@@ -81,6 +81,7 @@ export async function sendTestCheckin() {
     divisionName: member?.division.name ?? "your division",
     divisionChannelUrl: jump(member?.division.discordChannelId),
     queueChannelUrl: jump(queueCfg?.value),
+    seasonEndsAt: season.scheduledEndAt,
     isTest: true,
   });
 

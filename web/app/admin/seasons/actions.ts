@@ -270,6 +270,35 @@ export async function setSeasonScheduledStart(formData: FormData) {
   revalidatePath("/admin/seasons");
 }
 
+// Set (or clear, with a blank value) the season's planned end date. Purely
+// informational — shown to players (e.g. the activity check-in DM); it does NOT
+// auto-end the season. Allowed on an active season (you set it while it runs).
+export async function setSeasonScheduledEnd(formData: FormData) {
+  const { user } = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const whenStr = String(formData.get("scheduledEndAt") ?? "").trim();
+  const target = await prisma.season.findUnique({ where: { id } });
+  if (!target) return;
+  const when = whenStr ? new Date(whenStr) : null;
+  if (when && Number.isNaN(when.getTime())) {
+    redirect(`/seasons/${id}?err=${encodeURIComponent("Invalid date.")}`);
+  }
+  await prisma.season.update({ where: { id }, data: { scheduledEndAt: when } });
+  recordAudit({
+    actor: actorFromAdminUser(user),
+    action: "season.set-end-date",
+    targetType: "Season",
+    targetId: id,
+    summary: when
+      ? `Set planned end date for "${formatSeasonLabel(target)}" to ${when.toISOString().slice(0, 10)}`
+      : `Cleared planned end date for "${formatSeasonLabel(target)}"`,
+    metadata: { scheduledEndAt: when?.toISOString() ?? null },
+  });
+  revalidatePath(`/seasons/${id}`);
+  revalidatePath("/admin/seasons");
+}
+
 export async function clearSeasonScheduledStart(formData: FormData) {
   const { user } = await requireAdmin();
   const id = String(formData.get("id") ?? "");

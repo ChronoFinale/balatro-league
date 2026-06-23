@@ -173,6 +173,9 @@ model Season {
   // isActive=true) the next time it runs after this timestamp. Admin
   // can edit/clear at any point before activation. Cleared on activate.
   scheduledStartAt DateTime?
+  // Planned end date (admin-set, informational). Used to tell players the
+  // deadline (e.g. in the activity check-in DM). Doesn't auto-end the season.
+  scheduledEndAt   DateTime?
   endedAt          DateTime?
   // Archived seasons are hidden from default lists (admin + public). Use
   // for old seasons you want kept-but-out-of-the-way.

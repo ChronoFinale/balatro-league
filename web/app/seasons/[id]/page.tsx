@@ -32,6 +32,7 @@ import {
   renameSeason,
   setSeasonPreset,
   setSeasonScheduledStart,
+  setSeasonScheduledEnd,
 } from "@/app/admin/seasons/actions";
 import { setSeasonRulesTemplate } from "@/app/admin/settings/actions";
 import {
@@ -556,6 +557,18 @@ async function AdminSeasonPanel({
           />
           <Button type="submit" variant="secondary" size="sm">Save</Button>
           <Link href="/admin/settings" className="muted" style={{ fontSize: 11 }}>Manage templates →</Link>
+        </form>
+        <form action={setSeasonScheduledEnd} style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <input type="hidden" name="id" value={season.id} />
+          <label className="muted" style={{ fontSize: 12 }}>Planned end date:</label>
+          <Input
+            type="date"
+            name="scheduledEndAt"
+            defaultValue={season.scheduledEndAt ? season.scheduledEndAt.toISOString().slice(0, 10) : ""}
+            style={{ fontSize: 12 }}
+          />
+          <Button type="submit" variant="secondary" size="sm">Save</Button>
+          <span className="muted" style={{ fontSize: 11 }}>Informational — shown to players (check-in DMs). Doesn&apos;t auto-end the season.</span>
         </form>
         <details style={{ marginTop: 8 }}>
           <summary className="muted" style={{ cursor: "pointer", fontSize: 12 }}>Discord overrides for this season</summary>
