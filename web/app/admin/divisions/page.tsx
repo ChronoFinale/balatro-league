@@ -11,19 +11,19 @@ import { resyncSchedules, regenerateSchedules, regenerateDivisionSchedule, setDi
 import { Input } from "@/components/ui/input";
 import { Callout } from "@/components/Callout";
 import { ReplacePlayerSection } from "@/components/ReplacePlayerSection";
-import { loadServerLeavers } from "@/lib/loaders/server-leavers";
+import { loadActiveSeasonRoster } from "@/lib/loaders/active-roster";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminDivisionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ok?: string; err?: string; serverCheck?: string }>;
+  searchParams: Promise<{ ok?: string; err?: string; replace?: string; replaceerr?: string }>;
 }) {
   await requireAdmin();
-  const { ok, err, serverCheck } = await searchParams;
+  const { ok, err, replace, replaceerr } = await searchParams;
   const { season, tiers } = await loadAdminDivisionsIndex();
-  const leavers = season && serverCheck ? await loadServerLeavers() : null;
+  const roster = season ? await loadActiveSeasonRoster() : [];
 
   return (
     <>
@@ -53,14 +53,16 @@ export default async function AdminDivisionsPage({
           </Callout>
         )}
 
+        {replace && (
+          <Callout type="success" style={{ marginBottom: 12 }}>✓ Replaced: {replace}</Callout>
+        )}
+        {replaceerr && (
+          <Callout type="danger" style={{ marginBottom: 12 }}>{replaceerr}</Callout>
+        )}
+
         {season && (
           <div className="card card-admin" style={{ marginBottom: 16 }}>
-            <ReplacePlayerSection
-              leavers={leavers}
-              serverChecked={!!serverCheck}
-              checkHref="/admin/divisions?serverCheck=1"
-              returnTo="/admin/divisions"
-            />
+            <ReplacePlayerSection players={roster} returnTo="/admin/divisions" />
           </div>
         )}
 

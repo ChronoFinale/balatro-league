@@ -691,12 +691,7 @@ function SeasonRosterTools({
       )}
 
       <div style={{ marginBottom: 16 }}>
-        <ReplacePlayerSection
-          leavers={leavers}
-          serverChecked={serverChecked}
-          checkHref={checkHref}
-          returnTo={returnTo}
-        />
+        <ReplacePlayerSection players={swappable} returnTo={returnTo} />
       </div>
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>

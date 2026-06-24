@@ -1,61 +1,48 @@
-// Shared "replace a player who left the server" UI — used on the season page
-// AND the admin Divisions page so the experience is identical in both places.
-// Pre-play only; the replacement inherits the departed's exact schedule.
+// Shared "replace a player" UI — used on the season page AND the admin Divisions
+// page so the experience is identical in both places. Replaces ANY active player
+// (whether they left the server or just aren't going to play) with a new person;
+// the replacement inherits the departed's exact schedule. Pre-play only — the
+// action refuses if the player being replaced has already played a match.
 
-import Link from "next/link";
 import { replacePlayer } from "@/app/admin/players/actions";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { Input } from "@/components/ui/input";
-import { DiscordId } from "@/components/DiscordId";
-import type { ServerLeaver } from "@/lib/loaders/server-leavers";
+import { FormSelect } from "@/components/FormSelect";
 
 export function ReplacePlayerSection({
-  leavers,
-  serverChecked,
-  checkHref,
+  players,
   returnTo,
 }: {
-  leavers: ServerLeaver[] | null;
-  serverChecked: boolean;
-  checkHref: string;
+  players: { id: string; label: string }[];
   returnTo: string;
 }) {
   return (
     <div>
-      <strong style={{ fontSize: 13 }}>Replace a player who left the server</strong>
-      <p className="muted" style={{ fontSize: 12, margin: "2px 0 6px" }}>
-        Find active players who&apos;ve left Discord, then replace one with someone new — the replacement
-        inherits their exact schedule. Pre-play only: blocked once the departing player has a reported result.
+      <strong style={{ fontSize: 13 }}>Replace a player</strong>
+      <p className="muted" style={{ fontSize: 12, margin: "2px 0 8px" }}>
+        Swap any player out for a new person — whether they left the server or just aren&apos;t going to play.
+        The replacement inherits the departed&apos;s exact schedule, so nothing else changes. Pre-play only:
+        blocked once the player being replaced has a reported result.
       </p>
-      {!serverChecked ? (
-        <Link href={checkHref} style={{ fontSize: 13 }}>🔍 Check who&apos;s left the server →</Link>
-      ) : !leavers || leavers.length === 0 ? (
-        <p style={{ fontSize: 13, color: "var(--success)", margin: 0 }}>✓ Everyone in the season is still in the server.</p>
+      {players.length === 0 ? (
+        <p className="muted" style={{ fontSize: 13, margin: 0 }}>No active players to replace.</p>
       ) : (
-        <table style={{ marginTop: 4 }}>
-          <thead><tr><th>Left the server</th><th>Division</th><th>Replace with (Discord ID)</th></tr></thead>
-          <tbody>
-            {leavers.map((l) => (
-              <tr key={l.playerId}>
-                <td><strong>{l.displayName}</strong><DiscordId value={l.discordId} username={null} /></td>
-                <td className="muted">{l.divisionName}</td>
-                <td>
-                  <form action={replacePlayer} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <input type="hidden" name="returnTo" value={returnTo} />
-                    <input type="hidden" name="departedPlayerId" value={l.playerId} />
-                    <Input name="newDiscordId" required placeholder="Discord ID" className="max-w-40" />
-                    <ConfirmButton
-                      message={`Replace ${l.displayName} with this person? They take over the exact schedule. Blocked if ${l.displayName} already has a reported result.`}
-                      variant="secondary"
-                    >
-                      Replace
-                    </ConfirmButton>
-                  </form>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <form action={replacePlayer} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <input type="hidden" name="returnTo" value={returnTo} />
+          <FormSelect
+            name="departedPlayerId"
+            defaultValue=""
+            options={[{ value: "", label: "— player to replace —" }, ...players.map((p) => ({ value: p.id, label: p.label }))]}
+          />
+          <span className="muted" style={{ fontSize: 12 }}>→</span>
+          <Input name="newDiscordId" required placeholder="Replacement's Discord ID" className="max-w-52" />
+          <ConfirmButton
+            message="Replace the selected player with this Discord ID? The new player takes over the exact schedule and gets DM'd it. Blocked if the player being replaced has already played a match."
+            variant="secondary"
+          >
+            Replace
+          </ConfirmButton>
+        </form>
       )}
     </div>
   );
