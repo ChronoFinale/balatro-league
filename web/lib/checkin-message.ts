@@ -27,7 +27,7 @@ export function buildCheckinMessage(o: CheckinMessageOpts): string {
   ];
   if (o.seasonEndsAt) {
     const unix = Math.floor(o.seasonEndsAt.getTime() / 1000);
-    lines.push(``, `Season ends <t:${unix}:D> (<t:${unix}:R>), so get your games in before then.`);
+    lines.push(``, `Season ends <t:${unix}:f> (<t:${unix}:R>), so get your games in before then.`);
   }
   lines.push(
     ``,
