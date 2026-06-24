@@ -197,6 +197,12 @@ export const LeagueConfigKey = {
   // (hands-off live MMR). Default unset/"false" so MMR stays preview-only — you
   // recompute manually on /admin/mmr until you flip this on to go live.
   LiveMmrEnabled: "live_mmr_enabled",
+
+  // Staff-only #league-transcripts channel: when a match/dispute thread closes,
+  // the bot posts a brief summary (who spoke + counts) and a link to the web
+  // transcript here. Auto-created (staff-only, via RoleBinding tiers) on first
+  // use; the id is stored back here.
+  TranscriptsChannelId: "transcripts_channel_id",
 } as const;
 
 export type LeagueConfigKey = (typeof LeagueConfigKey)[keyof typeof LeagueConfigKey];

@@ -44,6 +44,7 @@ import { summonHelpers } from "./helper.js";
 import { recomputeDivisionStandings } from "../standings-cache.js";
 import { writeMatchGames } from "../match-write.js";
 import { backfillMatchId, postModerationNotice } from "../mod-log.js";
+import { postTranscriptSummary } from "../transcript-channel.js";
 import {
   emptyGameState,
   parseGame,
@@ -644,6 +645,10 @@ async function closeMatchChannel(
   channelId: string | null,
 ): Promise<void> {
   if (!channelId) return;
+  // Index this thread's transcript in the staff #league-transcripts channel
+  // before the thread is deleted (best-effort; skips threads where nothing was
+  // said). The link points at the durable web transcript, not the thread.
+  postTranscriptSummary(interaction.client, channelId).catch(() => {});
   let ok = false;
   try {
     const channel = await interaction.client.channels.fetch(channelId);
