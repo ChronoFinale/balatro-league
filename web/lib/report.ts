@@ -55,12 +55,19 @@ export type ReportOutcome =
   | { ok: true; pairingId: string; created: boolean }
   | { ok: false; reason: string };
 
+// Per-game detail a player can report. Decks/stakes differ per game in a BO2,
+// so each game carries its own combo (plus the winner's leftover lives).
+export interface ReportGameInput {
+  deck?: string | null;
+  stake?: string | null;
+  lives?: number | null;
+}
+
 export async function reportSetFromWeb(
   reporterDiscordId: string,
   opponentPlayerId: string,
   result: ReportResultStr,
-  combo?: { deck?: string | null; stake?: string | null },
-  lives?: { game1?: number | null; game2?: number | null },
+  games?: { game1?: ReportGameInput; game2?: ReportGameInput },
 ): Promise<ReportOutcome> {
   const reporter = await prisma.player.findUnique({ where: { discordId: reporterDiscordId } });
   if (!reporter) return { ok: false, reason: "You don't have a Player record — ask an admin to add you." };
@@ -94,9 +101,9 @@ export async function reportSetFromWeb(
     ? [reporter.id, opponentPlayerId]
     : [opponentPlayerId, reporter.id];
   const reporterIsA = reporter.id === playerAId;
-  const games = gamesFromResult(result);
-  const gamesWonA = reporterIsA ? games.a : games.b;
-  const gamesWonB = reporterIsA ? games.b : games.a;
+  const score = gamesFromResult(result);
+  const gamesWonA = reporterIsA ? score.a : score.b;
+  const gamesWonB = reporterIsA ? score.b : score.a;
 
   const existing = await prisma.match.findUnique({
     where: {
@@ -148,8 +155,17 @@ export async function reportSetFromWeb(
   // The Discord /report slash command still uses the PENDING + 2-min
   // confirm window since that's natural in a channel context.
   const now = new Date();
-  const reportedDeck = combo?.deck?.trim() || null;
-  const reportedStake = combo?.stake?.trim() || null;
+  // Per-game combos (decks/stakes differ per game). The Match keeps a single
+  // "headline" reportedDeck/Stake = game 1's, for list views that show one combo;
+  // the full per-game detail lives on the Game rows written below.
+  const g1 = games?.game1 ?? {};
+  const g2 = games?.game2 ?? {};
+  const deck1 = g1.deck?.trim() || null;
+  const stake1 = g1.stake?.trim() || null;
+  const deck2 = g2.deck?.trim() || null;
+  const stake2 = g2.stake?.trim() || null;
+  const reportedDeck = deck1;
+  const reportedStake = stake1;
   const winnerId = gamesWonA > gamesWonB ? playerAId : gamesWonB > gamesWonA ? playerBId : null;
   const pairing = existing
     ? await prisma.match.update({
@@ -183,18 +199,19 @@ export async function reportSetFromWeb(
           reportedStake,
         },
       });
-  // Capture the winner's lives per game so the standings life-differential
-  // tiebreaker has data and players don't do the math by hand. Each game's
-  // winner is derived from the result: a 2-0/0-2 has one player winning both;
-  // a 1-1 splits — slot 1 is the reporter's win, slot 2 the opponent's (order
-  // is irrelevant to the differential). A manual report doesn't know the
-  // per-game deck/stake (the headline combo lives on the Match as
-  // reportedDeck/Stake), so those stay null; firstPlayerId is unknown too and
-  // set to A for a stable value (only consumed for games with a GameDeck pool,
-  // which these don't).
-  const livesG1 = parseLives(lives?.game1);
-  const livesG2 = parseLives(lives?.game2);
-  if (livesG1 !== null || livesG2 !== null) {
+  // Capture the per-game detail (deck, stake, and the winner's leftover lives)
+  // so the record matches reality — decks differ per game — and the standings
+  // life-differential tiebreaker has data. Each game's winner is derived from
+  // the result: a 2-0/0-2 has one player winning both; a 1-1 splits — slot 1 is
+  // the reporter's win, slot 2 the opponent's (order is irrelevant to the
+  // differential). firstPlayerId is unknown for a manual report and set to A for
+  // a stable value (only meaningful for games with a GameDeck ban pool, which
+  // these don't have). Write the rows whenever ANY per-game detail was given.
+  const livesG1 = parseLives(g1.lives);
+  const livesG2 = parseLives(g2.lives);
+  const hasGameDetail =
+    livesG1 !== null || livesG2 !== null || !!deck1 || !!stake1 || !!deck2 || !!stake2;
+  if (hasGameDetail) {
     const [w1, w2] =
       result === "2-0" ? [reporter.id, reporter.id]
         : result === "0-2" ? [opponentPlayerId, opponentPlayerId]
@@ -203,8 +220,8 @@ export async function reportSetFromWeb(
     await prisma.game.deleteMany({ where: { matchId: pairing.id } });
     await prisma.game.createMany({
       data: [
-        { matchId: pairing.id, num: 1, firstPlayerId: playerAId, winnerId: w1, winnerLives: livesG1 },
-        { matchId: pairing.id, num: 2, firstPlayerId: playerAId, winnerId: w2, winnerLives: livesG2 },
+        { matchId: pairing.id, num: 1, firstPlayerId: playerAId, winnerId: w1, winnerLives: livesG1, deck: deck1, stake: stake1 },
+        { matchId: pairing.id, num: 2, firstPlayerId: playerAId, winnerId: w2, winnerLives: livesG2, deck: deck2, stake: stake2 },
       ],
     });
   }
@@ -232,7 +249,7 @@ export async function reportSetFromWeb(
     targetType: "Match",
     targetId: pairing.id,
     summary: `${reporter.displayName} reported ${result} vs ${opponent?.displayName ?? "opponent"} (${division.name})`,
-    metadata: { result, deck: reportedDeck, stake: reportedStake, livesG1, livesG2, divisionId: division.id, opponentPlayerId },
+    metadata: { result, deck1, stake1, deck2, stake2, livesG1, livesG2, divisionId: division.id, opponentPlayerId },
   }).catch(() => { /* audit must never block a report */ });
   if (opponent?.discordId) {
     const reporterGames = reporterIsA ? gamesWonA : gamesWonB;

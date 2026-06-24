@@ -48,9 +48,9 @@ export async function reportFromProfileAction(formData: FormData) {
   const discordId = (session?.user as { discordId?: string } | undefined)?.discordId;
   const profileId = String(formData.get("profileId") ?? "");
   if (!discordId) redirect(`/profile/${profileId}?reportErr=not-logged-in`);
-  const { opponentId, result, deck, stake, lives, valid } = parseReportForm(formData);
+  const { opponentId, result, games, valid } = parseReportForm(formData);
   if (!valid) redirect(`/profile/${profileId}?reportErr=missing-fields`);
-  const r = await reportSetFromWeb(discordId!, opponentId, result, { deck, stake }, lives);
+  const r = await reportSetFromWeb(discordId!, opponentId, result, games);
   if (!r.ok) redirect(`/profile/${profileId}?reportErr=${encodeURIComponent(r.reason)}`);
   revalidatePath(`/profile/${profileId}`);
   revalidatePath("/standings");

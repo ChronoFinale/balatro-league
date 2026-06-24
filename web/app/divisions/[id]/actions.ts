@@ -21,9 +21,9 @@ export async function reportFromDivisionAction(formData: FormData) {
   const discordId = (session?.user as { discordId?: string } | undefined)?.discordId;
   const divisionId = String(formData.get("divisionId") ?? "");
   if (!discordId) redirect(`/divisions/${divisionId}?reportErr=not-logged-in`);
-  const { opponentId, result, deck, stake, lives, valid } = parseReportForm(formData);
+  const { opponentId, result, games, valid } = parseReportForm(formData);
   if (!valid) redirect(`/divisions/${divisionId}?reportErr=missing-fields`);
-  const r = await reportSetFromWeb(discordId!, opponentId, result, { deck, stake }, lives);
+  const r = await reportSetFromWeb(discordId!, opponentId, result, games);
   if (!r.ok) redirect(`/divisions/${divisionId}?reportErr=${encodeURIComponent(r.reason)}`);
   revalidatePath(`/divisions/${divisionId}`);
   revalidatePath("/standings");

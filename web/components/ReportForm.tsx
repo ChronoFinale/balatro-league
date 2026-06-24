@@ -39,6 +39,36 @@ export interface ReportOpponent {
 // sentinel that maps back to "" in the hidden input.
 const NONE = "__none__";
 
+// One optional deck/stake dropdown. Used twice per game (deck + stake), twice
+// over (game 1 + game 2), so it's factored out.
+function ComboSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+  width,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  placeholder: string;
+  width: string;
+}) {
+  return (
+    <Select value={value} onValueChange={(v) => onChange(v ?? NONE)}>
+      <SelectTrigger className={width}>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={NONE}>{placeholder}</SelectItem>
+        {options.map((o) => (
+          <SelectItem key={o} value={o}>{o}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export function ReportForm({
   opponents = [],
   lockedOpponent,
@@ -60,8 +90,14 @@ export function ReportForm({
 }) {
   const [opponentId, setOpponentId] = useState(lockedOpponent?.playerId ?? "");
   const [result, setResult] = useState<ResultStr>("2-0");
-  const [deck, setDeck] = useState(NONE);
-  const [stake, setStake] = useState(NONE);
+  // Selected deck/stake per game — index 0 = game 1, 1 = game 2. (The `decks` /
+  // `stakes` props are the available OPTIONS; these are the chosen values.)
+  const [gameDecks, setGameDecks] = useState<[string, string]>([NONE, NONE]);
+  const [gameStakes, setGameStakes] = useState<[string, string]>([NONE, NONE]);
+  const setDeckAt = (i: number, v: string) =>
+    setGameDecks((d) => (i === 0 ? [v, d[1]] : [d[0], v]));
+  const setStakeAt = (i: number, v: string) =>
+    setGameStakes((s) => (i === 0 ? [v, s[1]] : [s[0], v]));
   // Collapsible forms start closed; everything else starts open.
   const [open, setOpen] = useState(!collapsible);
 
@@ -69,18 +105,16 @@ export function ReportForm({
   const pending = opponent?.alreadyPending ?? false;
   const oppName = opponent?.displayName ?? "Opponent";
 
-  // Two lives slots, always shown. A 2-0/0-2 has one player winning both games
-  // (both slots = that winner); a 1-1 splits, so slot 1 is the reporter's win
-  // and slot 2 the opponent's win. Labels name whose lives each box holds; the
-  // backend derives each game's winner from the result.
-  const livesSlot1 =
-    result === "2-0" ? "Your lives · G1"
-    : result === "0-2" ? `${oppName}'s lives · G1`
-    : "Your lives · your win";
-  const livesSlot2 =
-    result === "2-0" ? "Your lives · G2"
-    : result === "0-2" ? `${oppName}'s lives · G2`
-    : `${oppName}'s lives · their win`;
+  // Two game rows, always shown — each game has its own deck/stake + the
+  // winner's lives. A 2-0/0-2 has one player winning both games; a 1-1 splits,
+  // so for a draw row 1 is the reporter's won game and row 2 the opponent's. The
+  // row label names that; the backend derives each game's winner from the result.
+  const gameRowLabel = (i: number) =>
+    result === "1-1" ? (i === 0 ? "Your win" : `${oppName}'s win`) : `Game ${i + 1}`;
+  const livesWhose = (i: number) =>
+    result === "2-0" ? "your lives"
+    : result === "0-2" ? `${oppName}'s lives`
+    : i === 0 ? "your lives" : `${oppName}'s lives`;
 
   const resultLabel = (r: ResultStr) =>
     opponent
@@ -102,11 +136,13 @@ export function ReportForm({
 
   return (
     <form action={action} className={`flex flex-col ${compact ? "gap-2" : "gap-3"}`}>
-      {/* Radix Select values → server-action FormData. */}
+      {/* Radix Select values → server-action FormData. Decks/stakes are per game. */}
       <input type="hidden" name="opponentId" value={opponentId} />
       <input type="hidden" name="result" value={result} />
-      <input type="hidden" name="deck" value={deck === NONE ? "" : deck} />
-      <input type="hidden" name="stake" value={stake === NONE ? "" : stake} />
+      <input type="hidden" name="deck1" value={gameDecks[0] === NONE ? "" : gameDecks[0]} />
+      <input type="hidden" name="stake1" value={gameStakes[0] === NONE ? "" : gameStakes[0]} />
+      <input type="hidden" name="deck2" value={gameDecks[1] === NONE ? "" : gameDecks[1]} />
+      <input type="hidden" name="stake2" value={gameStakes[1] === NONE ? "" : gameStakes[1]} />
       {hiddenFields &&
         Object.entries(hiddenFields).map(([k, v]) => (
           <input key={k} type="hidden" name={k} value={v} />
@@ -158,60 +194,46 @@ export function ReportForm({
             <SelectItem value="0-2">{resultLabel("0-2")}</SelectItem>
           </SelectContent>
         </Select>
-
-        <Select value={deck} onValueChange={(v) => setDeck(v ?? NONE)}>
-          <SelectTrigger className={comboWidth}>
-            <SelectValue placeholder="deck (optional)" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>deck (optional)</SelectItem>
-            {decks.map((d) => (
-              <SelectItem key={d} value={d}>{d}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={stake} onValueChange={(v) => setStake(v ?? NONE)}>
-          <SelectTrigger className={comboWidth}>
-            <SelectValue placeholder="stake (optional)" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>stake (optional)</SelectItem>
-            {stakes.map((s) => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
-      {/* Optional winner's-lives capture, always shown. Feeds the standings
-          life-differential tiebreaker so players don't total it by hand.
-          Native inputs (not Radix) submit directly; labels name whose lives
-          each box holds (a 1-1 splits the wins between the two players). */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px]">
-        <span className="muted">Lives left <span className="muted">(optional)</span></span>
-        <label className="flex items-center gap-1">
-          <span className="muted text-xs">{livesSlot1}</span>
-          <input
-            type="number"
-            name="livesGame1"
-            min={0}
-            max={999}
-            inputMode="numeric"
-            className="w-16 rounded-md border border-border bg-background px-2 py-1 text-sm"
-          />
-        </label>
-        <label className="flex items-center gap-1">
-          <span className="muted text-xs">{livesSlot2}</span>
-          <input
-            type="number"
-            name="livesGame2"
-            min={0}
-            max={999}
-            inputMode="numeric"
-            className="w-16 rounded-md border border-border bg-background px-2 py-1 text-sm"
-          />
-        </label>
+      {/* Per-game detail, always shown. Each game has its own deck + stake
+          (they differ per game) and the winner's leftover lives (feeds the
+          standings life-differential tiebreaker). All optional. The deck/stake
+          dropdowns are Radix (mirrored to hidden inputs above); the lives box is
+          a native input that submits directly. */}
+      <div className="flex flex-col gap-2 text-[13px]">
+        <span className="muted">Per game <span className="muted">(optional — decks differ each game)</span></span>
+        {[0, 1].map((i) => (
+          <div key={i} className="flex flex-wrap items-center gap-2">
+            <span className="muted text-xs w-20">{gameRowLabel(i)}</span>
+            <ComboSelect
+              value={gameDecks[i] ?? NONE}
+              onChange={(v) => setDeckAt(i, v)}
+              options={decks}
+              placeholder="deck"
+              width={comboWidth}
+            />
+            <ComboSelect
+              value={gameStakes[i] ?? NONE}
+              onChange={(v) => setStakeAt(i, v)}
+              options={stakes}
+              placeholder="stake"
+              width={comboWidth}
+            />
+            <label className="flex items-center gap-1">
+              <input
+                type="number"
+                name={`livesGame${i + 1}`}
+                min={0}
+                max={999}
+                inputMode="numeric"
+                placeholder="lives"
+                className="w-16 rounded-md border border-border bg-background px-2 py-1 text-sm"
+              />
+              <span className="muted text-xs">{livesWhose(i)}</span>
+            </label>
+          </div>
+        ))}
       </div>
 
       {/* Live, named confirmation of exactly what's about to be recorded.

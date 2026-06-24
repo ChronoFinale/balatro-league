@@ -21,9 +21,9 @@ async function currentDiscordId(): Promise<string | null> {
 export async function submitReportFromReportPage(formData: FormData) {
   const discordId = await currentDiscordId();
   if (!discordId) redirect("/report?err=not-logged-in");
-  const { opponentId, result, deck, stake, lives, valid } = parseReportForm(formData);
+  const { opponentId, result, games, valid } = parseReportForm(formData);
   if (!valid) redirect("/report?err=missing-fields");
-  const r = await reportSetFromWeb(discordId!, opponentId, result, { deck, stake }, lives);
+  const r = await reportSetFromWeb(discordId!, opponentId, result, games);
   if (!r.ok) redirect(`/report?err=${encodeURIComponent(r.reason)}`);
   revalidatePath("/report");
   revalidatePath("/me");
