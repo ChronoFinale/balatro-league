@@ -1,14 +1,11 @@
 import {
-  EmbedBuilder,
   MessageFlags,
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
 } from "discord.js";
 import { activePublicSeason } from "../active-season.js";
-import { prisma } from "../db.js";
 import { getOrCreatePlayer, guildDisplayName } from "../players.js";
-import { formatSeasonLabel } from "../format-season.js";
-import { formatZone } from "../timezones.js";
+import { buildScheduleEmbed } from "../schedule-embed.js";
 import type { SlashCommand } from "./types.js";
 
 export const schedule: SlashCommand = {
@@ -26,122 +23,11 @@ export const schedule: SlashCommand = {
       return;
     }
 
-    const membership = await prisma.divisionMember.findFirst({
-      where: { playerId: me.id, division: { seasonId: activeSeason.id } },
-      include: {
-        division: {
-          include: {
-            members: { include: { player: true } },
-            matches: {
-              where: { format: "LEAGUE_BO2" },
-              include: { playerA: true, playerB: true },
-            },
-          },
-        },
-      },
-    });
-
-    if (!membership) {
+    const embed = await buildScheduleEmbed(me.id);
+    if (!embed) {
       await interaction.editReply("You're not in a division this season.");
       return;
     }
-
-    const div = membership.division;
-    // Opponents = whoever you have an assigned match against (the graph schedule).
-    // Legacy fallback (no pre-created matches): every other ACTIVE member.
-    const myMatches = div.matches.filter((m) => m.playerAId === me.id || m.playerBId === me.id);
-    const opponents =
-      myMatches.length > 0
-        ? myMatches.map((m) => (m.playerAId === me.id ? m.playerB : m.playerA))
-        : div.members.filter((m) => m.playerId !== me.id && m.status === "ACTIVE").map((m) => m.player);
-
-    // Categorize each opponent. `tz` is only set on opponents you still have to
-    // play (the scheduling-relevant list) and only when they've shared one.
-    interface Item { name: string; status: string; tz?: string | null }
-    const remaining: Item[] = [];
-    const youReported: Item[] = [];
-    const theyReported: Item[] = [];
-    const disputed: Item[] = [];
-    const done: Item[] = [];
-
-    for (const opp of opponents) {
-      const p = div.matches.find(
-        (pr) =>
-          (pr.playerAId === me.id && pr.playerBId === opp.id) ||
-          (pr.playerAId === opp.id && pr.playerBId === me.id),
-      );
-      if (!p) {
-        remaining.push({ name: opp.displayName, status: "", tz: opp.timezone });
-      } else if (p.status === "CONFIRMED") {
-        const myGames = p.playerAId === me.id ? p.gamesWonA : p.gamesWonB;
-        const oppGames = p.playerAId === me.id ? p.gamesWonB : p.gamesWonA;
-        done.push({ name: opp.displayName, status: `${myGames}-${oppGames}` });
-      } else if (p.status === "DISPUTED") {
-        disputed.push({ name: opp.displayName, status: "" });
-      } else if (p.status === "PENDING") {
-        if (p.gamesWonA === 0 && p.gamesWonB === 0) {
-          // Pre-created, not played yet → still on your to-play list.
-          remaining.push({ name: opp.displayName, status: "", tz: opp.timezone });
-        } else if (p.reporterId === me.id) {
-          const myGames = p.playerAId === me.id ? p.gamesWonA : p.gamesWonB;
-          const oppGames = p.playerAId === me.id ? p.gamesWonB : p.gamesWonA;
-          youReported.push({ name: opp.displayName, status: `${myGames}-${oppGames} (you reported)` });
-        } else {
-          const myGames = p.playerAId === me.id ? p.gamesWonA : p.gamesWonB;
-          const oppGames = p.playerAId === me.id ? p.gamesWonB : p.gamesWonA;
-          theyReported.push({ name: opp.displayName, status: `${myGames}-${oppGames} (they reported — confirm/dispute)` });
-        }
-      }
-    }
-
-    function fmt(items: Item[]): string {
-      if (items.length === 0) return "_(none)_";
-      return items
-        .map((i) => {
-          const base = i.status ? `• **${i.name}** — ${i.status}` : `• **${i.name}**`;
-          return i.tz ? `${base}  ·  🕐 ${formatZone(i.tz)}` : base;
-        })
-        .join("\n");
-    }
-
-    // ASCII progress bar — counts matches that are "settled" from
-    // the player's POV (CONFIRMED + their own pending reports +
-    // disputes count as advanced state, only "remaining" is unstarted).
-    const settled = done.length + youReported.length + theyReported.length + disputed.length;
-    const totalMatches = settled + remaining.length;
-    const pct = totalMatches === 0 ? 0 : Math.round((settled / totalMatches) * 100);
-    const barWidth = 20;
-    const filled = Math.round((pct / 100) * barWidth);
-    const bar = "█".repeat(filled) + "░".repeat(barWidth - filled);
-    const progressLine = `\`${bar}\` **${settled}/${totalMatches}** matches (${pct}%)`;
-
-    const embed = new EmbedBuilder()
-      .setTitle(`Your schedule — ${div.name}`)
-      .setColor(0x5865f2)
-      .setDescription(`Season: **${formatSeasonLabel(activeSeason)}**\n${progressLine}`)
-      .addFields(
-        ...(theyReported.length ? [{ name: `⚠️ Awaiting your confirmation (${theyReported.length})`, value: fmt(theyReported) }] : []),
-        ...(remaining.length ? [{ name: `🎮 Still to play (${remaining.length})`, value: fmt(remaining) }] : []),
-        ...(youReported.length ? [{ name: `⏳ Waiting on opponent (${youReported.length})`, value: fmt(youReported) }] : []),
-        ...(disputed.length ? [{ name: `🔴 Disputed (${disputed.length})`, value: fmt(disputed) }] : []),
-        ...(done.length ? [{ name: `✅ Done (${done.length})`, value: fmt(done) }] : []),
-        // Scheduling helper — only worth showing when there's still someone to
-        // play. hammertime.cyou builds a Discord timestamp from the clicker's
-        // own browser time; pasted into chat it renders in each viewer's local
-        // timezone, so nobody has to know anyone else's zone.
-        ...(remaining.length
-          ? [{
-              name: "📅 Need to set a time?",
-              value:
-                "Make a timestamp everyone sees in their **own** timezone → **[hammertime.cyou](https://hammertime.cyou)** — then paste the code it gives you into your match chat.",
-            }]
-          : []),
-      );
-
-    if (theyReported.length === 0 && remaining.length === 0 && youReported.length === 0 && disputed.length === 0) {
-      embed.setDescription(`Season: **${formatSeasonLabel(activeSeason)}**\n\n🎉 You're done — all your matches are recorded!`);
-    }
-
     await interaction.editReply({ embeds: [embed] });
   },
 };

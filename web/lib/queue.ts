@@ -184,6 +184,26 @@ export async function enqueueStripDivisionRole(job: {
 // Award the per-division champion role to one winner. Bot worker creates
 // the role on demand (storing the id on Division.championRoleId for
 // idempotent re-runs) + assigns to the winner.
+// DM the people affected by a roster replacement — the new player and every
+// opponent whose matchup now points at them — their updated schedule. One job
+// per recipient so a single bad DM doesn't re-DM the rest on retry.
+export async function enqueueScheduleChange(job: {
+  recipients: Array<{ playerId: string; role: "new" | "opponent" }>;
+  divisionName: string;
+  departedName: string;
+  newName: string;
+}): Promise<void> {
+  await ensureStarted();
+  const boss = getBoss();
+  for (const r of job.recipients) {
+    await boss.send(
+      "notify.schedule-change",
+      { playerId: r.playerId, role: r.role, divisionName: job.divisionName, departedName: job.departedName, newName: job.newName },
+      { retryLimit: 3, retryBackoff: true },
+    );
+  }
+}
+
 export async function enqueueAwardChampionRole(job: {
   guildId: string;
   divisionId: string;

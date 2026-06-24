@@ -14,7 +14,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { fetchGuildMember, addGuildMemberRole, removeGuildMemberRole } from "@/lib/discord";
 import { recomputeDivisionStandings } from "@/lib/standings-cache";
-import { enqueueStandingsRefresh, enqueueWelcomeRefresh } from "@/lib/queue";
+import { enqueueStandingsRefresh, enqueueWelcomeRefresh, enqueueScheduleChange } from "@/lib/queue";
 
 export class ReplaceError extends Error {}
 
@@ -134,6 +134,21 @@ export async function replaceDivisionPlayer(departedPlayerId: string, newDiscord
   // Refresh the division welcome so the roster (and @division ping) reflects the
   // new player.
   await enqueueWelcomeRefresh(departed.seasonId).catch(() => {});
+
+  // DM the affected players their updated schedule: the new player (welcome +
+  // full schedule) and every opponent whose matchup now points at them.
+  const opponentIds = [
+    ...new Set(matches.map((m) => (m.playerAId === departedPlayerId ? m.playerBId : m.playerAId))),
+  ];
+  await enqueueScheduleChange({
+    recipients: [
+      { playerId: newPlayer.id, role: "new" },
+      ...opponentIds.map((playerId) => ({ playerId, role: "opponent" as const })),
+    ],
+    divisionName: departed.division.name,
+    departedName: departed.player.displayName,
+    newName,
+  }).catch(() => {});
 
   return {
     seasonId: departed.seasonId,

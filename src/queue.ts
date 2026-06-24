@@ -66,6 +66,17 @@ import { getLeagueSettings } from "./league-settings.js";
 import { runActivityScan } from "./activity-scan.js";
 import { runRosterCheckin } from "./roster-checkin.js";
 import { MODLOG_RETENTION_DAYS } from "./mod-log.js";
+import { buildScheduleEmbed } from "./schedule-embed.js";
+
+// One recipient of a roster-change schedule DM. "new" = the player just added;
+// "opponent" = someone whose matchup now points at the replacement.
+interface ScheduleChangeJob {
+  playerId: string;
+  role: "new" | "opponent";
+  divisionName: string;
+  departedName: string;
+  newName: string;
+}
 
 let boss: PgBoss | null = null;
 
@@ -111,6 +122,7 @@ export async function initQueue(): Promise<void> {
   await boss.createQueue("activity.scan");
   await boss.createQueue("roster.checkin");
   await boss.createQueue("modlog.purge");
+  await boss.createQueue("notify.schedule-change");
 
   // One-shot cleanup for retired queues. Their cron schedule rows +
   // accumulated jobs (no worker listens anymore) stay in pg-boss forever
@@ -260,6 +272,40 @@ export async function initQueue(): Promise<void> {
   });
   await boss.schedule("modlog.purge", "0 4 * * *");
   console.log("[pg-boss] scheduled modlog.purge @ 04:00 UTC daily");
+
+  // Worker: DM a player about a roster change in their division (someone was
+  // replaced) with their up-to-date schedule. One job per recipient (batchSize 1)
+  // so a transient failure retries just that DM, never double-DMs the others.
+  await boss.work<ScheduleChangeJob>(
+    "notify.schedule-change",
+    { batchSize: 1, pollingIntervalSeconds: 3 },
+    async (jobs: Job<ScheduleChangeJob>[]) => {
+      for (const job of jobs) {
+        const client = tryGetDiscordClient();
+        if (!client) throw new Error("Discord client not ready — will retry");
+        const { playerId, role, divisionName, departedName, newName } = job.data;
+        const player = await prisma.player.findUnique({ where: { id: playerId }, select: { discordId: true } });
+        if (!player) return;
+        const embed = await buildScheduleEmbed(playerId);
+        const content =
+          role === "new"
+            ? `👋 You've been added to **${divisionName}**, taking **${departedName}**'s spot. Here's your schedule — reach out to your opponents to set up games:`
+            : `🔄 **Schedule update — ${divisionName}.** **${departedName}** was dropped and replaced by **${newName}**, so one of your matchups is now against ${newName}. Your current schedule:`;
+        try {
+          const user = await client.users.fetch(player.discordId);
+          await user.send(embed ? { content, embeds: [embed] } : { content });
+        } catch (err) {
+          const code = (err as { code?: number })?.code;
+          if (code === 50007 || code === 10013) {
+            console.warn(`[notify.schedule-change] ${player.discordId} undeliverable (code ${code}) — skipping.`);
+            return;
+          }
+          console.warn(`[notify.schedule-change] send to ${player.discordId} failed (code ${code ?? "?"}) — will retry:`, err);
+          throw err;
+        }
+      }
+    },
+  );
 
   // Worker: run an activity scan (walk league channels, record who's posted).
   // batchSize 1 — it's a long, rate-limited job; no retry (a re-run is a fresh
