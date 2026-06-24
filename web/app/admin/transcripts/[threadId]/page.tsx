@@ -28,7 +28,7 @@ export default async function TranscriptDetailPage({
         <p className="muted" style={{ marginBottom: 4 }}>
           <Link href="/admin/transcripts" className="link-action" style={{ color: "var(--accent-2)" }}>← All transcripts</Link>
         </p>
-        <h2>{header.kind === "dispute" ? "⚖ Dispute" : "🎮 Match"} transcript</h2>
+        <h2>{header.kind === "dispute" ? "⚖ Dispute" : header.kind === "support" ? "🎫 Support" : "🎮 Match"} transcript</h2>
         <div className="card" style={{ marginBottom: 12 }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 18px", fontSize: 13 }}>
             <span><span className="muted">Players:</span> <strong>{header.participants.join(", ") || "—"}</strong></span>

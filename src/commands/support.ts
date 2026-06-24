@@ -16,6 +16,7 @@ import { prisma } from "../db.js";
 import { getConfig, LeagueConfigKey } from "../league-config.js";
 import { logDiscordError } from "../log-discord-error.js";
 import { supportTicketButtons, supportTicketEmbed } from "../support-ticket.js";
+import { postModerationNotice } from "../mod-log.js";
 import { summonHelpers } from "./helper.js";
 import type { SlashCommand } from "./types.js";
 
@@ -104,6 +105,8 @@ export const support: SlashCommand = {
         autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
       });
       await thread.members.add(interaction.user.id).catch(() => {});
+      // First thing in the thread: the recording notice (pinned).
+      await postModerationNotice(thread);
     } catch (err) {
       logDiscordError("support.create-thread", err, { channelId: supportChannelId, userId: interaction.user.id });
       await prisma.supportTicket.delete({ where: { id: ticket.id } }).catch(() => {});

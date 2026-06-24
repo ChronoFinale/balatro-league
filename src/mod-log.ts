@@ -43,7 +43,7 @@ const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 // them. Short on purpose — long enough to settle a fresh dispute, not an archive.
 export const MODLOG_RETENTION_DAYS = 7;
 
-type Resolution = { kind: "match" | "dispute"; matchId: string | null; matchSessionId: string | null };
+type Resolution = { kind: "match" | "dispute" | "support"; matchId: string | null; matchSessionId: string | null };
 
 // Positive resolutions are cached forever (a thread id maps to one session/match
 // for its whole life). Negative results aren't cached — a brand-new match thread
@@ -69,6 +69,15 @@ async function resolveThread(threadId: string): Promise<Resolution | null> {
   });
   if (match) {
     const r: Resolution = { kind: "dispute", matchId: match.id, matchSessionId: null };
+    resolved.set(threadId, r);
+    return r;
+  }
+  const ticket = await prisma.supportTicket.findFirst({
+    where: { threadId },
+    select: { id: true },
+  });
+  if (ticket) {
+    const r: Resolution = { kind: "support", matchId: null, matchSessionId: null };
     resolved.set(threadId, r);
     return r;
   }

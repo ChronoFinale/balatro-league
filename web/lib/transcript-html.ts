@@ -46,7 +46,7 @@ export function renderTranscriptHtml(header: TranscriptHeader, messages: Transcr
     })
     .join("\n");
 
-  const title = `${header.kind === "dispute" ? "Dispute" : "Match"} transcript`;
+  const title = `${header.kind === "dispute" ? "Dispute" : header.kind === "support" ? "Support" : "Match"} transcript`;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
