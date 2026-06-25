@@ -9,6 +9,7 @@ import {
   PermissionFlagsBits,
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
+  type Guild,
   type GuildBasedChannel,
   type TextChannel,
 } from "discord.js";
@@ -26,6 +27,33 @@ import { formatSeasonLabel } from "../format-season.js";
 import type { SlashCommand } from "./types.js";
 
 const WEBHOOK_URL_RE = /^https:\/\/(discord\.com|discordapp\.com)\/api\/(v\d+\/)?webhooks\/\d+\/[\w-]+$/;
+
+// Roles that should NOT be @-pingable: the League Player role and every active
+// division role. Letting members ping them means anyone can @ the whole league /
+// division. Returns a human-readable list of roles currently still mentionable
+// (drift); when `apply` is true, also flips them to non-mentionable. Shared by
+// the bootstrap dry-run (report only) and the real bootstrap (report + fix).
+async function auditNonMentionableRoles(guild: Guild, apply: boolean): Promise<string[]> {
+  await guild.roles.fetch().catch(() => {});
+  const targets: { id: string; label: string }[] = [];
+  const playerRole = guild.roles.cache.find((r) => r.name === "League Player");
+  if (playerRole) targets.push({ id: playerRole.id, label: "@League Player role" });
+  const divisions = await prisma.division.findMany({
+    where: { season: { isActive: true }, discordRoleId: { not: null } },
+    select: { name: true, discordRoleId: true },
+  });
+  for (const d of divisions) {
+    if (d.discordRoleId) targets.push({ id: d.discordRoleId, label: `division role "${d.name}"` });
+  }
+  const drift: string[] = [];
+  for (const t of targets) {
+    const role = guild.roles.cache.get(t.id);
+    if (!role || !role.mentionable) continue;
+    drift.push(`${t.label} is pingable → make non-mentionable`);
+    if (apply) await role.setMentionable(false, "League roles shouldn't be @-mentionable").catch(() => {});
+  }
+  return drift;
+}
 
 export const league: SlashCommand = {
   data: new SlashCommandBuilder()
@@ -549,6 +577,8 @@ async function previewBootstrap(interaction: ChatInputCommandInteraction, catego
     if (guild.roles.cache.find((r) => r.name === rn)) reuseCount++;
     else create.push(`role "${rn}"`);
   }
+  // League Player + division roles must not be @-pingable.
+  permDrift.push(...(await auditNonMentionableRoles(guild, false)));
 
   // Results webhook — only created when one isn't configured yet.
   const webhookCfg = await prisma.leagueConfig.findUnique({ where: { key: "results_webhook_url" }, select: { value: true } });
@@ -1111,20 +1141,25 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       }
     }
 
-    async function ensureRole(name: string, reason: string) {
+    async function ensureRole(name: string, reason: string, mentionable = true) {
       const existing = guild.roles.cache.find((r) => r.name === name);
       if (existing) {
         reused.push(`role "${name}"`);
         return existing;
       }
-      const r = await guild.roles.create({ name, mentionable: true, permissions: new PermissionsBitField(), reason });
+      const r = await guild.roles.create({ name, mentionable, permissions: new PermissionsBitField(), reason });
       created.push(`role "${name}"`);
       return r;
     }
-    const playerRole = await ensureRole("League Player", "Created by /league bootstrap-server");
+    // League Player is created non-mentionable (members shouldn't be able to @ the
+    // whole league); existing-role drift is fixed by auditNonMentionableRoles below.
+    const playerRole = await ensureRole("League Player", "Created by /league bootstrap-server", false);
     const adminRole = await ensureRole("League Admin", "Created by /league bootstrap-server — bound to bot's ADMIN tier");
     const helperRole = await ensureRole("League Helper", "Created by /league bootstrap-server — bound to bot's HELPER tier");
     const devopsRole = await ensureRole("League DevOps", "Created by /league bootstrap-server — bound to bot's DEVOPS tier (infra alerts only)");
+
+    // Make sure League Player + any existing division roles aren't @-pingable.
+    const fixedMentions = await auditNonMentionableRoles(guild, true);
 
     // Wire the management roles to the bot's permission tiers so anyone
     // assigned the Discord role gets the matching permission on the web
@@ -1310,6 +1345,7 @@ async function bootstrapServer(interaction: ChatInputCommandInteraction) {
       `✅ **${categoryName}** scaffolded.`,
       created.length > 0 ? `  Created: ${created.join(", ")}` : `  (nothing new — everything already existed)`,
       reused.length > 0 ? `  Reused: ${reused.join(", ")}` : null,
+      fixedMentions.length > 0 ? `  Fixed (made non-pingable): ${fixedMentions.join("; ")}` : null,
       webhookWarning
         ? `\n⚠️ **Match Results webhook didn't get created** — the bot probably needs **Manage Webhooks** in <#${resultsChan.id}>. Either:\n  • Grant the bot Manage Webhooks at the channel or category level, OR\n  • Create the webhook manually in **#league-results-bot → Edit Channel → Integrations → Webhooks**, then paste the URL via \`/league set-results-webhook url:<url>\`\n  Error: \`${webhookWarning}\``
         : null,
