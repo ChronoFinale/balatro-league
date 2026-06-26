@@ -115,6 +115,7 @@ export async function resetPlayoffs(seasonName: string) {
   if (!season) throw new Error(`No season "${seasonName}"`);
   await prisma.playoffSeries.deleteMany({ where: { seasonId: season.id } });
   await prisma.playoffEntry.deleteMany({ where: { seasonId: season.id } });
+  await prisma.championship.deleteMany({ where: { seasonId: season.id } });
   await prisma.tourSeason.update({ where: { id: season.id }, data: { state: "REGULAR" } });
 }
 

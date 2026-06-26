@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Users, Shield, Shuffle, CalendarDays, Trophy, ExternalLink } from "lucide-react";
+import { ArrowLeft, Users, Shield, Shuffle, CalendarDays, Trophy, Flag, ExternalLink } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 import { getSeasonAdmin } from "@/lib/services/seasons";
 import { Callout } from "@/components/Callout";
@@ -43,6 +43,7 @@ export default async function SeasonAdmin({ params }: { params: Promise<{ name: 
     { key: "draft", label: "Draft", icon: Shuffle, href: `/admin/seasons/${enc}/draft`, count: season.draft ? season.draft.state : "not started", ready: true },
     { key: "schedule", label: "Schedule", icon: CalendarDays, href: `/admin/seasons/${enc}/schedule`, count: `${season._count.weeks} weeks`, ready: true },
     { key: "playoffs", label: "Playoffs", icon: Trophy, href: `/admin/seasons/${enc}/playoffs`, count: season.state === "PLAYOFFS" || season.state === "DONE" ? `bracket · ${season.state}` : `field of ${season.playoffTeams}`, ready: true },
+    { key: "end", label: "Season end", icon: Flag, href: `/admin/seasons/${enc}/end`, count: season.state === "DONE" ? "crowned · awards" : "crown + awards", ready: true },
   ];
 
   return (
