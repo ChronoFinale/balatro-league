@@ -139,7 +139,10 @@ export default async function ScheduleAdmin({ params }: { params: Promise<{ name
                       {reported ? `${m.setsWonA}–${m.setsWonB}` : <span className="sub">vs</span>}
                     </td>
                     <td>{m.bName}</td>
-                    <td className="sub" style={{ textAlign: "right" }}>{m.conference}</td>
+                    <td className="sub">{m.conference}</td>
+                    <td style={{ textAlign: "right" }}>
+                      <Link href={`/admin/matchups/${m.id}`}>Pair →</Link>
+                    </td>
                   </tr>
                 );
               })}
