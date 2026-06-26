@@ -40,6 +40,78 @@ export async function getRecords(): Promise<RecordEntry[]> {
   return recs;
 }
 
+export interface RookieRow {
+  playerId: string;
+  name: string;
+  season: string;
+  setW: number;
+  setL: number;
+  pct: number;
+}
+
+// Rookie rankings: each player's DEBUT season (earliest in the imported data),
+// ranked by their set-win% that season. "Rookie" = first season we have data for.
+export async function getRookieRankings(minSets = 6, limit = 20): Promise<RookieRow[]> {
+  const [sets, matches, players, seasons] = await Promise.all([
+    prisma.tourSet.findMany({ select: { playerAId: true, playerBId: true, matchId: true, seasonId: true } }),
+    prisma.match.findMany({ select: { id: true, winnerId: true } }),
+    prisma.player.findMany({ select: { id: true, displayName: true } }),
+    prisma.tourSeason.findMany({ select: { id: true, name: true } }),
+  ]);
+  const winById = new Map(matches.map((m) => [m.id, m.winnerId]));
+  const nameOf = new Map(players.map((p) => [p.id, p.displayName]));
+  const num = (s: string) => Number(s.match(/(\d+)/)?.[1] ?? 0);
+  const seasonInfo = new Map(seasons.map((s) => [s.id, { name: s.name, num: num(s.name) }]));
+
+  const rec = new Map<string, { setW: number; setL: number }>(); // `${seasonId}:${playerId}`
+  const playerSeasons = new Map<string, Set<string>>();
+  const bump = (sid: string | null, pid: string, win: boolean) => {
+    if (!sid) return;
+    const k = `${sid}:${pid}`;
+    const r = rec.get(k) ?? { setW: 0, setL: 0 };
+    if (win) r.setW++;
+    else r.setL++;
+    rec.set(k, r);
+    const ps = playerSeasons.get(pid) ?? new Set<string>();
+    ps.add(sid);
+    playerSeasons.set(pid, ps);
+  };
+  for (const ts of sets) {
+    if (!ts.matchId) continue;
+    const w = winById.get(ts.matchId);
+    if (w == null) continue;
+    bump(ts.seasonId, ts.playerAId, w === ts.playerAId);
+    bump(ts.seasonId, ts.playerBId, w === ts.playerBId);
+  }
+
+  const rows: RookieRow[] = [];
+  for (const [pid, sids] of playerSeasons) {
+    let rookieSid: string | null = null;
+    let minNum = Infinity;
+    for (const sid of sids) {
+      const n = seasonInfo.get(sid)?.num ?? Infinity;
+      if (n < minNum) {
+        minNum = n;
+        rookieSid = sid;
+      }
+    }
+    if (!rookieSid) continue;
+    const r = rec.get(`${rookieSid}:${pid}`) ?? { setW: 0, setL: 0 };
+    const total = r.setW + r.setL;
+    if (total < minSets) continue;
+    rows.push({
+      playerId: pid,
+      name: nameOf.get(pid) ?? pid,
+      season: seasonInfo.get(rookieSid)?.name ?? rookieSid,
+      setW: r.setW,
+      setL: r.setL,
+      pct: total ? r.setW / total : 0,
+    });
+  }
+  rows.sort((a, b) => b.pct - a.pct || b.setW + b.setL - (a.setW + a.setL));
+  return rows.slice(0, limit);
+}
+
 export interface Rivalry {
   aId: string;
   aName: string;

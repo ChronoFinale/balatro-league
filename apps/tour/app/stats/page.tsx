@@ -1,17 +1,18 @@
 import Link from "next/link";
 import { getDraftSteals, getDraftValueByRound } from "@/lib/draft-stats";
-import { getRecords, getRivalries } from "@/lib/records";
+import { getRecords, getRivalries, getRookieRankings } from "@/lib/records";
 
 export const dynamic = "force-dynamic";
 
 const pctStr = (x: number) => `${(x * 100).toFixed(1)}%`;
 
 export default async function Stats() {
-  const [steals, byRound, records, rivalries] = await Promise.all([
+  const [steals, byRound, records, rivalries, rookies] = await Promise.all([
     getDraftSteals(),
     getDraftValueByRound(),
     getRecords(),
     getRivalries(),
+    getRookieRankings(),
   ]);
   const maxPct = Math.max(0.01, ...byRound.map((r) => r.pct));
 
@@ -63,6 +64,33 @@ export default async function Stats() {
             {steals.length === 0 && (
               <tr><td colSpan={6} className="sub">No draft data yet — run the import.</td></tr>
             )}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 className="mt-6 mb-1 text-[1.1rem]">Rookie rankings</h2>
+      <p className="sub">Best debut seasons — a player&apos;s set win % in their first season on record (min 6 sets).</p>
+      <div className="card">
+        <table>
+          <thead>
+            <tr>
+              <th className="rank">#</th>
+              <th>Player</th>
+              <th>Debut</th>
+              <th className="num">Sets</th>
+              <th className="num">Set %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rookies.map((r, i) => (
+              <tr key={r.playerId}>
+                <td className="rank">{i + 1}</td>
+                <td><Link href={`/players/${r.playerId}`}>{r.name}</Link></td>
+                <td className="sub">{r.season}</td>
+                <td className="num">{r.setW}–{r.setL}</td>
+                <td className="num">{pctStr(r.pct)}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
