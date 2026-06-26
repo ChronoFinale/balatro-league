@@ -304,7 +304,8 @@ model PlayoffSeries {
   id                 String       @id @default(cuid())
   seasonId           String
   round              PlayoffRound
-  teamSeasonAId      String? // for historical champion-path imports, A = the champion
+  bracketIndex       Int          @default(0) // position within its round (bracket order) — drives advanceWinners
+  teamSeasonAId      String? // higher seed (for historical champion-path imports, A = the champion)
   teamSeasonBId      String? // the opponent
   scoreA             Int? // set score (A's sets won)
   scoreB             Int?
