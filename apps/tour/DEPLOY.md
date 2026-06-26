@@ -1,0 +1,74 @@
+# Deploying Team Tour → `tour.balatroleague.com` (Railway)
+
+Team Tour ships as its **own Railway service** in the **same Railway project** as the
+league, sharing the league's design system + Discord login so it reads as one site.
+Nothing in `web/` (the league) changes.
+
+```
+Railway project (existing)
+ ├─ league-bot       (existing)
+ ├─ league-web       (existing) → balatroleague.com
+ ├─ Postgres         (existing) → league DB
+ ├─ tour-web         (NEW)      → tour.balatroleague.com
+ └─ Postgres (tour)  (NEW)      → tour DB (separate data)
+```
+
+## Why this shape
+Same dashboard + same Discord app + auto-deploy on push, its **own** Postgres
+(separate data, by design), and the shared-auth env (below) means one login works on
+both. Vercel would host the Next app fine too, but then the DB + league live
+elsewhere — Railway wins here *because the league is already on it*.
+
+## Build wrinkle this repo handles for you
+The Tour is an **npm-workspace member** (depends on `@balatro/match-core` etc.), so the
+install must run at the **repo root** to link those packages — not inside `apps/tour`.
+`apps/tour/railway.json` encodes exactly that:
+- **build:** `npm ci && npm run build -w @balatro/tour` (root install → `prebuild`
+  runs `prisma generate` → `next build`)
+- **start:** `npm run start:prod -w @balatro/tour` (`prisma db push` → `next start` on `$PORT`)
+
+## One-time setup
+
+1. **Postgres (tour)** — in the Railway project: New → Database → PostgreSQL. Copy its
+   `DATABASE_URL`.
+
+2. **New service (tour-web)** — New → GitHub Repo → this repo. Then in its **Settings**:
+   - **Root Directory:** `/` (repo root — required so workspaces link)
+   - **Config-as-code path:** `apps/tour/railway.json`
+     *(or skip the file and paste the build/start commands above into Settings)*
+
+3. **Env vars** on the service:
+   ```
+   DATABASE_URL=<the tour Postgres URL from step 1>
+   DISCORD_CLIENT_ID=<SAME as the league>
+   DISCORD_CLIENT_SECRET=<SAME as the league>
+   AUTH_SECRET=<SAME value as the league>
+   AUTH_COOKIE_DOMAIN=.balatroleague.com
+   # NEXT_PUBLIC_LEAGUE_URL defaults to https://balatroleague.com
+   # do NOT set TOUR_DEV_ADMIN in prod (real admin = Discord roles, wired later)
+   ```
+
+4. **Discord OAuth** — in the **league's** Discord app → OAuth2 → Redirects, add:
+   `https://tour.balatroleague.com/api/auth/callback/discord`
+
+5. **Domain** — service → Settings → Networking → Custom Domain → `tour.balatroleague.com`.
+   Railway shows a CNAME target; add that DNS record.
+
+6. **First deploy** runs automatically. On boot, `prisma db push` creates the schema on
+   the tour DB. Then **import the data once** — Admin → Import (or
+   `POST /api/admin/import?type=historical` + `?type=tt10`), then apply the
+   `discordId` mapping / use the Identity manager.
+
+## "Hidden" while you work on it
+The app already sends `robots: noindex, nofollow` (in `app/layout.tsx`), so the
+deployed site won't be indexed. Just don't link it publicly yet; flip that line to
+`index: true` when you're ready to launch.
+
+## Auto-deploy
+Every push to the deploy branch rebuilds + redeploys the service automatically — same
+as the league.
+
+## Later (not needed to launch)
+- League → Tour nav link (one line in `web/`).
+- Cross-DB **shared stats** (combined league+tour views) — joinable by `discordId`;
+  the Tour can already read the league DB (see `web/scripts/export-league-players.mjs`).

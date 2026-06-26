@@ -9,6 +9,9 @@
 
 generator client {
   provider = "prisma-client-js"
+  // Custom output so the Tour client never clobbers the league's default
+  // node_modules/@prisma/client (different schema, shared workspace).
+  output   = "../generated/client"
 }
 
 datasource db {
@@ -23,6 +26,14 @@ enum TourSeasonState {
   REGULAR
   PLAYOFFS
   DONE
+}
+
+// The competition format varies by season (the framework is format-agnostic —
+// competition-core treats each as config). SWISS = one pool ranked by the chain;
+// CONFERENCES = N groups, round-robin within, top-K each into the bracket.
+enum SeasonFormat {
+  SWISS
+  CONFERENCES
 }
 
 enum WeekKind {
@@ -48,6 +59,13 @@ enum DraftState {
   DONE
 }
 
+enum SignupStatus {
+  PENDING // submitted, awaiting committee review
+  APPROVED // in the draft pool
+  REJECTED // not admitted this season
+  WITHDRAWN // player pulled out
+}
+
 enum PlayoffRound {
   QUARTERFINAL
   SEMIFINAL
@@ -64,11 +82,20 @@ enum AwardKind {
   BIGGEST_STEAL
 }
 
+// Web/admin permission tiers, bound to Discord roles via RoleBinding (mirrors the
+// league). The web fetches a user's guild roles and resolves the highest tier.
+enum PermissionTier {
+  OWNER // full power, incl. destructive ops + role binding
+  TO // tournament organizer: season/draft/schedule/dispute management
+  HELPER // mediation: join set channels, record verbal results
+  DEVOPS // infra alerts only — NOT a TO power (separate surface)
+}
+
 // ── Season-spanning identity ───────────────────────────────────────────────
 // (Player lives in core.prisma — referenced by id everywhere here.)
 model Team {
   id          String       @id @default(cuid())
-  name        String
+  name        String       @unique // season-spanning identity by name
   createdAt   DateTime     @default(now())
   teamSeasons TeamSeason[]
 }
@@ -76,17 +103,28 @@ model Team {
 // ── Per-season competition ─────────────────────────────────────────────────
 model TourSeason {
   id            String          @id @default(cuid())
-  name          String
+  name          String          @unique
   teamSize      Int // 7 or 9 (or whatever a season runs)
   setsToWin     Int // majority — 4 of 7, 5 of 9
   defaultBestOf Int             @default(3) // per-set default; players may agree higher
+  format        SeasonFormat    @default(CONFERENCES) // SWISS or CONFERENCES (varies by season)
+  conferenceCount Int           @default(2) // for CONFERENCES; top-(playoffTeams/count) each
+  playoffTeams  Int             @default(8) // bracket field size (8 → 4 → 2)
   state         TourSeasonState @default(SIGNUPS)
   createdAt     DateTime        @default(now())
+  // Bot-managed Discord roles for this season (set when the bot provisions them).
+  // The bot syncs membership from the roster: every rostered player gets
+  // playerRoleId; captains also get captainRoleId (→ captain-only channels).
+  // Authorization source of truth stays the DATA (RosterEntry / captainPlayerId);
+  // these roles are for Discord channel access + visibility.
+  playerRoleId  String?
+  captainRoleId String?
 
   conferences Conference[]
   teamSeasons TeamSeason[]
   weeks       Week[]
   draft       Draft?
+  signups     Signup[]
 }
 
 model Conference {
@@ -149,7 +187,7 @@ model Week {
   number     Int
   kind       WeekKind
   opensAt    DateTime?
-  deadlineAt DateTime? // sets must be scheduled by here (Thu 11:59 ET)
+  deadlineAt DateTime? // sets must be PLAYED by here (Sun 23:59 ET — §12.1)
 
   season   TourSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   matchups Matchup[]
@@ -167,6 +205,13 @@ model Matchup {
   teamSeasonBId         String
   sendFirstTeamSeasonId String? // coinflip winner (higher seed auto in playoffs)
   officialPlayerId      String? // assigned caster/official ("Advantages") — Phase 3
+  // Team-level result. Derived from the matchup's TourSets in live play; stored
+  // directly for imported team-only seasons (no per-set data).
+  setsWonA           Int?
+  setsWonB           Int?
+  gamesWonA          Int?
+  gamesWonB          Int?
+  winnerTeamSeasonId String?
 
   week Week      @relation(fields: [weekId], references: [id], onDelete: Cascade)
   sets TourSet[]
@@ -175,7 +220,10 @@ model Matchup {
 // A single 1v1 best-of-X set inside a matchup. Wraps a core Match by id.
 model TourSet {
   id          String    @id @default(cuid())
-  matchupId   String
+  matchupId   String? // null for historical/standalone imports (no matchup)
+  seasonId    String? // direct season link when there's no matchup (historical)
+  bracket     String? // historical marker (e.g. "REGULAR" / playoff round)
+  importKey   String?   @unique // idempotent import id, e.g. "gamelog:s1:42"
   matchId     String?   @unique // core Match.id (null until played; by id, no relation)
   playerAId   String // core Player.id (Team A's player, seed seedA)
   playerBId   String // core Player.id (within ±2 of seedA)
@@ -185,7 +233,32 @@ model TourSet {
   status      SetStatus @default(PROPOSED)
   scheduledAt DateTime?
 
-  matchup Matchup @relation(fields: [matchupId], references: [id], onDelete: Cascade)
+  matchup Matchup? @relation(fields: [matchupId], references: [id], onDelete: Cascade)
+
+  @@index([seasonId])
+}
+
+// ── Signups (the draft pool) ───────────────────────────────────────────────
+// Hybrid signup (§14.2): players self-serve via Discord OAuth + form; committee
+// curates by moving PENDING → APPROVED. The set of APPROVED signups IS the draft
+// pool that DraftPick.playerId draws from. Availability is a SOFT helper only
+// (§14.4) — people mostly just DM each other — so it's coarse and nullable.
+model Signup {
+  id               String       @id @default(cuid())
+  seasonId         String
+  discordId        String // THE identity — captured at OAuth signup; no Player row needed yet.
+  displayName      String? // snapshot from Discord at signup; display-only, the ID is the key.
+  timezone         String? // IANA, e.g. "America/New_York" — powers the TO awkward-tz flag
+  availability     String? // free-form / coarse general availability — a hint, not a schedule
+  willingToCaptain Boolean      @default(false)
+  bmpHandle        String? // for the scraped BMP rank (display-only, §0)
+  status           SignupStatus @default(PENDING)
+  createdAt        DateTime     @default(now())
+
+  season TourSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, discordId])
+  @@index([seasonId, status])
 }
 
 // ── Draft ──────────────────────────────────────────────────────────────────
@@ -200,12 +273,16 @@ model Draft {
 }
 
 model DraftPick {
-  id           String  @id @default(cuid())
+  id           String    @id @default(cuid())
   draftId      String
   round        Int
   pickIndex    Int // overall pick number (seed within the team derives from this)
   teamSeasonId String
   playerId     String? // core Player.id (null until the pick is made)
+  // Timing — NO enforced deadline (the draft is async; §14 / user call). These
+  // power the "on the clock for 2h 14m" live timer + fun pick-duration stats.
+  onClockAt    DateTime? // when this pick became the current one
+  pickedAt     DateTime? // when the captain actually picked
 
   draft Draft @relation(fields: [draftId], references: [id], onDelete: Cascade)
 
@@ -224,12 +301,17 @@ model PlayoffEntry {
 }
 
 model PlayoffSeries {
-  id            String       @id @default(cuid())
-  seasonId      String
-  round         PlayoffRound
-  teamSeasonAId String?
-  teamSeasonBId String?
-  matchupId     String? // the Matchup that plays out this series
+  id                 String       @id @default(cuid())
+  seasonId           String
+  round              PlayoffRound
+  teamSeasonAId      String? // for historical champion-path imports, A = the champion
+  teamSeasonBId      String? // the opponent
+  scoreA             Int? // set score (A's sets won)
+  scoreB             Int?
+  winnerTeamSeasonId String?
+  matchupId          String? // the Matchup that plays out this series (live seasons)
+
+  @@index([seasonId])
 }
 
 // ── Cross-season (Hall of Fame / rings / awards) ───────────────────────────
@@ -247,4 +329,20 @@ model Award {
   playerId String? // core Player.id (when player-scoped)
   teamId   String? // when team-scoped
   meta     Json? // e.g. Best-Set = the set; Biggest-Steal = draft pick #
+}
+
+// ── Web/admin permissions (Discord-role-driven, mirrors the league) ─────────
+// A Discord role (in the Tour's own guild) → a permission tier. The web fetches
+// the logged-in user's guild roles and resolves their highest tier; OWNER is also
+// env-pinnable. Captain/player access is NOT here — that's competition data
+// (TeamSeason.captainPlayerId / RosterEntry), with the bot mirroring it to the
+// cosmetic Discord roles on TourSeason for channel access.
+model RoleBinding {
+  id            String         @id @default(cuid())
+  discordRoleId String         @unique
+  tier          PermissionTier
+  createdAt     DateTime       @default(now())
+  createdBy     String? // discord user id of who bound it
+
+  @@index([tier])
 }

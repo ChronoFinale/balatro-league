@@ -32,5 +32,17 @@ test-results/
 web/test-results/
 web/playwright-report/
 
-# match-core build output
+# package/app build output
 packages/*/dist/
+apps/*/dist/
+
+# Tour local dev: embedded Postgres data + generated Prisma client
+apps/tour/.dev-db/
+apps/tour/prisma/generated/
+apps/tour/discord-map.csv
+# League name→discordId export (real Discord IDs) — keep out of git, any location.
+league-players.csv
+
+# Next.js (Tour web)
+next-env.d.ts
+*.tsbuildinfo

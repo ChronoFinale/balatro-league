@@ -1,0 +1,288 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Design system ported verbatim from the league (web/app/globals.css) so the
+   two apps share ONE system. Team Tour-specific helpers are in the tagged
+   block at the bottom. See apps/tour/AGENTS.md before adding UI.
+   ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --bg: #0f1115;
+  --surface: #181b22;
+  --surface-2: #1f232c;
+  --border: #2a2f3a;
+  --text: #e6e8ec;
+  /* Lighter so small secondary/helper text clears contrast on dark surfaces. */
+  --muted: #abb3c4;
+  --accent: #f1c40f;
+  --accent-2: #5865f2;
+  --danger: #e74c3c;
+  --success: #2ecc71;
+  --info: #76c7ff;
+  --admin: #e67e22;
+  --radius: 0.5rem;
+}
+
+/* shadcn/ui design tokens mapped onto the dark palette so shadcn components
+   match the app theme. */
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent-2);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--surface-2);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--danger);
+  --color-border: var(--border);
+  --color-input: var(--surface-2);
+  --color-ring: var(--accent-2);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+a { color: var(--accent-2); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1, h2, h3 { margin: 0 0 8px 0; }
+h2 { font-size: 24px; }
+h3 { font-size: 18px; }
+
+/* Balatro pixel font reserved for LARGE display headings (h1/h2) only — at
+   small sizes pixel digits become unreadable, and a tour is all numbers. */
+h1, h2 {
+  font-family: var(--font-pixel), "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: 0.5px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+/* Accent-bordered card variants — colored cards read consistently everywhere. */
+.card-accent { border-color: var(--accent-2); }
+.card-info   { border-color: var(--info); }
+.card-admin  { border-color: var(--admin); }
+.card-success { border-color: var(--success); }
+.card-danger  { border-color: var(--danger); }
+.muted { color: var(--muted); }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+tr:hover { background: var(--surface-2); }
+
+/* Dense table — many-column standings/admin pages. */
+.table-dense th, .table-dense td { padding: 6px 8px; font-size: 13px; }
+.table-dense th { font-size: 11px; }
+
+/* Horizontal scroll wrapper for wide tables. */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+.pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Reusable: dense table on desktop → labeled cards on phones. Add
+   `responsive-table` to a <table>, `data-label` to each <td>, and
+   `card-header` to the title cell (usually the name). */
+@media (max-width: 640px) {
+  main { padding: 0 16px; margin: 16px auto; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+
+  main table:not(.responsive-table) {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+  .table-scroll > table { display: table; }
+
+  table.responsive-table thead { display: none; }
+  table.responsive-table,
+  table.responsive-table tbody,
+  table.responsive-table tr,
+  table.responsive-table td { display: block; width: 100%; }
+  table.responsive-table tr {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    padding: 6px 10px;
+  }
+  table.responsive-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    border: none;
+    padding: 3px 0;
+    text-align: right;
+  }
+  table.responsive-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-align: left;
+    white-space: nowrap;
+  }
+  table.responsive-table td.card-header {
+    justify-content: flex-start;
+    font-weight: 600;
+    font-size: 15px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+  table.responsive-table td.card-header::before { content: none; }
+}
+
+.grid { display: grid; gap: 16px; }
+.grid-2 { grid-template-columns: repeat(auto-fit, minmax(min(540px, 100%), 1fr)); }
+.grid-3 { grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); }
+.grid > * { min-width: 0; }
+
+.stat { background: var(--surface-2); padding: 16px; border-radius: 8px; }
+.stat .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat .value { font-size: 28px; font-weight: 600; margin-top: 4px; }
+
+main { max-width: 1100px; margin: 24px auto; padding: 0 24px; }
+
+/* native form elements */
+input[type="text"], input[type="number"], input[type="datetime-local"],
+input[type="email"], input[type="password"], select, textarea {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 4px;
+  font: inherit;
+}
+input:focus, select:focus, textarea:focus { outline: 1px solid var(--accent-2); border-color: var(--accent-2); }
+button {
+  background: var(--accent-2);
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+}
+button.secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+button.danger { background: var(--danger); }
+button:hover { filter: brightness(1.1); }
+
+/* Inline text-link action — tiny "+ Add" / "remove" affordances inside editors.
+   NOT a button. Pair with a semantic color token inline. */
+.link-action { background: none; border: none; padding: 0; cursor: pointer; font: inherit; }
+.link-action:hover { text-decoration: underline; }
+.link-action:disabled { cursor: default; text-decoration: none; }
+
+label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+/* NOTE: the league's opinionated `form { display:flex; align-items:end }` default
+   (for inline filter bars) is intentionally omitted here — Team Tour uses column
+   card forms that it would right-align. Opt into flex per-form where wanted. */
+
+.flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; }
+.flash.success { background: rgba(46,204,113,0.15); color: var(--success); border: 1px solid rgba(46,204,113,0.3); }
+.flash.error { background: rgba(231,76,60,0.15); color: var(--danger); border: 1px solid rgba(231,76,60,0.3); }
+
+/* Discord @username chip next to a player's name. */
+.discord-username {
+  font-size: 0.82em;
+  color: var(--muted);
+  margin-left: 6px;
+  user-select: all;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TEAM TOUR-specific helpers (not part of the shared league design system)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Pixel font on display labels (h1/h2 already covered above). */
+.brand, .season-name, .bracket-title {
+  font-family: var(--font-pixel), "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: 0.5px;
+}
+
+.sub { color: var(--muted); font-size: 14px; }
+p.sub { margin: 0 0 20px; }
+
+/* table helpers */
+td.num, th.num { text-align: right; }
+.rank { color: var(--muted); width: 2rem; }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--accent); }
+
+/* season cards (home) */
+.season-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.season-card { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; color: var(--text); transition: border-color 0.15s ease; }
+.season-card:hover { border-color: var(--accent); text-decoration: none; }
+.season-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.season-name { font-weight: 700; font-size: 17px; }
+.season-card-champ { color: var(--accent); font-weight: 600; margin-bottom: 4px; }
+.season-list { list-style: none; padding: 0; margin: 0; }
+.season-list li { padding: 10px 0; border-bottom: 1px solid var(--border); }
+
+/* uppercase pill (season format etc.) — like .pill but bordered/muted */
+.badge { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
+
+/* championship-run bracket */
+.bracket-title { font-weight: 700; color: var(--accent); padding: 6px 2px 12px; }
+.bracket { display: flex; gap: 16px; align-items: center; overflow-x: auto; padding-bottom: 8px; }
+.bracket-round { display: flex; flex-direction: column; gap: 6px; min-width: 190px; }
+.bracket-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.bracket-match { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.bracket-team { display: flex; justify-content: space-between; gap: 8px; padding: 7px 10px; font-size: 13px; }
+.bracket-team + .bracket-team { border-top: 1px solid var(--border); }
+.bracket-team.win { background: rgba(241, 196, 15, 0.12); font-weight: 600; }
+.bracket-team .score { color: var(--muted); font-variant-numeric: tabular-nums; }
+.bracket-team.win .score { color: var(--accent); }
+.bracket-champion { border: 1px solid var(--accent); border-radius: 8px; padding: 10px; font-weight: 700; text-align: center; background: rgba(241, 196, 15, 0.12); }
+
+/* search box (type="search" isn't covered by the native input rule above) */
+.search { width: 100%; max-width: 320px; margin-bottom: 16px; padding: 8px 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font: inherit; }
+.search::placeholder { color: var(--muted); }
+.search:focus { outline: 1px solid var(--accent-2); border-color: var(--accent-2); }
+
+/* rendered markdown (rules page) */
+.prose { max-width: 760px; margin: 0 auto; line-height: 1.65; }
+.prose h1 { font-size: 28px; margin: 0 0 14px; }
+.prose h2 { font-size: 20px; margin: 30px 0 10px; color: var(--accent); }
+.prose h3 { font-size: 16px; margin: 22px 0 8px; }
+.prose p { margin: 0 0 12px; }
+.prose ul, .prose ol { margin: 0 0 14px; padding-left: 22px; }
+.prose li { margin: 5px 0; }
+.prose li::marker { color: var(--muted); }
+.prose hr { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
+.prose code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+.prose strong { color: var(--text); }
+.prose em { color: var(--muted); }
+.prose a { color: var(--accent-2); }
+.tbd { color: #1a1205; background: var(--accent); border-radius: 4px; padding: 0 4px; font-size: 0.9em; font-weight: 600; }

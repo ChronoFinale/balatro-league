@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "//": "Build from the REPO ROOT so npm workspaces link @balatro/* packages, then build only the Tour. (npm run build triggers prebuild = prisma generate.)",
+    "buildCommand": "npm ci && npm run build -w @balatro/tour"
+  },
+  "deploy": {
+    "//": "Push the schema to the Tour's own Postgres, then start Next on $PORT.",
+    "startCommand": "npm run start:prod -w @balatro/tour",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3
+  }
+}

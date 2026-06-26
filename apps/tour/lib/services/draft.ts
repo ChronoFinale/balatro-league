@@ -1,0 +1,247 @@
+// Draft service. Setup materializes the approved-signup pool into core Players,
+// creates a Team + TeamSeason per willing captain, splits them across the season's
+// conferences, and builds the snake draft board (tour-core buildDraft) as PENDING
+// Draft + DraftPick rows. The live board (making picks) is the next layer.
+//
+// Defaults are intentionally simple for v1 — draft order = captain add order,
+// conferences split round-robin, captain self-picks in round 1 (= seed 1). The TO
+// refines later; nothing here is irreversible (resetDraft wipes it).
+import { prisma } from "../db";
+import { buildDraft } from "@balatro/tour-core";
+
+export async function getDraftSetup(seasonName: string) {
+  const season = await prisma.tourSeason.findUnique({
+    where: { name: seasonName },
+    include: { draft: { select: { id: true, state: true } } },
+  });
+  if (!season) return null;
+  const approved = await prisma.signup.findMany({
+    where: { seasonId: season.id, status: "APPROVED" },
+    orderBy: { createdAt: "asc" },
+  });
+  return { season, approved, captains: approved.filter((s) => s.willingToCaptain) };
+}
+
+export async function setupDraft(seasonName: string) {
+  const season = await prisma.tourSeason.findUnique({
+    where: { name: seasonName },
+    include: { draft: { select: { id: true } } },
+  });
+  if (!season) throw new Error(`No season "${seasonName}"`);
+  if (season.draft) throw new Error("A draft already exists for this season — reset it first.");
+
+  const approved = await prisma.signup.findMany({
+    where: { seasonId: season.id, status: "APPROVED" },
+    orderBy: { createdAt: "asc" },
+  });
+  const captains = approved.filter((s) => s.willingToCaptain);
+  if (captains.length < 2) throw new Error("Need at least 2 approved, willing captains to set up a draft.");
+  if (approved.length < captains.length) throw new Error("Pool is smaller than the captain count.");
+
+  const rounds = season.teamSize; // players per team, incl. the captain
+
+  // 1. Materialize every approved signup into a core Player (find-or-create by discordId).
+  const playerByDiscord = new Map<string, string>();
+  for (const s of approved) {
+    const p = await prisma.player.upsert({
+      where: { discordId: s.discordId },
+      create: { discordId: s.discordId, displayName: s.displayName ?? s.discordId },
+      update: {},
+      select: { id: true },
+    });
+    playerByDiscord.set(s.discordId, p.id);
+  }
+
+  // 2. Conferences (SWISS = one pool).
+  const confCount = season.format === "SWISS" ? 1 : Math.max(1, season.conferenceCount);
+  const confIds: string[] = [];
+  for (let i = 0; i < confCount; i++) {
+    const cname = confCount === 1 ? "Main" : `Conference ${i + 1}`;
+    const c = await prisma.conference.upsert({
+      where: { seasonId_name: { seasonId: season.id, name: cname } },
+      create: { seasonId: season.id, name: cname },
+      update: {},
+      select: { id: true },
+    });
+    confIds.push(c.id);
+  }
+
+  // 3. Team + TeamSeason per captain. Order = add order (seed = i+1); conference round-robin.
+  const teamSeasonIds: string[] = [];
+  const captainOf = new Map<string, string>();
+  for (let i = 0; i < captains.length; i++) {
+    const cap = captains[i];
+    const captainPlayerId = playerByDiscord.get(cap.discordId)!;
+    const teamName = cap.displayName ?? cap.discordId;
+    const team = await prisma.team.upsert({
+      where: { name: teamName },
+      create: { name: teamName },
+      update: {},
+      select: { id: true },
+    });
+    const ts = await prisma.teamSeason.create({
+      data: {
+        seasonId: season.id,
+        teamId: team.id,
+        conferenceId: confIds[i % confIds.length],
+        captainPlayerId,
+        seed: i + 1,
+      },
+      select: { id: true },
+    });
+    teamSeasonIds.push(ts.id);
+    captainOf.set(ts.id, captainPlayerId);
+  }
+
+  // 4. Build the snake board (captain self-picks round 1) + persist Draft + picks.
+  const selfPickRound: Record<string, number> = {};
+  for (const tsId of teamSeasonIds) selfPickRound[tsId] = 1;
+  const slots = buildDraft(teamSeasonIds, rounds, selfPickRound);
+
+  await prisma.draft.create({
+    data: {
+      seasonId: season.id,
+      state: "PENDING",
+      orderJson: JSON.stringify(teamSeasonIds),
+      picks: {
+        create: slots.map((s) => ({
+          round: s.round,
+          pickIndex: s.pickIndex,
+          teamSeasonId: s.teamSeasonId,
+          // Self-pick slots are pre-filled with the captain.
+          playerId: s.isSelfPick ? captainOf.get(s.teamSeasonId) ?? null : null,
+          pickedAt: s.isSelfPick ? new Date() : null,
+        })),
+      },
+    },
+  });
+  await prisma.tourSeason.update({ where: { id: season.id }, data: { state: "DRAFTING" } });
+
+  return { teams: teamSeasonIds.length, players: playerByDiscord.size, rounds, picks: slots.length };
+}
+
+// The live board: teams (with picks so far), the remaining pool, and who's on the
+// clock. Server-rendered — each pool player is a pick form, no client state.
+export async function getDraft(seasonName: string) {
+  const season = await prisma.tourSeason.findUnique({ where: { name: seasonName }, include: { draft: true } });
+  if (!season || !season.draft) return null;
+
+  const [picks, teamSeasons] = await Promise.all([
+    prisma.draftPick.findMany({ where: { draftId: season.draft.id }, orderBy: { pickIndex: "asc" } }),
+    prisma.teamSeason.findMany({ where: { seasonId: season.id }, include: { team: true, conference: true }, orderBy: { seed: "asc" } }),
+  ]);
+
+  const approved = await prisma.signup.findMany({
+    where: { seasonId: season.id, status: "APPROVED" },
+    orderBy: [{ displayName: "asc" }],
+  });
+  const approvedPlayers = await prisma.player.findMany({
+    where: { discordId: { in: approved.map((a) => a.discordId) } },
+    select: { id: true, displayName: true },
+  });
+  const nameById = new Map<string, string>(approvedPlayers.map((p) => [p.id, p.displayName]));
+  const caps = await prisma.player.findMany({
+    where: { id: { in: teamSeasons.map((t) => t.captainPlayerId) } },
+    select: { id: true, displayName: true },
+  });
+  for (const c of caps) nameById.set(c.id, c.displayName);
+
+  const drafted = new Set(picks.map((p) => p.playerId).filter((x): x is string => !!x));
+  const pool = approvedPlayers.filter((p) => !drafted.has(p.id));
+  const current = picks.find((p) => !p.playerId) ?? null;
+
+  const teams = teamSeasons.map((ts) => ({
+    id: ts.id,
+    name: ts.team.name,
+    conference: ts.conference.name,
+    seed: ts.seed,
+    captainName: nameById.get(ts.captainPlayerId) ?? ts.captainPlayerId,
+    onClock: current?.teamSeasonId === ts.id,
+    picks: picks
+      .filter((p) => p.teamSeasonId === ts.id && p.playerId)
+      .map((p) => ({ round: p.round, name: nameById.get(p.playerId!) ?? p.playerId! })),
+  }));
+
+  const currentTeam = current ? teams.find((t) => t.id === current.teamSeasonId) ?? null : null;
+  return {
+    season,
+    state: season.draft.state,
+    teams,
+    pool,
+    current: current ? { round: current.round, pickIndex: current.pickIndex, team: currentTeam } : null,
+    totalPicks: picks.length,
+    madePicks: picks.filter((p) => p.playerId).length,
+  };
+}
+
+// Assign the on-the-clock pick to a player from the approved pool, then advance.
+// When the last slot fills, mark the draft DONE + materialize rosters.
+export async function makePick(seasonName: string, playerId: string) {
+  const season = await prisma.tourSeason.findUnique({ where: { name: seasonName }, include: { draft: true } });
+  if (!season?.draft) throw new Error("No draft for this season.");
+  if (season.draft.state === "DONE") throw new Error("The draft is already complete.");
+
+  const picks = await prisma.draftPick.findMany({ where: { draftId: season.draft.id }, orderBy: { pickIndex: "asc" } });
+  const current = picks.find((p) => !p.playerId);
+  if (!current) throw new Error("No open pick — the draft is complete.");
+
+  const taken = new Set(picks.map((p) => p.playerId).filter((x): x is string => !!x));
+  if (taken.has(playerId)) throw new Error("That player is already drafted.");
+
+  const player = await prisma.player.findUnique({ where: { id: playerId }, select: { discordId: true } });
+  if (!player) throw new Error("No such player.");
+  const inPool = await prisma.signup.findFirst({
+    where: { seasonId: season.id, discordId: player.discordId, status: "APPROVED" },
+    select: { id: true },
+  });
+  if (!inPool) throw new Error("Player is not in the approved pool.");
+
+  await prisma.draftPick.update({ where: { id: current.id }, data: { playerId, pickedAt: new Date() } });
+
+  const stillOpen = picks.filter((p) => !p.playerId && p.id !== current.id).length;
+  if (stillOpen === 0) {
+    await prisma.draft.update({ where: { id: season.draft.id }, data: { state: "DONE" } });
+    await materializeRosters(season.id, season.draft.id);
+  } else if (season.draft.state === "PENDING") {
+    await prisma.draft.update({ where: { id: season.draft.id }, data: { state: "ACTIVE" } });
+  }
+  return { done: stillOpen === 0 };
+}
+
+// Turn the completed picks into the initial roster block (RosterEntry seed = round,
+// captain flag from TeamSeason). Team/player pages + standings read Roster, not picks.
+async function materializeRosters(seasonId: string, draftId: string) {
+  const picks = await prisma.draftPick.findMany({
+    where: { draftId, NOT: { playerId: null } },
+    orderBy: { pickIndex: "asc" },
+  });
+  const teamSeasons = await prisma.teamSeason.findMany({ where: { seasonId }, select: { id: true, captainPlayerId: true } });
+  const capOf = new Map(teamSeasons.map((t) => [t.id, t.captainPlayerId]));
+
+  for (const ts of teamSeasons) {
+    const roster = await prisma.roster.upsert({
+      where: { teamSeasonId_weekBlock: { teamSeasonId: ts.id, weekBlock: "W1-4" } },
+      create: { teamSeasonId: ts.id, weekBlock: "W1-4" },
+      update: {},
+      select: { id: true },
+    });
+    for (const p of picks.filter((x) => x.teamSeasonId === ts.id)) {
+      await prisma.rosterEntry.upsert({
+        where: { rosterId_playerId: { rosterId: roster.id, playerId: p.playerId! } },
+        create: { rosterId: roster.id, playerId: p.playerId!, seed: p.round, isCaptain: capOf.get(ts.id) === p.playerId },
+        update: { seed: p.round, isCaptain: capOf.get(ts.id) === p.playerId },
+      });
+    }
+  }
+}
+
+// Wipe the draft + the season's teams/conferences so setup can be re-run.
+// Pre-launch, destructive resets are fine ([[feedback_no_backcompat]]).
+export async function resetDraft(seasonName: string) {
+  const season = await prisma.tourSeason.findUnique({ where: { name: seasonName }, select: { id: true } });
+  if (!season) throw new Error(`No season "${seasonName}"`);
+  await prisma.draft.deleteMany({ where: { seasonId: season.id } }); // cascades DraftPick
+  await prisma.teamSeason.deleteMany({ where: { seasonId: season.id } }); // cascades Roster
+  await prisma.conference.deleteMany({ where: { seasonId: season.id } });
+  await prisma.tourSeason.update({ where: { id: season.id }, data: { state: "SIGNUPS" } });
+}
