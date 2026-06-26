@@ -1,10 +1,15 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { getTeamSeason } from "@/lib/team";
+import { getTeamSeason, getTeamPlacement } from "@/lib/team";
 
 export const dynamic = "force-dynamic";
 
 const pct = (w: number, l: number) => (w + l ? `${((100 * w) / (w + l)).toFixed(1)}%` : "—");
+const ordinal = (n: number) => {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+};
 
 export default async function TeamPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -21,6 +26,8 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
     );
   }
 
+  const place = await getTeamPlacement(id, t.seasonName);
+
   return (
     <main>
       <p>
@@ -31,6 +38,20 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
         {t.seasonName} · {t.conferenceName}
       </p>
       <div className="grid grid-3 mb-4">
+        {place && (
+          <>
+            <div className="stat">
+              <div className="label">Finish</div>
+              <div className="value">{ordinal(place.placement)}</div>
+              <div className="muted">of {place.groupSize} · {place.conference}</div>
+            </div>
+            <div className="stat">
+              <div className="label">Week record</div>
+              <div className="value">{place.matchupsW}–{place.matchupsL}</div>
+              <div className="muted">{pct(place.matchupsW, place.matchupsL)} win</div>
+            </div>
+          </>
+        )}
         <div className="stat">
           <div className="label">Set record</div>
           <div className="value">{t.setW}–{t.setL}</div>

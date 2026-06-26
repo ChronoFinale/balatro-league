@@ -1,6 +1,46 @@
 // A team's season view: roster (seeds, captain) + each player's set/game record
 // that season, with team totals. Derived from the imported sets.
 import { prisma } from "./db";
+import { getSeasonStandings } from "./standings";
+
+export interface TeamPlacement {
+  placement: number; // 1-based rank within its conference group
+  groupSize: number;
+  conference: string;
+  matchupsW: number;
+  matchupsL: number;
+}
+
+// A team's final standing (placement within its conference) + matchup (week)
+// record — DERIVED from getSeasonStandings (derive-on-read rule), not imported.
+export async function getTeamPlacement(teamSeasonId: string, seasonName: string): Promise<TeamPlacement | null> {
+  const st = await getSeasonStandings(seasonName);
+  if (!st) return null;
+  for (const g of st.groups) {
+    const i = g.rows.findIndex((r) => r.teamSeasonId === teamSeasonId);
+    if (i >= 0) {
+      const r = g.rows[i];
+      return { placement: i + 1, groupSize: g.rows.length, conference: g.conferenceName, matchupsW: r.matchupsW, matchupsL: r.matchupsL };
+    }
+  }
+  return null;
+}
+
+// Placement + matchup record for every team-season (all seasons), for the LB.
+export async function getTeamPlacements(): Promise<Map<string, TeamPlacement>> {
+  const seasons = await prisma.tourSeason.findMany({ select: { name: true } });
+  const map = new Map<string, TeamPlacement>();
+  for (const s of seasons) {
+    const st = await getSeasonStandings(s.name);
+    if (!st) continue;
+    for (const g of st.groups) {
+      g.rows.forEach((r, i) => {
+        map.set(r.teamSeasonId, { placement: i + 1, groupSize: g.rows.length, conference: g.conferenceName, matchupsW: r.matchupsW, matchupsL: r.matchupsL });
+      });
+    }
+  }
+  return map;
+}
 
 export interface TeamPlayerLine {
   playerId: string;
