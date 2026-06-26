@@ -132,15 +132,23 @@ Apply the 60 high-confidence auto-matches (`relink:discord -- --apply`), then us
 rest. Outcome: `legacy:<slug>` ids → real Discord ids → `/u/[discordId]` cross-links light
 up and shared stats (D3) become possible. *Needs the real DB; manual matching work.*
 
-### A3. More cross-season stats ⬜ (codeable)
+### A3. More cross-season stats 🟡 (codeable)
 All pure derivations (design §12.7). Add loaders in `lib/` + sections on `/stats`, player,
 and team pages — **reuse the patterns** in `lib/draft-stats.ts`, `lib/records.ts`,
 `lib/stats.ts` (each is a pure read model over `TourSet`/`Match`/`DraftPick`):
-- **Career counters** on player pages — rings + finals/playoffs/seasons made, avg seed,
-  **seed differential** (expected-vs-actual).
-- **Rookie Rankings** + **Draft Classes** (by-cohort outcomes) on `/stats`.
-- **Full player-vs-player H2H matrix** (expand the existing per-player `H2HTable`).
-- **Team career stats** (all-time matchup/set/game records) on `/teams/[id]`.
+- ✅ **Career counters** on player pages — championships/finals/playoffs made, avg seed,
+  captain flag (imported `Player Stats.html` → `PlayerCareerStat`, 331 players). Seed
+  differential (expected-vs-actual) still ⬜.
+- ✅ **Rookie Rankings** on `/stats` (`getRookieRankings`). **Draft Classes** (by-cohort
+  outcomes) still ⬜.
+- ✅ **Full player-vs-player H2H matrix** — `/stats/h2h` (`getH2HMatrix`, PR-M): a colored
+  most-active-16 grid alongside the per-player `H2HTable`.
+- ✅ **Team career stats** — Placement + matchup W-L on `/teams` + `/teams/[id]`
+  (`getTeamPlacements`, derived from standings; PR-T).
+- ✅ **Captain draft grades** ("Best drafters" on `/stats`, `getCaptainDraftGrades`, PR-D):
+  mean drafted-player set% vs the expected-by-round baseline. More draft-vs-match cuts ongoing.
+- ⬜ Remaining: seed differential, Draft Classes by cohort, per-season finals/playoff
+  breakdowns from the Counter sheets.
 
 PR sizing: one loader + one page section per PR keeps each independently shippable.
 
@@ -230,6 +238,15 @@ the rosters everything downstream reads).
   `discordId`. Tour can already read the league DB
   (`web/scripts/export-league-players.mjs`); a cross-DB read service + "all-Balatro"
   profile/leaderboard. **Deferred until A2 identities are mapped.**
+  - **D3a. BMP MMR on Tour profiles (headline feature).** The league's
+    `PlayerMmrSnapshot` already stores, per BMP season (season1–6 today; 189 players,
+    9.3k snapshots): `rankedMmr` (finishing/current), **`peakMmr`**, `wins`/`losses`
+    (→ win%), `rankedTier`, `leaderboardRank`, over time. Surface on
+    `/players/[id]`: current + last-season MMR, and a per-BMP-season row (finishing +
+    peak MMR, win%, tier). Reuse league helpers (`web/lib/bmp-snapshots.ts`
+    `byBestBmpSnapshot`). **Gated on:** A2 (identities — `discordId` is the join) +
+    a runtime read connection to the league DB (`LEAGUE_DATABASE_URL`), via a second
+    Prisma client/raw query in `apps/tour/lib/services/league-mmr.ts`.
 - **D4. Cross-season catalog completion ⬜** — championship-run narratives, Hall-of-Fame
   depth, the remaining 6 awards (needs a **cleaned `Awards.html`** — current sheet
   column-drifts; do not auto-parse blind).
