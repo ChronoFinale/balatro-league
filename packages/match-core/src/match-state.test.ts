@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   LEAGUE_POLICY,
-  TOUR_POLICY,
   FREE_DECK_POLICY,
   DEFAULT_POLICY,
   emptyGameState,
@@ -16,7 +15,7 @@ import {
 const A = "playerA";
 const B = "playerB";
 
-// 9-combo pool so both flows have room (league bans 7, tour bans 5 + picks 3).
+// 9-combo pool with room for the league flow (7 bans → 2 survivors → choose).
 const POOL: DeckEntry[] = Array.from({ length: 9 }, (_, i) => ({
   deck: `deck${i}`,
   stake: "white",
@@ -57,38 +56,6 @@ describe("league policy phase sequence", () => {
   });
 });
 
-describe("tour policy phase sequence (ban 5 → pick 3 → choose 1 of 3)", () => {
-  it("first bans 5, second nominates 3 candidates, first chooses 1", () => {
-    const g = emptyGameState(A, POOL);
-
-    let p = phaseFor(g, A, B, TOUR_POLICY);
-    expect(p).toMatchObject({ kind: "BAN", whoseBanId: A, remainingForThem: 5 });
-
-    ban(g, 5); // A bans 5 → 4 survivors
-    p = phaseFor(g, A, B, TOUR_POLICY);
-    expect(p).toEqual({ kind: "PICK", pickerId: B, remaining: 3 });
-    // CHOOSE candidates default to survivors until nominated.
-    expect(choosableCombos(g)).toHaveLength(4);
-
-    // B nominates 3 of the 4 survivors as candidates.
-    const survivors = choosableCombos(g).map((c) => c.idx);
-    g.candidates = survivors.slice(0, 3);
-    p = phaseFor(g, A, B, TOUR_POLICY);
-    expect(p).toEqual({ kind: "CHOOSE", chooserId: A });
-    expect(choosableCombos(g)).toHaveLength(3); // now from candidates
-
-    g.pickedDeckIdx = g.candidates[0]!;
-    expect(phaseFor(g, A, B, TOUR_POLICY)).toEqual({ kind: "PLAYING" });
-  });
-
-  it("partial candidate nomination keeps asking the same picker", () => {
-    const g = emptyGameState(A, POOL);
-    ban(g, 5);
-    g.candidates = [choosableCombos(g)[0]!.idx]; // only 1 of 3 nominated
-    expect(phaseFor(g, A, B, TOUR_POLICY)).toEqual({ kind: "PICK", pickerId: B, remaining: 2 });
-  });
-});
-
 describe("free-deck policy", () => {
   it("goes straight to PLAYING with no steps", () => {
     const g = emptyGameState(A, POOL);
@@ -101,9 +68,9 @@ describe("terminal phases", () => {
     const g = emptyGameState(A, POOL);
     g.pickedDeckIdx = 0;
     g.winnerId = A;
-    expect(phaseFor(g, A, B, TOUR_POLICY)).toEqual({ kind: "AWAIT_LIVES", winnerId: A });
+    expect(phaseFor(g, A, B, LEAGUE_POLICY)).toEqual({ kind: "AWAIT_LIVES", winnerId: A });
     g.winnerLives = 3;
-    expect(phaseFor(g, A, B, TOUR_POLICY)).toEqual({ kind: "DONE" });
+    expect(phaseFor(g, A, B, LEAGUE_POLICY)).toEqual({ kind: "DONE" });
   });
 
   it("DC forfeit skips lives capture", () => {
@@ -111,7 +78,7 @@ describe("terminal phases", () => {
     g.pickedDeckIdx = 0;
     g.winnerId = A;
     g.dcByPlayerId = B;
-    expect(phaseFor(g, A, B, TOUR_POLICY)).toEqual({ kind: "DONE" });
+    expect(phaseFor(g, A, B, LEAGUE_POLICY)).toEqual({ kind: "DONE" });
   });
 });
 
@@ -121,17 +88,11 @@ describe("banOwner attribution", () => {
     expect(owners).toEqual([A, B, B, B, A, A, A]);
     expect(banOwner(7, A, B, LEAGUE_POLICY)).toBeNull(); // past the bans
   });
-
-  it("tour: first 5 bans all belong to the first player", () => {
-    const owners = [0, 1, 2, 3, 4].map((o) => banOwner(o, A, B, TOUR_POLICY));
-    expect(owners).toEqual([A, A, A, A, A]);
-    expect(banOwner(5, A, B, TOUR_POLICY)).toBeNull();
-  });
 });
 
 describe("parsePolicy", () => {
   it("round-trips a valid policy", () => {
-    expect(parsePolicy(JSON.stringify(TOUR_POLICY))).toEqual(TOUR_POLICY);
+    expect(parsePolicy(JSON.stringify(LEAGUE_POLICY))).toEqual(LEAGUE_POLICY);
   });
   it("falls back to default on null / garbage / wrong shape", () => {
     expect(parsePolicy(null)).toEqual(DEFAULT_POLICY);

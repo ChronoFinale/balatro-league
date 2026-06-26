@@ -79,16 +79,10 @@ export const LEAGUE_POLICY: BanPickPolicy = {
   ],
 };
 
-// Team Tour: first bans 5 (9 → 4 left), second nominates 3 of the 4 as
-// candidates, first chooses 1 of those 3 to play.
-export const TOUR_POLICY: BanPickPolicy = {
-  poolSize: 9,
-  steps: [
-    { kind: "BAN", by: "FIRST", count: 5 },
-    { kind: "PICK", by: "SECOND", count: 3 },
-    { kind: "CHOOSE", by: "FIRST", count: 1 },
-  ],
-};
+// NOTE: Team Tour uses the SAME ban/pick flow as the league (the real rule is
+// ban 1 → 3 → 3 → second chooses), so it shares LEAGUE_POLICY (= DEFAULT_POLICY).
+// There is intentionally NO separate "tour policy" — an earlier ban-5/pick-3
+// TOUR_POLICY was a misread of SAP-era rules and has been removed.
 
 // Free deck: no guided ban/pick — players agree on / report any combo. The
 // state machine has nothing to drive, so phaseFor jumps straight to PLAYING.
