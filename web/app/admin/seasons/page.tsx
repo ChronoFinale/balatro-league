@@ -18,6 +18,7 @@ import {
   finalizeSignupsForSeason,
   reopenSignupsForSeason,
   openSignupsForSeason,
+  sendSignupTestMessage,
   updateSignupCloseDate,
   updateSeasonWindow,
   refreshSignupNames,
@@ -37,10 +38,10 @@ export const dynamic = "force-dynamic";
 export default async function AdminSeasonsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ archived?: string; err?: string }>;
+  searchParams: Promise<{ archived?: string; err?: string; signupTestOk?: string; signupTestErr?: string }>;
 }) {
   await requireAdmin();
-  const { archived: showArchivedFlag, err } = await searchParams;
+  const { archived: showArchivedFlag, err, signupTestOk, signupTestErr } = await searchParams;
   const showArchived = showArchivedFlag === "1";
 
   const {
@@ -91,6 +92,12 @@ export default async function AdminSeasonsPage({
           <Callout type="danger">
             {err}
           </Callout>
+        )}
+        {signupTestOk && (
+          <Callout type="success">✓ Sent you a preview DM of the signup message — check your Discord DMs.</Callout>
+        )}
+        {signupTestErr && (
+          <Callout type="danger">Couldn&apos;t DM the preview — make sure your DMs are open and you share a server with the bot.</Callout>
         )}
 
         <details className="card">
@@ -519,6 +526,7 @@ function LifecycleActions({
       <summary style={{ cursor: "pointer" }}><strong>Open signups for this season →</strong></summary>
       <form action={openSignupsForSeason} style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
         <input type="hidden" name="seasonId" value={season.id} />
+        <input type="hidden" name="returnTo" value="/admin/seasons" />
         <FormSelect
           name="channelId"
           required
@@ -541,6 +549,9 @@ function LifecycleActions({
           <DatePickerField name="seasonEndsAt" placeholder="Pick an end date & time" />
         </div>
         <SubmitButton disabled={channels.length === 0}>Open signups</SubmitButton>
+        <SubmitButton variant="secondary" formAction={sendSignupTestMessage} formNoValidate>
+          🧪 DM me a preview
+        </SubmitButton>
       </form>
       <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
         Posts a signup message in the channel showing the <strong>start → end</strong> window so players know the dates up front. They click Sign Up; close signups when ready, then build the divisions from them.

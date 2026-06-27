@@ -660,7 +660,14 @@ export async function setRoundRobinTopDivisions(formData: FormData) {
 export async function sendSignupTestMessage(formData: FormData) {
   const { user } = await requireAdmin();
   const seasonId = String(formData.get("seasonId") ?? "");
-  const back = seasonId ? `/seasons/${seasonId}` : "/admin/seasons";
+  // Return to whichever page the form was on (both /admin/seasons and the season
+  // page have an open-signups form), falling back to the season page.
+  const returnToRaw = String(formData.get("returnTo") ?? "").trim();
+  const back = returnToRaw.startsWith("/")
+    ? returnToRaw
+    : seasonId
+      ? `/seasons/${seasonId}`
+      : "/admin/seasons";
 
   const season = seasonId ? await prisma.season.findUnique({ where: { id: seasonId } }) : null;
   const seasonLabel = season ? formatSeasonLabel(season) : "Season";

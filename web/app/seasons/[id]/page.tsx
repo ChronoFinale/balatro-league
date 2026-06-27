@@ -865,6 +865,7 @@ function LifecycleActions({
       <summary style={{ cursor: "pointer" }}><strong>Open signups for this season →</strong></summary>
       <form action={openSignupsForSeason} style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
         <input type="hidden" name="seasonId" value={season.id} />
+        <input type="hidden" name="returnTo" value={`/seasons/${season.id}`} />
         <FormSelect
           name="channelId"
           required
