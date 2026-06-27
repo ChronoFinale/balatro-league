@@ -53,13 +53,23 @@ export const MODLOG_RETENTION_DAYS = 7;
 type Resolution = { kind: "match" | "dispute" | "support"; matchId: string | null; matchSessionId: string | null };
 
 // Positive resolutions are cached forever (a thread id maps to one session/match
-// for its whole life). Negative results aren't cached — a brand-new match thread
-// must never be missed because we cached "untracked" a moment too early.
+// for its whole life). Negative results are cached briefly (NEGATIVE_TTL_MS): a
+// tracked thread's row always exists before any human message (it's set at thread
+// creation), so a short negative cache can't miss one — but it spares the DB from
+// re-running three lookups on every message in busy UNtracked threads (general
+// chat, etc.), which was scanning Match per message.
 const resolved = new Map<string, Resolution>();
+const negativeUntil = new Map<string, number>();
+const NEGATIVE_TTL_MS = 60_000;
 
 async function resolveThread(threadId: string): Promise<Resolution | null> {
   const cached = resolved.get(threadId);
   if (cached) return cached;
+  const negUntil = negativeUntil.get(threadId);
+  if (negUntil !== undefined) {
+    if (Date.now() < negUntil) return null;
+    negativeUntil.delete(threadId);
+  }
 
   const session = await prisma.matchSession.findFirst({
     where: { threadId },
@@ -88,6 +98,8 @@ async function resolveThread(threadId: string): Promise<Resolution | null> {
     resolved.set(threadId, r);
     return r;
   }
+  // Untracked thread — remember that briefly so we don't re-query every message.
+  negativeUntil.set(threadId, Date.now() + NEGATIVE_TTL_MS);
   return null;
 }
 

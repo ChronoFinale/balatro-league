@@ -787,6 +787,10 @@ model Match {
   @@index([status, format])
   @@index([playerAId])
   @@index([playerBId])
+  // Looked up per message by the moderation capture (mod-log resolveThread) to
+  // see if a thread is a dispute thread — without this it full-scans Match on
+  // every chat message in any untracked thread.
+  @@index([disputeThreadId])
 }
 
 // One game within a Match (BO2 → up to 3 rows; shootout → 1). Carries the
@@ -942,6 +946,8 @@ model SupportTicket {
 
   @@index([status])
   @@index([requesterId])
+  // Looked up per message by the moderation capture (mod-log resolveThread).
+  @@index([threadId])
 }
 
 model TraitOverride {
