@@ -1,0 +1,44 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { getViewer } from "@/lib/auth";
+import { playerReportSet, playerConfirmSet, playerDisputeSet } from "@/lib/services/player-report";
+import type { ActionResult } from "@/lib/action-result";
+
+// The actor is always the signed-in viewer's playerId — the service verifies they're
+// actually in the set, so a player can only report/confirm/dispute their own sets.
+export async function reportSetAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const v = await getViewer();
+  if (!v.playerId) return { ok: false, message: "Sign in to report." };
+  try {
+    await playerReportSet(String(formData.get("setId") ?? ""), v.playerId, Number(formData.get("myGames")), Number(formData.get("oppGames")));
+    revalidatePath("/me");
+    return { ok: true, message: "Reported — waiting on your opponent to confirm." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Report failed." };
+  }
+}
+
+export async function confirmSetAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const v = await getViewer();
+  if (!v.playerId) return { ok: false, message: "Sign in to confirm." };
+  try {
+    await playerConfirmSet(String(formData.get("setId") ?? ""), v.playerId);
+    revalidatePath("/me");
+    return { ok: true, message: "Confirmed — the result now counts." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Confirm failed." };
+  }
+}
+
+export async function disputeSetAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const v = await getViewer();
+  if (!v.playerId) return { ok: false, message: "Sign in to dispute." };
+  try {
+    await playerDisputeSet(String(formData.get("setId") ?? ""), v.playerId, String(formData.get("reason") ?? ""));
+    revalidatePath("/me");
+    return { ok: true, message: "Disputed — a TO will resolve it." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Dispute failed." };
+  }
+}

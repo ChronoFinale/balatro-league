@@ -14,6 +14,9 @@ export interface MySet {
   myGames: number | null;
   oppGames: number | null;
   result: "won" | "lost" | "tie" | null;
+  canReport: boolean; // I can (re)report this set
+  awaitingMyConfirm: boolean; // opponent reported — I confirm or dispute
+  awaitingOpponent: boolean; // I reported — waiting for the opponent
 }
 
 export interface MyTeam {
@@ -67,7 +70,7 @@ export async function getPlayerHome(playerId: string): Promise<PlayerHome> {
     const matchIds = rows.map((r) => r.matchId).filter((x): x is string => !!x);
     const oppIds = [...new Set(rows.map((r) => (r.playerAId === playerId ? r.playerBId : r.playerAId)))];
     const [matches, players] = await Promise.all([
-      prisma.match.findMany({ where: { id: { in: matchIds } }, select: { id: true, playerAId: true, gamesWonA: true, gamesWonB: true, winnerId: true } }),
+      prisma.match.findMany({ where: { id: { in: matchIds } }, select: { id: true, playerAId: true, gamesWonA: true, gamesWonB: true, winnerId: true, reporterId: true } }),
       prisma.player.findMany({ where: { id: { in: oppIds } }, select: { id: true, displayName: true } }),
     ]);
     const mById = new Map(matches.map((m) => [m.id, m]));
@@ -85,7 +88,11 @@ export async function getPlayerHome(playerId: string): Promise<PlayerHome> {
           oppGames = m.playerAId === playerId ? m.gamesWonB : m.gamesWonA;
           result = m.winnerId === playerId ? "won" : m.winnerId === oppId ? "lost" : "tie";
         }
-        return { setId: r.id, week: r.matchup?.week.number ?? 0, opponentName: nameOf.get(oppId) ?? "?", status: r.status, myGames, oppGames, result };
+        const reporterId = m?.reporterId ?? null;
+        const canReport = r.status === "PROPOSED" || r.status === "SCHEDULED" || r.status === "DISPUTED";
+        const awaitingMyConfirm = r.status === "REPORTED" && reporterId !== playerId;
+        const awaitingOpponent = r.status === "REPORTED" && reporterId === playerId;
+        return { setId: r.id, week: r.matchup?.week.number ?? 0, opponentName: nameOf.get(oppId) ?? "?", status: r.status, myGames, oppGames, result, canReport, awaitingMyConfirm, awaitingOpponent };
       })
       .sort((a, b) => a.week - b.week);
   }

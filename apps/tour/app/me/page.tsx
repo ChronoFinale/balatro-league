@@ -3,6 +3,11 @@ import { LogIn, Crown, ArrowRight } from "lucide-react";
 import { getViewer } from "@/lib/auth";
 import { getPlayerHome } from "@/lib/player-home";
 import { Callout } from "@/components/Callout";
+import { ActionFlashForm } from "@/components/ActionFlashForm";
+import { SubmitButton } from "@/components/SubmitButton";
+import { reportSetAction, confirmSetAction, disputeSetAction } from "./actions";
+
+const g = "w-12 rounded border border-[var(--border)] bg-[var(--surface-2)] px-1 py-0.5 text-center";
 
 export const dynamic = "force-dynamic";
 
@@ -84,14 +89,54 @@ export default async function MyTour() {
           ) : (
             <div className="card">
               <table>
-                <thead><tr><th className="num">Wk</th><th>Opponent</th><th className="num">Score</th><th>Status</th></tr></thead>
+                <thead><tr><th className="num">Wk</th><th>Opponent</th><th>Result / action</th></tr></thead>
                 <tbody>
                   {home.sets.map((s) => (
                     <tr key={s.setId}>
                       <td className="num">W{s.week}</td>
-                      <td style={{ fontWeight: s.result === "won" ? 700 : undefined }}>{s.opponentName}</td>
-                      <td className="num">{s.myGames != null ? `${s.myGames}–${s.oppGames}` : <span className="sub">—</span>}</td>
-                      <td><span className="badge" style={{ color: STATUS_COLOR[s.status] ?? "var(--muted)" }}>{s.status}</span></td>
+                      <td style={{ fontWeight: s.result === "won" ? 700 : undefined }}>vs {s.opponentName}</td>
+                      <td>
+                        {s.status === "CONFIRMED" ? (
+                          <span>
+                            <strong style={{ color: s.result === "won" ? "var(--success)" : s.result === "lost" ? "var(--danger)" : undefined }}>
+                              {s.result === "won" ? "Won" : s.result === "lost" ? "Lost" : "Tie"}
+                            </strong>{" "}
+                            <span className="num">{s.myGames}–{s.oppGames}</span>
+                          </span>
+                        ) : s.awaitingMyConfirm ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>Opponent reported <strong>{s.myGames}–{s.oppGames}</strong> (your side).</span>
+                            <ActionFlashForm action={confirmSetAction}>
+                              <input type="hidden" name="setId" value={s.setId} />
+                              <SubmitButton size="sm" pendingText="…">Confirm</SubmitButton>
+                            </ActionFlashForm>
+                            <ActionFlashForm action={disputeSetAction}>
+                              <input type="hidden" name="setId" value={s.setId} />
+                              <span className="inline-flex items-center gap-1">
+                                <input name="reason" placeholder="reason" className="w-28 rounded border border-[var(--border)] bg-[var(--surface-2)] px-1 py-0.5" />
+                                <SubmitButton size="sm" variant="secondary" pendingText="…">Dispute</SubmitButton>
+                              </span>
+                            </ActionFlashForm>
+                          </div>
+                        ) : s.awaitingOpponent ? (
+                          <span className="sub">Reported <strong>{s.myGames}–{s.oppGames}</strong> — waiting for {s.opponentName} to confirm.</span>
+                        ) : s.canReport ? (
+                          <ActionFlashForm action={reportSetAction}>
+                            <input type="hidden" name="setId" value={s.setId} />
+                            <span className="inline-flex items-center gap-1">
+                              {s.status === "DISPUTED" && <span className="badge" style={{ color: "var(--danger)" }}>disputed</span>}
+                              <span className="sub">you</span>
+                              <input type="number" name="myGames" min={0} className={g} />
+                              <span className="sub">–</span>
+                              <input type="number" name="oppGames" min={0} className={g} />
+                              <span className="sub">{s.opponentName}</span>
+                              <SubmitButton size="sm" pendingText="…">Report</SubmitButton>
+                            </span>
+                          </ActionFlashForm>
+                        ) : (
+                          <span className="badge" style={{ color: STATUS_COLOR[s.status] ?? "var(--muted)" }}>{s.status}</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
