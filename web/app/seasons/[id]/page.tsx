@@ -30,6 +30,7 @@ import {
   reopenSignupsForSeason,
   moveDivisionMember,
   openSignupsForSeason,
+  sendSignupTestMessage,
   renameSeason,
   setSeasonPreset,
   setSeasonScheduledStart,
@@ -59,10 +60,10 @@ export default async function SeasonDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ ok?: string; err?: string; imported?: string; "just-built"?: string; swap?: string; swaperr?: string; replace?: string; replaceerr?: string; serverCheck?: string }>;
+  searchParams: Promise<{ ok?: string; err?: string; imported?: string; "just-built"?: string; swap?: string; swaperr?: string; replace?: string; replaceerr?: string; serverCheck?: string; signupTestOk?: string; signupTestErr?: string }>;
 }) {
   const { id } = await params;
-  const { ok, err, imported, ["just-built"]: justBuiltParam, swap, swaperr, replace, replaceerr, serverCheck } = await searchParams;
+  const { ok, err, imported, ["just-built"]: justBuiltParam, swap, swaperr, replace, replaceerr, serverCheck, signupTestOk, signupTestErr } = await searchParams;
   const isAdmin = await hasTier("ADMIN");
   const justBuilt = justBuiltParam === "1";
 
@@ -93,6 +94,12 @@ export default async function SeasonDetailPage({
     <>
       <SiteNav activePath="/seasons" />
       <main>
+        {signupTestOk && (
+          <Callout type="success">✓ Sent you a preview DM of the signup message — check your Discord DMs.</Callout>
+        )}
+        {signupTestErr && (
+          <Callout type="danger">Couldn&apos;t DM the preview — make sure your DMs are open and you share a server with the bot.</Callout>
+        )}
         {seasonPublic ? (
           <PublicSummary
             season={seasonPublic}
@@ -875,9 +882,16 @@ function LifecycleActions({
           <DatePickerField name="seasonEndsAt" placeholder="Pick an end date & time" />
         </div>
         <SubmitButton disabled={channels.length === 0}>Open signups</SubmitButton>
+        {/* Preview button: submits the SAME form fields to the test action
+            instead of opening signups. formNoValidate so the required channel
+            isn't enforced (a preview doesn't post anywhere). */}
+        <SubmitButton variant="secondary" formAction={sendSignupTestMessage} formNoValidate>
+          🧪 DM me a preview
+        </SubmitButton>
       </form>
       <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
         The signup message shows the <strong>start → end</strong> window so players know the dates up front.
+        Set the dates above, then <strong>DM me a preview</strong> to see exactly what players will get.
       </div>
     </details>
   );

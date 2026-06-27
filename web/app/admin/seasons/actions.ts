@@ -15,6 +15,7 @@ import {
   fetchDiscordUser,
   fetchGuildMember,
   postChannelMessage,
+  sendDirectMessage,
 } from "@/lib/discord";
 import { enqueueLeagueInfoRefresh, enqueueMmrSnapshot, enqueueSignupAskKickoff, enqueueWelcomeRefresh } from "@/lib/queue";
 import { buildSignupPayload, buildClosedSignupPayload, getSeasonLengthDays } from "@/lib/signup-discord";
@@ -651,6 +652,41 @@ export async function setRoundRobinTopDivisions(formData: FormData) {
 // Open a signup round bound to a specific season. The round's
 // resultingSeasonId is set immediately so the build step (later) populates
 // THIS season's existing divisions instead of creating a new one.
+// DM the calling admin a PREVIEW of the signup message, rendered from whatever
+// dates they've entered in the open-signups form — so they can see exactly what
+// players will get (close line + play-your-games window) before posting it.
+// Shares buildSignupPayload with the real post, so the preview can't drift.
+// Reads the same form fields; channelId isn't required (nothing is posted).
+export async function sendSignupTestMessage(formData: FormData) {
+  const { user } = await requireAdmin();
+  const seasonId = String(formData.get("seasonId") ?? "");
+  const back = seasonId ? `/seasons/${seasonId}` : "/admin/seasons";
+
+  const season = seasonId ? await prisma.season.findUnique({ where: { id: seasonId } }) : null;
+  const seasonLabel = season ? formatSeasonLabel(season) : "Season";
+
+  const parseDate = (key: string): Date | null => {
+    const raw = String(formData.get(key) ?? "").trim();
+    const d = raw ? new Date(raw) : null;
+    return d && !Number.isNaN(d.getTime()) ? d : null;
+  };
+  const closesAt = parseDate("closesAt");
+  const seasonStartsAt = parseDate("seasonStartsAt");
+  const seasonEndsAt = parseDate("seasonEndsAt");
+
+  // Fake round (id "preview") so buildSignupPayload renders identically to a real
+  // post. Drop the components — the Sign Up / Withdraw buttons wouldn't resolve
+  // for a non-existent round, and a preview shouldn't be clickable anyway.
+  const round = { id: "preview", name: `${seasonLabel} Signups`, closesAt, seasonStartsAt, seasonEndsAt };
+  const { embeds } = buildSignupPayload(round, 0, await getSeasonLengthDays());
+
+  const ok = await sendDirectMessage(user.discordId, {
+    content: "🧪 **Preview** — this is what your signup message will look like (buttons omitted):",
+    embeds,
+  });
+  redirect(`${back}?${ok ? "signupTestOk=1" : "signupTestErr=1"}`);
+}
+
 export async function openSignupsForSeason(formData: FormData) {
   const { user } = await requireAdmin();
   const seasonId = String(formData.get("seasonId") ?? "");
