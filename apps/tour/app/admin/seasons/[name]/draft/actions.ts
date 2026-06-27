@@ -12,7 +12,7 @@ function rev(season: string) {
 }
 
 export async function setupDraftAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   const season = String(formData.get("season") ?? "");
   try {
     const r = await setupDraft(season);
@@ -24,7 +24,7 @@ export async function setupDraftAction(_prev: ActionResult, formData: FormData):
 }
 
 export async function resetDraftAction(formData: FormData) {
-  if (!isAdmin()) return;
+  if (!(await isAdmin())) return;
   const season = String(formData.get("season") ?? "");
   await resetDraft(season);
   rev(season);
@@ -34,7 +34,7 @@ export async function resetDraftAction(formData: FormData) {
 // form); makePick can throw on a race (player already drafted) — swallow it, the
 // board just re-renders unchanged.
 export async function makePickAction(formData: FormData) {
-  if (!isAdmin()) return;
+  if (!(await isAdmin())) return;
   const season = String(formData.get("season") ?? "");
   const playerId = String(formData.get("playerId") ?? "");
   try {

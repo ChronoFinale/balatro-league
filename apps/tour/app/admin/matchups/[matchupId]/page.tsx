@@ -25,7 +25,7 @@ const opts = (players: Player[]) =>
   players.filter((p) => !p.paired).map((p) => ({ value: p.playerId, label: `#${p.seed} ${p.name}` }));
 
 export default async function PairingConsole({ params }: { params: Promise<{ matchupId: string }> }) {
-  if (!isAdmin()) {
+  if (!(await isAdmin())) {
     return (
       <main>
         <h1>Admin</h1>

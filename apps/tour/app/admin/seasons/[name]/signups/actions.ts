@@ -12,7 +12,7 @@ function revalidate(season: string) {
 }
 
 export async function addSignupAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   const season = String(formData.get("season") ?? "");
   try {
     const s = await addSignup(season, {
@@ -30,13 +30,13 @@ export async function addSignupAction(_prev: ActionResult, formData: FormData): 
 }
 
 export async function setSignupStatusAction(formData: FormData) {
-  if (!isAdmin()) return;
+  if (!(await isAdmin())) return;
   await setSignupStatus(String(formData.get("id") ?? ""), String(formData.get("status") ?? "") as SignupStatus);
   revalidate(String(formData.get("season") ?? ""));
 }
 
 export async function removeSignupAction(formData: FormData) {
-  if (!isAdmin()) return;
+  if (!(await isAdmin())) return;
   await removeSignup(String(formData.get("id") ?? ""));
   revalidate(String(formData.get("season") ?? ""));
 }

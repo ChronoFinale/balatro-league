@@ -12,7 +12,7 @@ function rev(season: string) {
 }
 
 export async function crownChampionAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   const season = String(formData.get("season") ?? "");
   try {
     await crownChampion(season);
@@ -24,14 +24,14 @@ export async function crownChampionAction(_prev: ActionResult, formData: FormDat
 }
 
 export async function uncrownChampionAction(formData: FormData) {
-  if (!isAdmin()) return;
+  if (!(await isAdmin())) return;
   const season = String(formData.get("season") ?? "");
   await uncrownChampion(season);
   rev(season);
 }
 
 export async function addAwardAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   const season = String(formData.get("season") ?? "");
   const kind = String(formData.get("kind") ?? "");
   const playerId = String(formData.get("playerId") ?? "");
@@ -46,7 +46,7 @@ export async function addAwardAction(_prev: ActionResult, formData: FormData): P
 }
 
 export async function removeAwardAction(formData: FormData) {
-  if (!isAdmin()) return;
+  if (!(await isAdmin())) return;
   const season = String(formData.get("season") ?? "");
   const awardId = String(formData.get("awardId") ?? "");
   await removeAward(awardId);

@@ -12,7 +12,7 @@ function rev(season: string) {
 }
 
 export async function generateScheduleAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   const season = String(formData.get("season") ?? "");
   try {
     const r = await generateSeasonSchedule(season);
@@ -24,7 +24,7 @@ export async function generateScheduleAction(_prev: ActionResult, formData: Form
 }
 
 export async function resetScheduleAction(formData: FormData) {
-  if (!isAdmin()) return;
+  if (!(await isAdmin())) return;
   const season = String(formData.get("season") ?? "");
   await resetSchedule(season);
   rev(season);

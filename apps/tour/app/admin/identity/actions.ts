@@ -6,7 +6,7 @@ import { linkPlayer, mergePlayers } from "@/lib/services/identity";
 import type { ActionResult } from "@/lib/action-result";
 
 export async function linkPlayerAction(playerId: string, discordId: string): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   try {
     await linkPlayer(playerId, discordId);
     revalidatePath("/admin/identity");
@@ -17,7 +17,7 @@ export async function linkPlayerAction(playerId: string, discordId: string): Pro
 }
 
 export async function mergePlayerAction(keepId: string, dropId: string): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   try {
     const r = await mergePlayers(keepId, dropId);
     revalidatePath("/admin/identity");

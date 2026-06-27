@@ -8,7 +8,7 @@ import { IdentityRow } from "@/components/IdentityRow";
 export const dynamic = "force-dynamic";
 
 export default async function Identity({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  if (!isAdmin()) {
+  if (!(await isAdmin())) {
     return (
       <main>
         <h1>Admin</h1>

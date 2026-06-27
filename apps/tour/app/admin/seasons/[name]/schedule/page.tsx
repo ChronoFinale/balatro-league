@@ -11,7 +11,7 @@ import { generateScheduleAction, resetScheduleAction } from "./actions";
 export const dynamic = "force-dynamic";
 
 export default async function ScheduleAdmin({ params }: { params: Promise<{ name: string }> }) {
-  if (!isAdmin()) {
+  if (!(await isAdmin())) {
     return (
       <main>
         <h1>Admin</h1>

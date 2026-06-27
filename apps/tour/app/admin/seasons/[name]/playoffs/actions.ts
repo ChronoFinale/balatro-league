@@ -12,7 +12,7 @@ function rev(season: string) {
 }
 
 export async function startPlayoffsAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   const season = String(formData.get("season") ?? "");
   try {
     const r = await startPlayoffs(season);
@@ -24,7 +24,7 @@ export async function startPlayoffsAction(_prev: ActionResult, formData: FormDat
 }
 
 export async function reportSeriesAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   const season = String(formData.get("season") ?? "");
   const seriesId = String(formData.get("seriesId") ?? "");
   const a = Number(formData.get("scoreA"));
@@ -39,7 +39,7 @@ export async function reportSeriesAction(_prev: ActionResult, formData: FormData
 }
 
 export async function resetPlayoffsAction(formData: FormData) {
-  if (!isAdmin()) return;
+  if (!(await isAdmin())) return;
   const season = String(formData.get("season") ?? "");
   await resetPlayoffs(season);
   rev(season);

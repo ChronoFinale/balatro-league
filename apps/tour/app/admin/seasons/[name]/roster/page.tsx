@@ -20,7 +20,7 @@ export default async function RosterOpsAdmin({
   params: Promise<{ name: string }>;
   searchParams: Promise<{ week?: string }>;
 }) {
-  if (!isAdmin()) {
+  if (!(await isAdmin())) {
     return (
       <main>
         <h1>Admin</h1>

@@ -54,8 +54,12 @@ docker run -p 3000:3000 --env-file apps/tour/.env team-tour
    DISCORD_CLIENT_SECRET=<SAME as the league>
    AUTH_SECRET=<SAME value as the league>
    AUTH_COOKIE_DOMAIN=.balatroleague.com
+   TOUR_OWNER_DISCORD_IDS=<your Discord user id(s), comma-separated → OWNER tier>
+   # TOUR_TO_DISCORD_IDS / TOUR_HELPER_DISCORD_IDS for extra staff (optional)
+   # TOUR_GUILD_ID=<tour guild id>  # optional — also resolves tiers via RoleBinding roles
    # NEXT_PUBLIC_LEAGUE_URL defaults to https://balatroleague.com
-   # do NOT set TOUR_DEV_ADMIN in prod (real admin = Discord roles, wired later)
+   # do NOT set TOUR_DEV_ADMIN in prod — admin fails CLOSED without it; access
+   # comes from the tier env vars above (or RoleBinding once the bot syncs roles).
    ```
 
 4. **Discord OAuth** — in the **league's** Discord app → OAuth2 → Redirects, add:

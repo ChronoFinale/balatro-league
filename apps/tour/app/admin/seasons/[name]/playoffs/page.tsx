@@ -11,7 +11,7 @@ import { startPlayoffsAction, reportSeriesAction, resetPlayoffsAction } from "./
 export const dynamic = "force-dynamic";
 
 export default async function PlayoffsAdmin({ params }: { params: Promise<{ name: string }> }) {
-  if (!isAdmin()) {
+  if (!(await isAdmin())) {
     return (
       <main>
         <h1>Admin</h1>

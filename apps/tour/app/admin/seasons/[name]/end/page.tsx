@@ -22,7 +22,7 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 export default async function SeasonEndAdmin({ params }: { params: Promise<{ name: string }> }) {
-  if (!isAdmin()) {
+  if (!(await isAdmin())) {
     return (
       <main>
         <h1>Admin</h1>

@@ -21,7 +21,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default async function Signups({ params }: { params: Promise<{ name: string }> }) {
-  if (!isAdmin()) {
+  if (!(await isAdmin())) {
     return (
       <main>
         <h1>Admin</h1>

@@ -11,7 +11,7 @@ import { setupDraftAction, resetDraftAction, makePickAction } from "./actions";
 export const dynamic = "force-dynamic";
 
 export default async function DraftAdmin({ params }: { params: Promise<{ name: string }> }) {
-  if (!isAdmin()) {
+  if (!(await isAdmin())) {
     return (
       <main>
         <h1>Admin</h1>

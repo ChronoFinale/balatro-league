@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 const STATES = ["SIGNUPS", "DRAFTING", "REGULAR", "PLAYOFFS", "DONE"] as const;
 
 export default async function SeasonAdmin({ params }: { params: Promise<{ name: string }> }) {
-  if (!isAdmin()) {
+  if (!(await isAdmin())) {
     return (
       <main>
         <h1>Admin</h1>

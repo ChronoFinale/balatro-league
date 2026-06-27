@@ -7,8 +7,8 @@ import { Label } from "@/components/ui/label";
 import { FormSelect } from "@/components/FormSelect";
 import { createSeasonAction } from "../../actions";
 
-export default function NewSeason() {
-  if (!isAdmin()) {
+export default async function NewSeason() {
+  if (!(await isAdmin())) {
     return (
       <main>
         <h1>Not authorized</h1>

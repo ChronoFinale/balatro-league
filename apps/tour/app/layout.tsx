@@ -5,6 +5,7 @@ import { Pizza, CalendarDays, Users, Shield, Trophy, BarChart3, ScrollText, Sett
 import { Toaster } from "@/components/ui/sonner";
 import { CommandPalette } from "@/components/CommandPalette";
 import { CommandButton } from "@/components/CommandButton";
+import { UserMenu } from "@/components/UserMenu";
 import "./globals.css";
 
 // Balatro-ish pixel font for headings (matches the league site).
@@ -61,6 +62,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 League
               </a>
               <CommandButton />
+              <UserMenu />
             </nav>
           </div>
         </header>

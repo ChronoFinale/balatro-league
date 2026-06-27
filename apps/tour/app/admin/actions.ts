@@ -9,7 +9,7 @@ import type { ActionResult } from "@/lib/action-result";
 
 // Server actions = thin form wrappers over the same services the API route calls.
 export async function createSeasonAction(formData: FormData) {
-  assertAdmin();
+  await assertAdmin();
   await createSeason({
     name: String(formData.get("name") ?? ""),
     format: String(formData.get("format") ?? "SWISS") as "SWISS" | "CONFERENCES",
@@ -25,7 +25,7 @@ export async function createSeasonAction(formData: FormData) {
 
 // ActionResult-returning so they drive <ActionFlashForm> (pending + result flash).
 export async function importHistoricalAction(_prev: ActionResult, _formData: FormData): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   try {
     const r = await importHistorical();
     revalidatePath("/admin");
@@ -40,7 +40,7 @@ export async function importHistoricalAction(_prev: ActionResult, _formData: For
 }
 
 export async function importTT10Action(_prev: ActionResult, _formData: FormData): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   try {
     const r = await importTT10();
     revalidatePath("/admin");
@@ -55,7 +55,7 @@ export async function importTT10Action(_prev: ActionResult, _formData: FormData)
 }
 
 export async function updateSeasonStateAction(formData: FormData) {
-  assertAdmin();
+  await assertAdmin();
   const name = String(formData.get("name") ?? "");
   const state = String(formData.get("state") ?? "") as
     | "SIGNUPS"

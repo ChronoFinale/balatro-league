@@ -37,15 +37,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     : {}),
   providers: [
     Discord({
-      // Same Discord application as the league (shared login).
+      // Same Discord application as the league (shared login). `guilds.members.read`
+      // lets us read the user's roles in the Tour guild (TOUR_GUILD_ID) to resolve
+      // their permission tier via RoleBinding — best-effort; harmless if not granted.
       clientId: process.env.DISCORD_CLIENT_ID,
       clientSecret: process.env.DISCORD_CLIENT_SECRET,
-      authorization: { params: { scope: "identify" } },
+      authorization: { params: { scope: "identify guilds.members.read" } },
     }),
   ],
   session: { strategy: "jwt", maxAge: 60 * 60 * 24 * 7 }, // 7 days
   callbacks: {
-    async jwt({ token, profile }) {
+    async jwt({ token, profile, account }) {
       // Only runs on a fresh sign-in ON this host; when the session was minted by
       // the league, we just READ the existing token below.
       if (profile) {
@@ -53,12 +55,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.username = (profile.username as string) ?? token.name;
         token.avatar = (profile.avatar as string) ?? null;
       }
+      // Capture the user's roles in the Tour guild (for RoleBinding tier resolution).
+      // Best-effort: needs TOUR_GUILD_ID + the granted scope; never blocks sign-in.
+      if (account?.access_token && process.env.TOUR_GUILD_ID) {
+        try {
+          const res = await fetch(`https://discord.com/api/users/@me/guilds/${process.env.TOUR_GUILD_ID}/member`, {
+            headers: { Authorization: `Bearer ${account.access_token}` },
+          });
+          if (res.ok) {
+            const member = (await res.json()) as { roles?: string[] };
+            token.roleIds = Array.isArray(member.roles) ? member.roles : [];
+          }
+        } catch {
+          /* roles are optional — env-pinned tiers still work */
+        }
+      }
       return token;
     },
     async session({ session, token }) {
       if (token.discordId) (session.user as { discordId?: string }).discordId = token.discordId as string;
       if (token.username) session.user.name = token.username as string;
       if (token.avatar !== undefined) (session.user as { avatar?: string | null }).avatar = token.avatar as string | null;
+      (session as { roleIds?: string[] }).roleIds = (token.roleIds as string[] | undefined) ?? [];
       return session;
     },
   },

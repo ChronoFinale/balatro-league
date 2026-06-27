@@ -11,7 +11,7 @@ function rev(matchupId: string) {
 }
 
 export async function makePairAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   const matchupId = String(formData.get("matchupId") ?? "");
   const proposer = String(formData.get("proposerPlayerId") ?? "");
   const responder = String(formData.get("responderPlayerId") ?? "");
@@ -25,7 +25,7 @@ export async function makePairAction(_prev: ActionResult, formData: FormData): P
 }
 
 export async function overridePairAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   const matchupId = String(formData.get("matchupId") ?? "");
   const a = String(formData.get("aPlayerId") ?? "");
   const b = String(formData.get("bPlayerId") ?? "");
@@ -39,7 +39,7 @@ export async function overridePairAction(_prev: ActionResult, formData: FormData
 }
 
 export async function setSendFirstAction(formData: FormData) {
-  if (!isAdmin()) return;
+  if (!(await isAdmin())) return;
   const matchupId = String(formData.get("matchupId") ?? "");
   const team = formData.get("team") === "B" ? "B" : "A";
   await setSendFirst(matchupId, team);
@@ -47,7 +47,7 @@ export async function setSendFirstAction(formData: FormData) {
 }
 
 export async function removePairAction(formData: FormData) {
-  if (!isAdmin()) return;
+  if (!(await isAdmin())) return;
   const matchupId = String(formData.get("matchupId") ?? "");
   const setId = String(formData.get("setId") ?? "");
   await removePair(setId);
@@ -55,14 +55,14 @@ export async function removePairAction(formData: FormData) {
 }
 
 export async function resetPairingAction(formData: FormData) {
-  if (!isAdmin()) return;
+  if (!(await isAdmin())) return;
   const matchupId = String(formData.get("matchupId") ?? "");
   await resetPairing(matchupId);
   rev(matchupId);
 }
 
 export async function reportSetAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   const matchupId = String(formData.get("matchupId") ?? "");
   const setId = String(formData.get("setId") ?? "");
   const a = Number(formData.get("gamesA"));
@@ -77,7 +77,7 @@ export async function reportSetAction(_prev: ActionResult, formData: FormData): 
 }
 
 export async function unreportSetAction(formData: FormData) {
-  if (!isAdmin()) return;
+  if (!(await isAdmin())) return;
   const matchupId = String(formData.get("matchupId") ?? "");
   const setId = String(formData.get("setId") ?? "");
   await unreportSet(setId);

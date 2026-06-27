@@ -17,7 +17,7 @@ const wk = (fd: FormData, key: string) => {
 };
 
 export async function substituteAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   const season = String(formData.get("season") ?? "");
   const until = wk(formData, "untilWeek");
   try {
@@ -38,7 +38,7 @@ export async function substituteAction(_prev: ActionResult, formData: FormData):
 }
 
 export async function departureAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   const season = String(formData.get("season") ?? "");
   const kind = formData.get("kind") === "BANNED" ? "BANNED" : "QUIT";
   try {
@@ -51,7 +51,7 @@ export async function departureAction(_prev: ActionResult, formData: FormData): 
 }
 
 export async function replaceAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  if (!isAdmin()) return { ok: false, message: "Not authorized." };
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   const season = String(formData.get("season") ?? "");
   try {
     await replacePlayer(season, String(formData.get("teamSeasonId") ?? ""), String(formData.get("inPlayerId") ?? ""), String(formData.get("replacesPlayerId") ?? ""), wk(formData, "effectiveWeek"), String(formData.get("reason") ?? ""));
@@ -63,7 +63,7 @@ export async function replaceAction(_prev: ActionResult, formData: FormData): Pr
 }
 
 export async function reinstateAction(formData: FormData) {
-  if (!isAdmin()) return;
+  if (!(await isAdmin())) return;
   const season = String(formData.get("season") ?? "");
   try {
     await reinstate(season, String(formData.get("teamSeasonId") ?? ""), String(formData.get("playerId") ?? ""), wk(formData, "effectiveWeek"), String(formData.get("reason") ?? ""));
@@ -74,7 +74,7 @@ export async function reinstateAction(formData: FormData) {
 }
 
 export async function removeMoveAction(formData: FormData) {
-  if (!isAdmin()) return;
+  if (!(await isAdmin())) return;
   const season = String(formData.get("season") ?? "");
   await removeMove(String(formData.get("moveId") ?? ""));
   rev(season);

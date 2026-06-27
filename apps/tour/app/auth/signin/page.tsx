@@ -12,8 +12,9 @@ export default function SignIn() {
         Sign in with Discord to access your Team Tour profile, captain tools, and admin.
       </p>
       <Callout type="info">
-        Auth is scaffolded but not yet live — the Tour Discord application hasn&apos;t been created. Sign-in works once
-        its credentials are set in <code>apps/tour/.env</code>.
+        Shared login with the league: sign in once on either site. Requires the Discord OAuth credentials
+        (<code>DISCORD_CLIENT_ID</code> / <code>DISCORD_CLIENT_SECRET</code> / <code>AUTH_SECRET</code>) in{" "}
+        <code>apps/tour/.env</code> — see <code>.env.example</code>.
       </Callout>
       <form
         action={async () => {

@@ -10,7 +10,7 @@ import { importHistoricalAction, importTT10Action } from "./actions";
 export const dynamic = "force-dynamic";
 
 export default async function Admin() {
-  if (!isAdmin()) {
+  if (!(await isAdmin())) {
     return (
       <main>
         <p>

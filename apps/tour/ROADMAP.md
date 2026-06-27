@@ -184,9 +184,13 @@ Web surfaces over the existing pure engines, ordered to mirror a real season. Al
 the season state machine (`/admin/seasons/[name]` ✅). **A4 must land first** (it produces
 the rosters everything downstream reads).
 
-- **B1. Auth + permissions go live 🟡** — set shared Discord OAuth env so `auth.ts`
-  authenticates; add `RoleBinding` tier resolution (OWNER/TO/HELPER) replacing the
-  `TOUR_DEV_ADMIN` bypass in `lib/auth.ts`. Captain/player gates from season data.
+- **B1. Auth + permissions ✅ (code) / 🔒 (creds)** — `lib/auth.ts` is now session-aware:
+  async `getViewer`/`isAdmin`/`isApiAdmin` resolve a tier (`resolveTier`) from env-pinned
+  ids (`TOUR_{OWNER,TO,HELPER}_DISCORD_IDS`) + `RoleBinding` (guild roles captured at sign-in
+  via `guilds.members.read`), failing **closed** without the dev bypass. All 24 admin gates
+  migrated to `await isAdmin()`. Header `UserMenu` (sign in / out + tier badge) + the shared-SSO
+  `auth.ts`. *Owner provides the Discord OAuth creds + their owner id (DEPLOY.md / .env.example).*
+  Captain/player gates from season data still to come (with the player-facing views).
 - **B2. Signups (self-serve) 🟡** — public signup page (Discord OAuth → form: tz,
   availability, willing-to-captain, BMP handle) writing `Signup` via
   `lib/services/signups.ts` (admin manager ✅).
