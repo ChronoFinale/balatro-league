@@ -267,9 +267,16 @@ the rosters everything downstream reads).
   (`pairing:<matchupId>`), standings (`standings:<seasonId>`). Optimistic POST → write →
   NOTIFY → re-render.
 - **Tour Discord bot** (own token, new Railway service): match-execution thread (ban/pick →
-  report → confirm → NOTIFY), `#results`/`#schedule` bootstrap, role provisioning (mirror
-  data → cosmetic `playerRoleId`/`captainRoleId`), pings/nudges (on-the-clock, Sunday
-  deadline, awkward-tz alert per design §14.4).
+  report → confirm → NOTIFY), `#results`/`#schedule` bootstrap, role provisioning, pings/nudges
+  (on-the-clock, Sunday deadline, awkward-tz alert per design §14.4).
+  - **Role automation ✅ (brain) / 🔒 (token).** `lib/services/discord-roles.ts` DERIVES the
+    desired Player/Captain role membership from the roster + captains + move log (departed
+    drop out; legacy → `unmappable`); `planRoleReconciliation` = pure add/remove diff;
+    `getRoleSyncPlan` = the full plan. Admin preview at `/admin/seasons/[name]/discord` (no
+    token). `bot/reconcile.ts` = the runner (`reconcileSeasonRoles`) against a `GuildRoleClient`
+    interface — verified e2e with a fake guild (provision → idempotent → quit/captain-swap
+    removes+swaps). The real bot passes an adapter over the league's `src/discord-helpers.ts`;
+    owner provides `TOUR_DISCORD_TOKEN` + the guild. `#results`/pings/threads still ⬜.
 
 ---
 
