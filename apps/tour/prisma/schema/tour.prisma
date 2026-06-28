@@ -255,6 +255,11 @@ model TourSet {
   bestOf      Int
   status      SetStatus @default(PROPOSED)
   scheduledAt DateTime?
+  // When a substitute is assigned to an UNPLAYED set (e.g. a late "makeup" set the
+  // originally-paired player can no longer play because they dropped out), the slot's
+  // player (playerAId/playerBId) is reassigned and the original is remembered here.
+  // playerAId/B always = who actually plays → stats credit them; this is the audit.
+  reassignedFromId String?
 
   matchup Matchup? @relation(fields: [matchupId], references: [id], onDelete: Cascade)
 

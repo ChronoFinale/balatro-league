@@ -139,7 +139,7 @@ export async function getMatchupReport(matchupId: string) {
   if (!matchup) return null;
 
   const matchIds = matchup.sets.map((s) => s.matchId).filter((x): x is string => !!x);
-  const playerIds = [...new Set(matchup.sets.flatMap((s) => [s.playerAId, s.playerBId]))];
+  const playerIds = [...new Set(matchup.sets.flatMap((s) => [s.playerAId, s.playerBId, s.reassignedFromId].filter((x): x is string => !!x)))];
   const [matches, players, teamSeasons] = await Promise.all([
     prisma.match.findMany({ where: { id: { in: matchIds } }, select: { id: true, playerAId: true, gamesWonA: true, gamesWonB: true, winnerId: true } }),
     prisma.player.findMany({ where: { id: { in: playerIds } }, select: { id: true, displayName: true } }),
@@ -165,7 +165,9 @@ export async function getMatchupReport(matchupId: string) {
       bSeed: s.seedB,
       bestOf: s.bestOf,
       status: s.status,
-      reported: s.status === "CONFIRMED",
+      reported: s.status === "CONFIRMED" || s.status === "FORFEIT",
+      played: s.status === "CONFIRMED" || s.status === "FORFEIT" || s.status === "REPORTED",
+      reassignedFrom: s.reassignedFromId ? nameOf.get(s.reassignedFromId) ?? null : null,
       teamAGames,
       teamBGames,
       winner,

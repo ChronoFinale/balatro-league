@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { isAdmin } from "@/lib/auth";
-import { makePair, overridePair, setSendFirst, removePair, resetPairing } from "@/lib/services/pairing";
+import { makePair, overridePair, setSendFirst, removePair, resetPairing, reassignSetPlayer } from "@/lib/services/pairing";
 import { reportSet, unreportSet, forfeitSet } from "@/lib/services/report";
 import type { ActionResult } from "@/lib/action-result";
 
@@ -91,4 +91,19 @@ export async function forfeitSetAction(formData: FormData) {
   const team = formData.get("forfeitTeam") === "B" ? "B" : "A";
   await forfeitSet(setId, team);
   rev(matchupId);
+}
+
+export async function reassignSetAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
+  const matchupId = String(formData.get("matchupId") ?? "");
+  const setId = String(formData.get("setId") ?? "");
+  const side = formData.get("side") === "B" ? "B" : "A";
+  const inPlayerId = String(formData.get("inPlayerId") ?? "");
+  try {
+    await reassignSetPlayer(setId, side, inPlayerId);
+    rev(matchupId);
+    return { ok: true, message: "Set reassigned to the substitute." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Reassign failed." };
+  }
 }

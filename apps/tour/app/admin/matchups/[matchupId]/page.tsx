@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, X } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
-import { getPairingConsole } from "@/lib/services/pairing";
+import { getPairingConsole, getMatchupSubOptions } from "@/lib/services/pairing";
 import { getMatchupReport } from "@/lib/services/report";
 import { Callout } from "@/components/Callout";
 import { ActionFlashForm } from "@/components/ActionFlashForm";
@@ -17,6 +17,7 @@ import {
   reportSetAction,
   unreportSetAction,
   forfeitSetAction,
+  reassignSetAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,7 @@ export default async function PairingConsole({ params }: { params: Promise<{ mat
   const { matchupId } = await params;
   const c = await getPairingConsole(matchupId);
   const report = await getMatchupReport(matchupId);
+  const subOpts = await getMatchupSubOptions(matchupId);
   if (!c) {
     return (
       <main>
@@ -197,7 +199,10 @@ export default async function PairingConsole({ params }: { params: Promise<{ mat
               <tbody>
                 {report.sets.map((s) => (
                   <tr key={s.setId}>
-                    <td style={{ fontWeight: s.winner === "A" ? 700 : undefined }}>#{s.aSeed} {s.aName}</td>
+                    <td style={{ fontWeight: s.winner === "A" ? 700 : undefined }}>
+                      #{s.aSeed} {s.aName}
+                      {s.reassignedFrom && <span className="sub" title={`makeup — originally ${s.reassignedFrom}`}> (sub for {s.reassignedFrom})</span>}
+                    </td>
                     <td style={{ fontWeight: s.winner === "B" ? 700 : undefined }}>#{s.bSeed} {s.bName}</td>
                     <td className="num">{s.bestOf}</td>
                     <td>
@@ -237,6 +242,23 @@ export default async function PairingConsole({ params }: { params: Promise<{ mat
                           </form>
                         ))}
                       </div>
+                      {/* Sub-in for a makeup set (only while unplayed) */}
+                      {!s.played && subOpts && (
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <span className="sub" title="Replace who plays this unplayed set — e.g. a makeup the original can't play">Sub in:</span>
+                          {(["A", "B"] as const).map((side) => (
+                            <ActionFlashForm key={side} action={reassignSetAction}>
+                              <input type="hidden" name="matchupId" value={matchupId} />
+                              <input type="hidden" name="setId" value={s.setId} />
+                              <input type="hidden" name="side" value={side} />
+                              <span className="inline-flex items-center gap-1">
+                                <FormSelect name="inPlayerId" size="sm" options={[{ value: "", label: side === "A" ? report.teamAName : report.teamBName }, ...((side === "A" ? subOpts.subsA : subOpts.subsB).map((p) => ({ value: p.id, label: p.name })))]} placeholder={side === "A" ? report.teamAName : report.teamBName} />
+                                <SubmitButton size="sm" variant="secondary" pendingText="…">↪</SubmitButton>
+                              </span>
+                            </ActionFlashForm>
+                          ))}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

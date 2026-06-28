@@ -109,7 +109,7 @@ export async function changeCaptain(seasonName: string, teamSeasonId: string, ne
 
 // ── Membership (stat attribution) — add a player to the team's roster so their
 // sets attribute. RosterEntry is the season membership; never removed on departure.
-async function ensureMembership(teamSeasonId: string, playerId: string, seed: number) {
+export async function ensureMembership(teamSeasonId: string, playerId: string, seed: number) {
   let roster = await prisma.roster.findFirst({ where: { teamSeasonId }, orderBy: { weekBlock: "asc" } });
   if (!roster) roster = await prisma.roster.create({ data: { teamSeasonId, weekBlock: "SEASON" } });
   await prisma.rosterEntry.upsert({

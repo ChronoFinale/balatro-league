@@ -19,7 +19,7 @@ import {
   type RosterPlayer,
   type PairingState,
 } from "@balatro/tour-core";
-import { rosterForWeek } from "./roster-ops";
+import { rosterForWeek, ensureMembership } from "./roster-ops";
 
 interface LoadedMatchup {
   matchup: {
@@ -195,4 +195,74 @@ export async function resetPairing(matchupId: string) {
   await prisma.tourSet.deleteMany({ where: { matchupId } });
   const matchIds = sets.map((s) => s.matchId).filter((x): x is string => !!x);
   if (matchIds.length) await prisma.match.deleteMany({ where: { id: { in: matchIds } } });
+}
+
+// Reassign the player on ONE side of an UNPLAYED set to a substitute — for a late
+// "makeup" set the originally-paired player can no longer play (e.g. they dropped
+// out). The set keeps its identity (matchup, week, opponent); only who plays it
+// changes. TO authority: bypasses the ±2 / week-lineup checks (the sub may have
+// joined after the set's week). playerAId/B = who actually plays (so stats credit
+// the sub); the original is remembered in reassignedFromId for the audit.
+export async function reassignSetPlayer(setId: string, side: "A" | "B", inPlayerId: string, _reason?: string) {
+  if (!inPlayerId) throw new Error("Pick the substitute.");
+  const set = await prisma.tourSet.findUnique({
+    where: { id: setId },
+    include: { matchup: { include: { week: { include: { season: { select: { id: true } } } } } } },
+  });
+  if (!set || !set.matchup) throw new Error("No such set.");
+  if (set.status === "CONFIRMED" || set.status === "REPORTED" || set.status === "FORFEIT") {
+    throw new Error("This set is already played — clear its result first, then reassign.");
+  }
+  const teamSeasonId = side === "A" ? set.matchup.teamSeasonAId : set.matchup.teamSeasonBId;
+  const currentId = side === "A" ? set.playerAId : set.playerBId;
+  const otherId = side === "A" ? set.playerBId : set.playerAId;
+  if (inPlayerId === currentId) throw new Error("That player already has this set.");
+  if (inPlayerId === otherId) throw new Error("Can't pair a player against themselves.");
+
+  // The sub must attribute to this team — make sure they're a season member.
+  const seed = side === "A" ? set.seedA : set.seedB;
+  await ensureMembership(teamSeasonId, inPlayerId, seed);
+
+  await prisma.tourSet.update({
+    where: { id: setId },
+    data: {
+      ...(side === "A" ? { playerAId: inPlayerId } : { playerBId: inPlayerId }),
+      reassignedFromId: set.reassignedFromId ?? currentId, // keep the FIRST original
+    },
+  });
+  return { ok: true };
+}
+
+// Substitute options for a matchup's two teams — each team's full season membership
+// plus the free-agent pool — for the reassign control (broader than the week lineup,
+// since a sub may have joined later).
+export async function getMatchupSubOptions(matchupId: string) {
+  const matchup = await prisma.matchup.findUnique({
+    where: { id: matchupId },
+    include: { week: { select: { seasonId: true } } },
+  });
+  if (!matchup) return null;
+  const seasonId = matchup.week.seasonId;
+
+  const [teamSeasons, approved] = await Promise.all([
+    prisma.teamSeason.findMany({ where: { seasonId }, include: { rosters: { include: { entries: true } } } }),
+    prisma.signup.findMany({ where: { seasonId, status: "APPROVED" }, select: { discordId: true } }),
+  ]);
+  const memberOf = (tsId: string) => {
+    const ts = teamSeasons.find((t) => t.id === tsId);
+    return ts ? [...new Set(ts.rosters.flatMap((r) => r.entries.map((e) => e.playerId)))] : [];
+  };
+  const rosteredAll = new Set(teamSeasons.flatMap((t) => t.rosters.flatMap((r) => r.entries.map((e) => e.playerId))));
+  const fa = await prisma.player.findMany({ where: { discordId: { in: approved.map((a) => a.discordId) } }, select: { id: true, displayName: true } });
+  const freeAgentIds = fa.filter((p) => !rosteredAll.has(p.id)).map((p) => p.id);
+
+  const ids = [...new Set([...memberOf(matchup.teamSeasonAId), ...memberOf(matchup.teamSeasonBId), ...freeAgentIds])];
+  const players = await prisma.player.findMany({ where: { id: { in: ids } }, select: { id: true, displayName: true } });
+  const nameOf = new Map(players.map((p) => [p.id, p.displayName]));
+  const opt = (pid: string) => ({ id: pid, name: nameOf.get(pid) ?? pid });
+
+  return {
+    subsA: [...memberOf(matchup.teamSeasonAId), ...freeAgentIds].map(opt),
+    subsB: [...memberOf(matchup.teamSeasonBId), ...freeAgentIds].map(opt),
+  };
 }
