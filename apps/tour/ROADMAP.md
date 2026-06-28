@@ -229,6 +229,11 @@ the rosters everything downstream reads).
   existing picks); the pairing tool pairs the **derived weekly lineup**. `/admin/seasons/[name]/roster`
   has a week selector, per-team sub/quit-ban/replace forms, and the timeline (with reinstate).
   *Deploy note: run `backfillDraftedMoves()` once on prod for pre-existing drafts.*
+  **+ Captain succession** (`CAPTAIN_CHANGE` move, `captainAtWeek` derived) for when a captain
+  drops out, and a **strike tracker** (`Strike` model + `lib/services/strikes.ts`) — an
+  informational TO aid (career + per-season counts, "at risk" at 3, never auto-penalizes per
+  the rules), shown on the roster admin + gently on `/me`. **+ TO forfeit** (`forfeitSet`, 0–2
+  set loss per the scheduling rule; `rollupMatchup` counts FORFEIT) on the matchup console.
 - **B8. Playoffs ✅** — `lib/services/playoffs.ts` + `/admin/seasons/[name]/playoffs`:
   `startPlayoffs` qualifies (auto-berths + wildcards) + seeds the field and writes
   `PlayoffEntry` + the round-1 `PlayoffSeries` (`standardBracketPairings`); `reportSeries`
