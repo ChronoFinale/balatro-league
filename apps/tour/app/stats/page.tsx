@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getCaptainDraftGrades, getDraftSteals, getDraftValueByRound } from "@/lib/draft-stats";
 import { getRecords, getRivalries, getRookieRankings } from "@/lib/records";
+import { getDeckStats } from "@/lib/deck-stats";
 
 export const dynamic = "force-dynamic";
 
@@ -8,13 +9,14 @@ const pctStr = (x: number) => `${(x * 100).toFixed(1)}%`;
 const signedPts = (x: number) => `${x >= 0 ? "+" : "−"}${(Math.abs(x) * 100).toFixed(1)}`;
 
 export default async function Stats() {
-  const [steals, byRound, records, rivalries, rookies, grades] = await Promise.all([
+  const [steals, byRound, records, rivalries, rookies, grades, decks] = await Promise.all([
     getDraftSteals(),
     getDraftValueByRound(),
     getRecords(),
     getRivalries(),
     getRookieRankings(),
     getCaptainDraftGrades(),
+    getDeckStats(),
   ]);
   const maxPct = Math.max(0.01, ...byRound.map((r) => r.pct));
 
@@ -135,6 +137,28 @@ export default async function Stats() {
           </tbody>
         </table>
       </div>
+
+      <h2 className="mt-6 mb-1 text-[1.1rem]">Decks &amp; stakes</h2>
+      <p className="sub">Most-played decks and stakes across captured games ({decks.totalGames} logged). Fills in as players log decks when reporting.</p>
+      {decks.totalGames === 0 ? (
+        <div className="card"><p className="sub">No game decks logged yet — they appear here once players start logging decks per game on their set reports.</p></div>
+      ) : (
+        <div className="grid grid-2">
+          {([["Decks", decks.decks], ["Stakes", decks.stakes]] as const).map(([label, rows]) => (
+            <div className="card" key={label} style={{ marginBottom: 0 }}>
+              <div className="bracket-title">{label}</div>
+              <table>
+                <thead><tr><th>{label.slice(0, -1)}</th><th className="num">Games</th><th className="num">Decisive %</th></tr></thead>
+                <tbody>
+                  {rows.slice(0, 12).map((d) => (
+                    <tr key={d.name}><td>{d.name}</td><td className="num">{d.games}</td><td className="num">{pctStr(d.winPct)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      )}
 
       <h2 className="mt-6 mb-1 text-[1.1rem]">Best drafters</h2>
       <p className="sub">

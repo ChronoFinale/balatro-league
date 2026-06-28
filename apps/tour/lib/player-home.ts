@@ -17,6 +17,7 @@ export interface MySet {
   canReport: boolean; // I can (re)report this set
   awaitingMyConfirm: boolean; // opponent reported — I confirm or dispute
   awaitingOpponent: boolean; // I reported — waiting for the opponent
+  bestOf: number; // for the optional per-game (deck/stake) capture rows
 }
 
 export interface MyTeam {
@@ -92,7 +93,7 @@ export async function getPlayerHome(playerId: string): Promise<PlayerHome> {
         const canReport = r.status === "PROPOSED" || r.status === "SCHEDULED" || r.status === "DISPUTED";
         const awaitingMyConfirm = r.status === "REPORTED" && reporterId !== playerId;
         const awaitingOpponent = r.status === "REPORTED" && reporterId === playerId;
-        return { setId: r.id, week: r.matchup?.week.number ?? 0, opponentName: nameOf.get(oppId) ?? "?", status: r.status, myGames, oppGames, result, canReport, awaitingMyConfirm, awaitingOpponent };
+        return { setId: r.id, week: r.matchup?.week.number ?? 0, opponentName: nameOf.get(oppId) ?? "?", status: r.status, myGames, oppGames, result, canReport, awaitingMyConfirm, awaitingOpponent, bestOf: r.bestOf };
       })
       .sort((a, b) => a.week - b.week);
   }

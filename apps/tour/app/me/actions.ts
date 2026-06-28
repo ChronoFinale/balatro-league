@@ -10,10 +10,18 @@ import type { ActionResult } from "@/lib/action-result";
 export async function reportSetAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const v = await getViewer();
   if (!v.playerId) return { ok: false, message: "Sign in to report." };
+  // Optional per-game detail: rows game{N}Deck / game{N}Stake / game{N}Winner.
+  const games: { deck: string; stake: string; winner: "me" | "opp" }[] = [];
+  for (let i = 1; i <= 9; i++) {
+    const deck = String(formData.get(`game${i}Deck`) ?? "");
+    const stake = String(formData.get(`game${i}Stake`) ?? "");
+    const winner = String(formData.get(`game${i}Winner`) ?? "");
+    if (deck || stake || winner) games.push({ deck, stake, winner: winner === "opp" ? "opp" : "me" });
+  }
   try {
-    await playerReportSet(String(formData.get("setId") ?? ""), v.playerId, Number(formData.get("myGames")), Number(formData.get("oppGames")));
+    await playerReportSet(String(formData.get("setId") ?? ""), v.playerId, Number(formData.get("myGames")), Number(formData.get("oppGames")), games.length ? games : undefined);
     revalidatePath("/me");
-    return { ok: true, message: "Reported — waiting on your opponent to confirm." };
+    return { ok: true, message: games.length ? "Reported with game details — waiting on your opponent." : "Reported — waiting on your opponent to confirm." };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Report failed." };
   }

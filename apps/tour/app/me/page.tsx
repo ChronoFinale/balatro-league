@@ -6,10 +6,14 @@ import { getPlayerStrikes } from "@/lib/services/strikes";
 import { getCaptainMatchups } from "@/lib/services/pairing";
 import { Callout } from "@/components/Callout";
 import { ActionFlashForm } from "@/components/ActionFlashForm";
+import { FormSelect } from "@/components/FormSelect";
 import { SubmitButton } from "@/components/SubmitButton";
+import { DECKS, STAKES } from "@/lib/balatro";
 import { reportSetAction, confirmSetAction, disputeSetAction } from "./actions";
 
 const g = "w-12 rounded border border-[var(--border)] bg-[var(--surface-2)] px-1 py-0.5 text-center";
+const deckOpts = [{ value: "", label: "deck" }, ...DECKS.map((d) => ({ value: d, label: d }))];
+const stakeOpts = [{ value: "", label: "stake" }, ...STAKES.map((s) => ({ value: s, label: s }))];
 
 export const dynamic = "force-dynamic";
 
@@ -166,6 +170,19 @@ export default async function MyTour() {
                               <span className="sub">{s.opponentName}</span>
                               <SubmitButton size="sm" pendingText="…">Report</SubmitButton>
                             </span>
+                            <details className="mt-1">
+                              <summary className="sub" style={{ cursor: "pointer" }}>Log decks per game (optional — fills the score for you)</summary>
+                              <div className="mt-1 flex flex-col gap-1">
+                                {Array.from({ length: s.bestOf }, (_, i) => i + 1).map((n) => (
+                                  <span key={n} className="inline-flex flex-wrap items-center gap-1">
+                                    <span className="sub" style={{ width: "3.2rem" }}>Game {n}</span>
+                                    <FormSelect name={`game${n}Deck`} size="sm" options={deckOpts} placeholder="deck" />
+                                    <FormSelect name={`game${n}Stake`} size="sm" options={stakeOpts} placeholder="stake" />
+                                    <FormSelect name={`game${n}Winner`} size="sm" options={[{ value: "", label: "winner" }, { value: "me", label: "you" }, { value: "opp", label: s.opponentName }]} placeholder="winner" />
+                                  </span>
+                                ))}
+                              </div>
+                            </details>
                           </ActionFlashForm>
                         ) : (
                           <span className="badge" style={{ color: STATUS_COLOR[s.status] ?? "var(--muted)" }}>{s.status}</span>
