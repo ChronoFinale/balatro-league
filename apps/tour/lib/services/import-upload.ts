@@ -7,7 +7,7 @@ import AdmZip from "adm-zip";
 import { mkdtemp, rm, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { importHistorical, importConferenceSeason, applyConferenceData } from "./import";
+import { importHistorical, importConferenceSeason, applyConferenceData, applySignupRefsFromDir } from "./import";
 import { loadLeagueRefFromCsv } from "./identity";
 
 // Walk the extracted tree to find the directory that looks like the sheets root:
@@ -36,6 +36,7 @@ export interface UploadImportResult {
   historical?: Awaited<ReturnType<typeof importHistorical>>;
   conference?: Awaited<ReturnType<typeof importConferenceSeason>>;
   leagueRef?: number; // league name→discordId rows loaded (for identity linking)
+  signups?: { resolved: number; unresolved: number }; // xlsx signups resolved to Discord ids
   ran: string[];
   errors: { which: string; message: string }[];
 }
@@ -65,9 +66,11 @@ export async function importFromZip(zipBuffer: Buffer): Promise<UploadImportResu
     } catch (e) {
       errors.push({ which: "conference", message: e instanceof Error ? e.message : String(e) });
     }
-    // Set conferences + real seeds for TT1/TT2/TT4 (after their teams exist).
+    // Set conferences + real seeds for TT1/TT2/TT4 (after their teams exist), read
+    // from the season xlsx (TT<n>.xlsx) included in the upload — scanned across the
+    // whole extraction, not just the HTML sheets root.
     try {
-      await applyConferenceData();
+      await applyConferenceData(tmp);
     } catch (e) {
       errors.push({ which: "conferences", message: e instanceof Error ? e.message : String(e) });
     }
@@ -86,8 +89,19 @@ export async function importFromZip(zipBuffer: Buffer): Promise<UploadImportResu
       }
     }
 
+    // After the league reference is loaded, resolve the xlsx signups (preferred name
+    // → @username → real Discord id) into LeagueRef so identity suggestions cover
+    // people the league display names alone wouldn't match.
+    let signups: { resolved: number; unresolved: number } | undefined;
+    try {
+      signups = await applySignupRefsFromDir(tmp);
+      if (signups.resolved > 0) ran.push("signups");
+    } catch (e) {
+      errors.push({ which: "signups", message: e instanceof Error ? e.message : String(e) });
+    }
+
     if (ran.length === 0) throw new Error(errors.map((x) => `${x.which}: ${x.message}`).join(" · ") || "Nothing imported.");
-    return { historical, conference, leagueRef, ran, errors };
+    return { historical, conference, leagueRef, signups, ran, errors };
   } finally {
     await rm(tmp, { recursive: true, force: true }).catch(() => {});
   }

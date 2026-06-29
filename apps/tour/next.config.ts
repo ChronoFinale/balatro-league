@@ -16,6 +16,9 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: { bodySizeLimit: "64mb" },
   },
+  // The import path pulls in heavy CJS libs (zip extraction + xlsx parsing) that
+  // shouldn't be bundled — keep them external so they load from node_modules.
+  serverExternalPackages: ["exceljs", "adm-zip"],
 };
 
 export default nextConfig;

@@ -403,15 +403,20 @@ model RosterMove {
   @@index([teamSeasonId])
 }
 
-// League player reference (name → Discord id), used to LINK Tour players to their
-// real Discord identity. Populated from the league export (a `league-players.csv`
-// in the import upload, or a local file fallback) so identity-linking works in
-// production, not just where the CSV happens to sit on disk.
+// League/identity name → Discord id reference, for LINKING Tour players to a real
+// Discord id. Holds MULTIPLE name rows per person (display name, Discord @username,
+// signup "preferred name") so any of them can match a Tour player's name. Populated
+// at import time from the league CSV + the season xlsx signups tabs (resolved
+// through the league username→id), so linking works in prod without baked data.
 model LeagueRef {
-  discordId String @id
+  id        String @id @default(cuid())
+  discordId String
   name      String
+  source    String @default("league") // league | signup — provenance
 
+  @@unique([discordId, name])
   @@index([name])
+  @@index([discordId])
 }
 
 // Reliability/conduct strikes — append-only, TO-issued. Informational (the TO

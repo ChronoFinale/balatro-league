@@ -29,5 +29,6 @@ ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
 COPY --from=build /app /app
 WORKDIR /app/apps/tour
 EXPOSE 3000
-# Apply the schema to the target DB on boot, then serve on $PORT (default 3000).
-CMD ["sh", "-c", "npx prisma db push --skip-generate && npx next start -p ${PORT:-3000}"]
+# Apply the schema to the target DB on boot (resilient to the LeagueRef PK change),
+# then serve on $PORT (default 3000).
+CMD ["sh", "-c", "node scripts/db-sync.mjs && npx next start -p ${PORT:-3000}"]

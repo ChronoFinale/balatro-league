@@ -5,6 +5,7 @@
 // Reads the Google-Sheets exports from a directory (TOUR_SHEETS_DIR, default
 // D:/STuffinside). Idempotent (upserts + keyed re-imports).
 import { join } from "node:path";
+import { readdirSync, statSync } from "node:fs";
 import { prisma } from "../db";
 // Pure parsers (framework-agnostic utilities).
 import { parseRosters } from "../import/parse-rosters.mjs";
@@ -16,9 +17,10 @@ import { parseDrafts } from "../import/parse-drafts.mjs";
 import { parseAwards } from "../import/parse-awards.mjs";
 import { parsePlayerStats } from "../import/parse-player-stats.mjs";
 import { SEASON_CONFIG, DEFAULT_SEASON } from "../import/seasons-config.mjs";
-import { SEASON_CONFERENCES } from "../import/conferences-config.mjs";
+import { readSeasonXlsx } from "../import/parse-xlsx-season.mjs";
 import { slug } from "../import/sheet.mjs";
 import { backfillDraftedMoves } from "./roster-ops";
+import { applySignupRefs } from "./identity";
 
 const majority = (n: number) => Math.floor(n / 2) + 1;
 
@@ -350,16 +352,66 @@ export async function importPlayerStats(dir = sheetsDir()) {
   return { careerStats: made, missed };
 }
 
-// Apply the per-season conference + seed assignments (from conferences-config) to
-// the imported teams: set the season format to CONFERENCES, create the real
-// conferences, and assign each team to its conference + seed via fuzzy name match
-// (sheet names can be truncated). Idempotent; skips seasons not yet imported.
-export async function applyConferenceData() {
+// Find the season xlsx exports (TT<n>.xlsx) in a directory and read each one's
+// conference + signup data. The upload includes them; for local dev, TOUR_XLSX_DIR
+// can point at them. Returns { [seasonNum]: { conferences, signups } }.
+export async function seasonXlsxConfigs(
+  dir: string,
+): Promise<Record<number, Awaited<ReturnType<typeof readSeasonXlsx>>>> {
+  const out: Record<number, Awaited<ReturnType<typeof readSeasonXlsx>>> = {};
+  // Find every TT<n>.xlsx under `dir` (walked, since the upload may nest them) plus
+  // an optional TOUR_XLSX_DIR for local dev. First file seen for a season wins.
+  const found = new Map<number, string>();
+  const walk = (d: string, depth: number) => {
+    if (depth > 4) return;
+    let entries: string[];
+    try {
+      entries = readdirSync(d);
+    } catch {
+      return;
+    }
+    for (const name of entries) {
+      const full = join(d, name);
+      let dirent: ReturnType<typeof statSync>;
+      try {
+        dirent = statSync(full);
+      } catch {
+        continue;
+      }
+      if (dirent.isDirectory()) walk(full, depth + 1);
+      else {
+        const m = /^TT(\d+)\.xlsx$/i.exec(name);
+        if (m && !found.has(Number(m[1]))) found.set(Number(m[1]), full);
+      }
+    }
+  };
+  for (const d of [dir, process.env.TOUR_XLSX_DIR].filter(Boolean) as string[]) walk(d, 0);
+
+  for (const [num, path] of found) {
+    try {
+      out[num] = await readSeasonXlsx(path);
+    } catch {
+      /* unreadable workbook — skip */
+    }
+  }
+  return out;
+}
+
+// Apply the per-season conference + seed assignments to the imported teams: set the
+// season format to CONFERENCES, create the real conferences, and assign each team to
+// its conference + seed via fuzzy name match (sheet names can be truncated). The
+// conference/seed data is READ FROM THE SEASON xlsx in `dir` (Standings tab), not
+// baked in. Idempotent; skips seasons not yet imported or without an xlsx.
+export async function applyConferenceData(dir = sheetsDir()) {
   const norm = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]/g, "");
   let teamsSet = 0;
   const missed: string[] = [];
 
-  for (const [num, confs] of Object.entries(SEASON_CONFERENCES)) {
+  const configs = await seasonXlsxConfigs(dir);
+  for (const [numStr, cfg] of Object.entries(configs)) {
+    const num = Number(numStr);
+    const confs = cfg.conferences;
+    if (!confs || Object.keys(confs).length === 0) continue;
     const season = await prisma.tourSeason.findUnique({
       where: { name: `Team Tour ${num}` },
       include: { teamSeasons: { include: { team: true } } },
@@ -409,6 +461,25 @@ export async function applyConferenceData() {
   return { teamsSet, missed };
 }
 
+// Read the signup preferred-name → @username pairs from the season xlsx in `dir` and
+// resolve them to real Discord ids (via the league username map) into LeagueRef. Run
+// AFTER the league reference is loaded so usernames resolve. Returns resolved totals.
+export async function applySignupRefsFromDir(dir = sheetsDir()) {
+  const configs = await seasonXlsxConfigs(dir);
+  const all: { preferredName: string; username: string }[] = [];
+  const seen = new Set<string>();
+  for (const cfg of Object.values(configs)) {
+    for (const s of cfg.signups ?? []) {
+      const key = s.preferredName.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      all.push(s);
+    }
+  }
+  if (!all.length) return { resolved: 0, unresolved: 0 };
+  return applySignupRefs(all);
+}
+
 export async function importHistorical(dir = sheetsDir()) {
   await importRosters(dir);
   const sets = await importResults(dir);
@@ -416,7 +487,7 @@ export async function importHistorical(dir = sheetsDir()) {
   const draftStats = await importDrafts(dir); // after rosters: links picks to teams
   const awardStats = await importAwards(dir);
   const careerStats = await importPlayerStats(dir);
-  await applyConferenceData(); // TT1/TT2 → conferences + real seeds (TT4 done after its import)
+  await applyConferenceData(dir); // TT1/TT2/TT4 → conferences + real seeds, from their xlsx
   // Seed the weekly roster-move log from the imported drafts (idempotent) so the
   // roster timeline + per-week lineup derivation work for historical seasons.
   const rosterMoves = await backfillDraftedMoves();

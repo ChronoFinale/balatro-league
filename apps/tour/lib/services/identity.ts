@@ -6,14 +6,14 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { prisma } from "../db";
 import { leaguePlayersLive } from "../league-db";
-import { SIGNUP_USERNAMES } from "../import/signups-config.mjs";
 
 const norm = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]/g, "");
 export interface LeagueRefRow { discordId: string; name: string }
 
-// The league name→Discord-id reference, best source first:
+// The base league name→Discord-id reference (display names + @usernames), best
+// source first:
 //   1. LIVE league DB (LEAGUE_DATABASE_URL, read-only) — always current.
-//   2. LeagueRef table (populated from an uploaded league-players.csv).
+//   2. LeagueRef table, league rows (populated from an uploaded league-players.csv).
 //   3. local league-players.csv file (dev convenience).
 async function getLeagueRef(): Promise<LeagueRefRow[]> {
   try {
@@ -22,7 +22,7 @@ async function getLeagueRef(): Promise<LeagueRefRow[]> {
   } catch {
     /* live league DB unreachable — fall back to the snapshot sources */
   }
-  const rows = await prisma.leagueRef.findMany({ select: { discordId: true, name: true } });
+  const rows = await prisma.leagueRef.findMany({ where: { source: "league" }, select: { discordId: true, name: true } });
   if (rows.length > 0) return rows;
   const path = join(process.cwd(), "league-players.csv");
   if (!existsSync(path)) return [];
@@ -40,18 +40,44 @@ function parseLeagueCsv(csv: string): LeagueRefRow[] {
     .filter((r) => r.discordId && /^\d+$/.test(r.discordId));
 }
 
-// Populate/refresh the LeagueRef table from a CSV string. Idempotent (upsert by id).
+// Upsert one (discordId, name) into the LeagueRef table without duplicating.
+async function upsertRef(discordId: string, name: string, source: string) {
+  await prisma.leagueRef.upsert({
+    where: { discordId_name: { discordId, name } },
+    create: { discordId, name, source },
+    update: { source },
+  });
+}
+
+// Populate/refresh the LeagueRef table from a CSV string. Stores every name row
+// (display name AND @username — multiple per person), source "league". Idempotent.
 export async function loadLeagueRefFromCsv(csv: string): Promise<{ count: number }> {
-  const byId = new Map<string, string>();
-  for (const r of parseLeagueCsv(csv)) byId.set(r.discordId, r.name); // dedup, keep last name
-  for (const [discordId, name] of byId) {
-    await prisma.leagueRef.upsert({ where: { discordId }, create: { discordId, name }, update: { name } });
+  const rows = parseLeagueCsv(csv);
+  for (const r of rows) await upsertRef(r.discordId, r.name, "league");
+  return { count: new Set(rows.map((r) => r.discordId)).size };
+}
+
+// Resolve uploaded signups (preferred name → Discord @username) against the league
+// username→discordId map, and store each resolved preferred-name as a LeagueRef row
+// (source "signup"). This is what used to be the baked SIGNUP_USERNAMES table — now
+// derived at import time from the season xlsx. Returns how many resolved.
+export async function applySignupRefs(signups: { preferredName: string; username: string }[]): Promise<{ resolved: number; unresolved: number }> {
+  const league = await getLeagueRef();
+  const idByName = new Map<string, string>(); // normalized league name (display or username) → discordId
+  for (const r of league) if (!idByName.has(norm(r.name))) idByName.set(norm(r.name), r.discordId);
+
+  let resolved = 0, unresolved = 0;
+  for (const s of signups) {
+    const discordId = idByName.get(norm(s.username));
+    if (!discordId) { unresolved++; continue; }
+    await upsertRef(discordId, s.preferredName, "signup");
+    resolved++;
   }
-  return { count: byId.size };
+  return { resolved, unresolved };
 }
 
 export async function leagueRefCount(): Promise<number> {
-  return (await getLeagueRef()).length;
+  return new Set((await getLeagueRef()).map((r) => r.discordId)).size;
 }
 
 // Dedup-by-id + cap.
@@ -81,22 +107,23 @@ function rankMatches(name: string, all: LeagueRefRow[], limit: number): LeagueRe
   return dedup([...exact, ...starts, ...incl], limit);
 }
 
-// The reference used for suggestions/search: the league rows PLUS signup-resolved
-// rows. Each signup maps a spreadsheet "preferred name" → a Discord @username; we
-// chain that through the league's username→discordId so a Tour player's name (which
-// matches the preferred name) resolves to a real Discord id — covering people the
-// league's display names alone wouldn't match.
+// The reference used for suggestions/search: the live league rows PLUS every stored
+// LeagueRef row (league display-names/usernames + signup-resolved preferred names).
+// Multiple name rows per person are fine — rankMatches dedups the winners by id.
 async function getSuggestRef(): Promise<LeagueRefRow[]> {
-  const league = await getLeagueRef();
-  const idByName = new Map<string, string>(); // normalized league name (displayName or username) → discordId
-  for (const r of league) if (!idByName.has(norm(r.name))) idByName.set(norm(r.name), r.discordId);
-
-  const extra: LeagueRefRow[] = [];
-  for (const [prefNameNorm, username] of Object.entries(SIGNUP_USERNAMES)) {
-    const discordId = idByName.get(norm(username));
-    if (discordId) extra.push({ name: prefNameNorm, discordId }); // name is already normalized — fine for matching
+  const out: LeagueRefRow[] = [];
+  try {
+    const live = await leaguePlayersLive();
+    if (live?.length) out.push(...live);
+  } catch {
+    /* live league DB unreachable — table rows below still cover it */
   }
-  return [...league, ...extra];
+  const table = await prisma.leagueRef.findMany({ select: { discordId: true, name: true } });
+  out.push(...table);
+  if (out.length) return out;
+  const path = join(process.cwd(), "league-players.csv");
+  if (existsSync(path)) return parseLeagueCsv(readFileSync(path, "utf8"));
+  return [];
 }
 
 // The link picker (free-text search of the league list + signup-resolved names).
