@@ -40,6 +40,9 @@ const INTENTS_FULL = [
   GatewayIntentBits.Guilds,
   GatewayIntentBits.GuildMessages,
   GatewayIntentBits.MessageContent,
+  // Opt-in privileged intent for the full-member-roster sync (env-gated so this
+  // code is inert until GUILD_MEMBER_SYNC=1 AND the portal intent is enabled).
+  ...(env.GUILD_MEMBER_SYNC ? [GatewayIntentBits.GuildMembers] : []),
 ];
 const INTENTS_CORE = [GatewayIntentBits.Guilds];
 
