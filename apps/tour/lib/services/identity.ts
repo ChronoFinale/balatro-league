@@ -5,14 +5,22 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { prisma } from "../db";
+import { leaguePlayersLive } from "../league-db";
 
 const norm = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]/g, "");
 export interface LeagueRefRow { discordId: string; name: string }
 
-// The league name→Discord-id reference. Reads the LeagueRef DB table (works in
-// prod); falls back to a local `league-players.csv` if the table is empty (dev
-// convenience). Parse `name,discordId` lines.
+// The league name→Discord-id reference, best source first:
+//   1. LIVE league DB (LEAGUE_DATABASE_URL, read-only) — always current.
+//   2. LeagueRef table (populated from an uploaded league-players.csv).
+//   3. local league-players.csv file (dev convenience).
 async function getLeagueRef(): Promise<LeagueRefRow[]> {
+  try {
+    const live = await leaguePlayersLive();
+    if (live && live.length > 0) return live;
+  } catch {
+    /* live league DB unreachable — fall back to the snapshot sources */
+  }
   const rows = await prisma.leagueRef.findMany({ select: { discordId: true, name: true } });
   if (rows.length > 0) return rows;
   const path = join(process.cwd(), "league-players.csv");

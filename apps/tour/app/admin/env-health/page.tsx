@@ -68,8 +68,15 @@ export default async function EnvHealth() {
       <div className="card">
         <div className="bracket-title">Database</div>
         {h.db.reachable
-          ? <p style={{ color: "var(--success)" }}><Check className="inline size-4 align-text-bottom" /> Reachable — schema is live.</p>
+          ? <p style={{ color: "var(--success)" }}><Check className="inline size-4 align-text-bottom" /> Tour DB reachable — schema is live.</p>
           : <p style={{ color: "var(--danger)" }}><X className="inline size-4 align-text-bottom" /> Not reachable: <span className="sub">{h.db.error}</span></p>}
+        <p className="mt-1">
+          {!h.leagueDb.configured
+            ? <span className="sub"><Info className="inline size-3.5 align-text-bottom" /> League DB not connected — identity linking uses the uploaded league refs. Set <code>LEAGUE_DATABASE_URL</code> (read-only) for live data.</span>
+            : h.leagueDb.reachable
+              ? <span style={{ color: "var(--success)" }}><Check className="inline size-4 align-text-bottom" /> League DB live — {h.leagueDb.players} players for identity linking.</span>
+              : <span style={{ color: "var(--danger)" }}><X className="inline size-4 align-text-bottom" /> League DB configured but unreachable (check the read-only string).</span>}
+        </p>
       </div>
 
       {/* You */}

@@ -4,6 +4,7 @@
 // and "login won't work" are debuggable in the browser, not just the Railway logs.
 import { prisma } from "./db";
 import { getViewer } from "./auth";
+import { leagueDbConfigured, leaguePlayersLive } from "./league-db";
 
 type Level = "ok" | "warn" | "error" | "info";
 
@@ -61,10 +62,25 @@ export async function getEnvHealth() {
     warnings.push(`You're signed in as ${myId} but that id isn't in TOUR_OWNER_DISCORD_IDS — add it (comma-separated) to get admin.`);
   }
 
+  // Live league-DB connection (optional, read-only) — powers always-current identity linking.
+  let leagueDb: { configured: boolean; reachable: boolean; players: number | null };
+  if (leagueDbConfigured()) {
+    try {
+      const rows = await leaguePlayersLive();
+      leagueDb = { configured: true, reachable: true, players: rows?.length ?? 0 };
+    } catch (e) {
+      leagueDb = { configured: true, reachable: false, players: null };
+      warnings.push(`LEAGUE_DATABASE_URL set but the league DB read failed: ${e instanceof Error ? e.message.split("\n")[0] : ""}`);
+    }
+  } else {
+    leagueDb = { configured: false, reachable: false, players: null };
+  }
+
   return {
     nodeEnv: process.env.NODE_ENV ?? "(unset)",
     vars,
     db,
+    leagueDb,
     viewer: { authenticated: viewer.authenticated, discordId: myId, tier: viewer.tier, inOwnerList, playerId: viewer.playerId },
     warnings,
   };
