@@ -358,9 +358,12 @@ export async function seasonXlsxConfigs(
   dir: string,
 ): Promise<Record<number, Awaited<ReturnType<typeof readSeasonXlsx>>>> {
   const out: Record<number, Awaited<ReturnType<typeof readSeasonXlsx>>> = {};
-  // Find every TT<n>.xlsx under `dir` (walked, since the upload may nest them) plus
-  // an optional TOUR_XLSX_DIR for local dev. First file seen for a season wins.
-  const found = new Map<number, string>();
+  // Find each season's main workbook `TT<n>.xlsx` AND any supplementary signups-only
+  // file `TT<n>Signups.xlsx` (some seasons' signups were missing/malformed in the main
+  // export and were re-added separately). Walked, since the upload may nest them; plus
+  // an optional TOUR_XLSX_DIR for local dev. First file of each kind per season wins.
+  const mains = new Map<number, string>();
+  const sigFiles = new Map<number, string>();
   const walk = (d: string, depth: number) => {
     if (depth > 4) return;
     let entries: string[];
@@ -379,19 +382,35 @@ export async function seasonXlsxConfigs(
       }
       if (dirent.isDirectory()) walk(full, depth + 1);
       else {
-        const m = /^TT(\d+)\.xlsx$/i.exec(name);
-        if (m && !found.has(Number(m[1]))) found.set(Number(m[1]), full);
+        const m = /^TT(\d+)(signups)?\.xlsx$/i.exec(name);
+        if (!m) continue;
+        const num = Number(m[1]);
+        const target = m[2] ? sigFiles : mains;
+        if (!target.has(num)) target.set(num, full);
       }
     }
   };
   for (const d of [dir, process.env.TOUR_XLSX_DIR].filter(Boolean) as string[]) walk(d, 0);
 
-  for (const [num, path] of found) {
-    try {
-      out[num] = await readSeasonXlsx(path);
-    } catch {
-      /* unreadable workbook — skip */
+  const seen = (list: { preferredName: string }[]) => new Set(list.map((s) => s.preferredName.toLowerCase()));
+  for (const num of new Set([...mains.keys(), ...sigFiles.keys()])) {
+    let conferences: Awaited<ReturnType<typeof readSeasonXlsx>>["conferences"] = {};
+    let signups: Awaited<ReturnType<typeof readSeasonXlsx>>["signups"] = [];
+    if (mains.has(num)) {
+      try {
+        const r = await readSeasonXlsx(mains.get(num)!);
+        conferences = r.conferences;
+        signups = r.signups;
+      } catch { /* unreadable — skip */ }
     }
+    if (sigFiles.has(num)) {
+      try {
+        const r = await readSeasonXlsx(sigFiles.get(num)!);
+        const have = seen(signups);
+        for (const s of r.signups) if (!have.has(s.preferredName.toLowerCase())) signups.push(s); // supplement, don't clobber
+      } catch { /* unreadable — skip */ }
+    }
+    out[num] = { conferences, signups };
   }
   return out;
 }
