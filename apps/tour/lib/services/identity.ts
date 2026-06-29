@@ -212,6 +212,84 @@ export async function linkPlayer(playerId: string, discordId: string) {
   return prisma.player.update({ where: { id: playerId }, data: { discordId: id, aliases: [...aliases] } });
 }
 
+// --- Bulk auto-link from signups + the league reference -------------------------
+// Instead of clicking each player's "Likely:" suggestion, compute every
+// HIGH-CONFIDENCE identity match at once for review-then-approve. High confidence =
+// the player's name normalizes to EXACTLY ONE Discord id across the reference (league
+// display names + @usernames + signup preferred names). When that id already belongs
+// to another player it's surfaced as a merge (same person, twice) instead of a link.
+// Names that map to several different ids are flagged for manual handling.
+
+export interface AutoLinkProposal {
+  playerId: string; playerName: string; sets: number;
+  discordId: string; refName: string;
+  kind: "link" | "merge";
+  mergeIntoId?: string; mergeIntoName?: string; // when kind === "merge"
+}
+export interface AutoLinkPlan {
+  links: AutoLinkProposal[];
+  merges: AutoLinkProposal[];
+  ambiguous: { playerId: string; playerName: string; candidates: { discordId: string; name: string }[] }[];
+}
+
+export async function planAutoLink(): Promise<AutoLinkPlan> {
+  const [ref, players, counts] = await Promise.all([getSuggestRef(), prisma.player.findMany({ select: { id: true, displayName: true, discordId: true } }), setCounts()]);
+
+  // normalized name → distinct Discord ids, and a display name per id.
+  const idsByName = new Map<string, Set<string>>();
+  const nameById = new Map<string, string>();
+  for (const r of ref) {
+    const n = norm(r.name);
+    if (!n) continue;
+    (idsByName.get(n) ?? idsByName.set(n, new Set()).get(n)!).add(r.discordId);
+    if (!nameById.has(r.discordId)) nameById.set(r.discordId, r.name);
+  }
+  const playerByDiscord = new Map(players.map((p) => [p.discordId, p]));
+
+  const links: AutoLinkProposal[] = [], merges: AutoLinkProposal[] = [];
+  const ambiguous: AutoLinkPlan["ambiguous"] = [];
+  for (const p of players) {
+    if (!p.discordId.startsWith("legacy:")) continue; // already linked
+    const ids = idsByName.get(norm(p.displayName));
+    if (!ids || ids.size === 0) continue;
+    if (ids.size > 1) {
+      ambiguous.push({ playerId: p.id, playerName: p.displayName, candidates: [...ids].map((d) => ({ discordId: d, name: nameById.get(d) ?? d })) });
+      continue;
+    }
+    const discordId = [...ids][0];
+    const owner = playerByDiscord.get(discordId);
+    const base = { playerId: p.id, playerName: p.displayName, sets: counts.get(p.id) ?? 0, discordId, refName: nameById.get(discordId) ?? discordId };
+    if (!owner) links.push({ ...base, kind: "link" });
+    else if (owner.id !== p.id) merges.push({ ...base, kind: "merge", mergeIntoId: owner.id, mergeIntoName: owner.displayName });
+  }
+  links.sort((a, b) => b.sets - a.sets || a.playerName.localeCompare(b.playerName));
+  merges.sort((a, b) => b.sets - a.sets || a.playerName.localeCompare(b.playerName));
+  return { links, merges, ambiguous };
+}
+
+// Apply chosen auto-link proposals. Re-derives + validates the plan so a stale form
+// can't act on changed data. `link` proposals call linkPlayer; `merge` proposals fold
+// the duplicate into the already-linked player (mergePlayers keeps the real id).
+export async function applyAutoLink(picks: { playerId: string; discordId: string }[]): Promise<{ linked: number; merged: number; errors: string[] }> {
+  const plan = await planAutoLink();
+  const byKey = new Map<string, AutoLinkProposal>();
+  for (const pr of [...plan.links, ...plan.merges]) byKey.set(`${pr.playerId}:${pr.discordId}`, pr);
+
+  let linked = 0, merged = 0;
+  const errors: string[] = [];
+  for (const pick of picks) {
+    const pr = byKey.get(`${pick.playerId}:${pick.discordId}`);
+    if (!pr) { errors.push("Skipped a stale/invalid proposal."); continue; }
+    try {
+      if (pr.kind === "merge") { await mergePlayers(pr.mergeIntoId!, pr.playerId); merged++; }
+      else { await linkPlayer(pr.playerId, pr.discordId); linked++; }
+    } catch (e) {
+      errors.push(`${pr.playerName}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return { linked, merged, errors };
+}
+
 // --- Recovery from an identity-blind re-import ---------------------------------
 // A re-import done before the importer was identity-aware created duplicate
 // `legacy:<slug>` players and attached the rebuilt data to them, orphaning the
