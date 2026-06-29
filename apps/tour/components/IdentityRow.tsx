@@ -96,11 +96,19 @@ export function IdentityRow({ player }: { player: IdPlayer }) {
               autoFocus
               value={q}
               onChange={(e) => search(e.target.value)}
-              placeholder={mode === "link" ? "Search league players…" : "Search a duplicate Tour player to fold in…"}
+              placeholder={mode === "link" ? "Search league players, or paste a Discord ID…" : "Search a duplicate Tour player to fold in…"}
               className="max-w-sm"
             />
             <Button size="sm" variant="secondary" onClick={close}><X className="size-3.5" /></Button>
           </div>
+          {/* Typed a raw Discord snowflake → link it directly (no league match needed) */}
+          {mode === "link" && /^\d{16,20}$/.test(q.trim()) && (
+            <div className="mt-2">
+              <Button size="sm" disabled={busy} onClick={() => pick({ value: q.trim(), label: q.trim(), detail: "manual Discord ID" })}>
+                <Link2 className="size-3.5" /> Link Discord ID {q.trim()}
+              </Button>
+            </div>
+          )}
           {results.length > 0 && (
             <div className="mt-2 flex flex-col gap-1">
               {results.map((r) => (
@@ -115,8 +123,8 @@ export function IdentityRow({ player }: { player: IdPlayer }) {
               ))}
             </div>
           )}
-          {q.trim().length >= 1 && results.length === 0 && (
-            <p className="sub mt-1">No matches{mode === "link" ? " — is league-players.csv present?" : ""}.</p>
+          {q.trim().length >= 1 && results.length === 0 && !/^\d{16,20}$/.test(q.trim()) && (
+            <p className="sub mt-1">No matches{mode === "link" ? " — or paste their Discord ID to link it directly." : "."}</p>
           )}
         </div>
       )}
