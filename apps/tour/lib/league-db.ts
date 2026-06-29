@@ -33,19 +33,24 @@ export const leagueDbConfigured = () => !!process.env.LEAGUE_DATABASE_URL;
 let cache: { at: number; rows: LeaguePlayer[] } | null = null;
 const TTL_MS = 5 * 60 * 1000;
 
-// The league's players (numeric discordId + display name). Null when not configured;
-// throws on a real connection/query error so the caller can fall back.
+// The league's players as name→discordId rows — one for the display name and one
+// for the Discord @username (so callers can match on either). Null when not
+// configured; throws on a real connection/query error so the caller can fall back.
 export async function leaguePlayersLive(): Promise<LeaguePlayer[] | null> {
   const p = leaguePool();
   if (!p) return null;
   const now = Date.now();
   if (cache && now - cache.at < TTL_MS) return cache.rows;
-  const res = await p.query<{ discordId: string; displayName: string }>(
-    'SELECT "discordId", "displayName" FROM "Player" WHERE "discordId" IS NOT NULL',
+  const res = await p.query<{ discordId: string; displayName: string; username: string | null }>(
+    'SELECT "discordId", "displayName", "username" FROM "Player" WHERE "discordId" IS NOT NULL',
   );
-  const rows: LeaguePlayer[] = res.rows
-    .map((r) => ({ discordId: String(r.discordId), name: String(r.displayName) }))
-    .filter((r) => /^\d+$/.test(r.discordId));
+  const rows: LeaguePlayer[] = [];
+  for (const r of res.rows) {
+    const discordId = String(r.discordId);
+    if (!/^\d+$/.test(discordId)) continue;
+    if (r.displayName) rows.push({ discordId, name: String(r.displayName) });
+    if (r.username) rows.push({ discordId, name: String(r.username) });
+  }
   cache = { at: now, rows };
   return rows;
 }

@@ -6,6 +6,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { prisma } from "../db";
 import { leaguePlayersLive } from "../league-db";
+import { SIGNUP_USERNAMES } from "../import/signups-config.mjs";
 
 const norm = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]/g, "");
 export interface LeagueRefRow { discordId: string; name: string }
@@ -80,9 +81,27 @@ function rankMatches(name: string, all: LeagueRefRow[], limit: number): LeagueRe
   return dedup([...exact, ...starts, ...incl], limit);
 }
 
-// The link picker (free-text search of the league list).
+// The reference used for suggestions/search: the league rows PLUS signup-resolved
+// rows. Each signup maps a spreadsheet "preferred name" → a Discord @username; we
+// chain that through the league's username→discordId so a Tour player's name (which
+// matches the preferred name) resolves to a real Discord id — covering people the
+// league's display names alone wouldn't match.
+async function getSuggestRef(): Promise<LeagueRefRow[]> {
+  const league = await getLeagueRef();
+  const idByName = new Map<string, string>(); // normalized league name (displayName or username) → discordId
+  for (const r of league) if (!idByName.has(norm(r.name))) idByName.set(norm(r.name), r.discordId);
+
+  const extra: LeagueRefRow[] = [];
+  for (const [prefNameNorm, username] of Object.entries(SIGNUP_USERNAMES)) {
+    const discordId = idByName.get(norm(username));
+    if (discordId) extra.push({ name: prefNameNorm, discordId }); // name is already normalized — fine for matching
+  }
+  return [...league, ...extra];
+}
+
+// The link picker (free-text search of the league list + signup-resolved names).
 export async function searchLeagueRef(q: string, limit = 25): Promise<LeagueRefRow[]> {
-  const all = await getLeagueRef();
+  const all = await getSuggestRef();
   const needle = norm(q);
   return dedup(needle ? all.filter((r) => norm(r.name).includes(needle)) : all, limit);
 }
@@ -139,10 +158,11 @@ export async function listTourPlayers(q = "", limit = 60, filter: IdentityFilter
   rows.sort((a, b) => b.sets - a.sets || a.name.localeCompare(b.name));
   const out = rows.slice(0, limit);
 
-  // Auto-suggest a league match for each UNLINKED player (one-click linking).
-  const leagueRef = await getLeagueRef();
-  if (leagueRef.length) {
-    for (const r of out) if (!r.linked) r.suggestions = rankMatches(r.name, leagueRef, 2);
+  // Auto-suggest a match for each UNLINKED player (one-click linking) from the
+  // league list + signup-resolved Discord ids.
+  const ref = await getSuggestRef();
+  if (ref.length) {
+    for (const r of out) if (!r.linked) r.suggestions = rankMatches(r.name, ref, 2);
   }
   return out;
 }
