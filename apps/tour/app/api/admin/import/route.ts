@@ -4,7 +4,7 @@
 //   POST /api/admin/import?type=tt10          → Team Tour 4 conference season
 import { NextResponse } from "next/server";
 import { isApiAdmin } from "@/lib/auth";
-import { importHistorical, importConferenceSeason } from "@/lib/services/import";
+import { importHistorical, importConferenceSeason, applyConferenceData, importConferenceRosters } from "@/lib/services/import";
 
 export const maxDuration = 300;
 
@@ -12,7 +12,15 @@ export async function POST(req: Request) {
   if (!(await isApiAdmin(req))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
   const type = new URL(req.url).searchParams.get("type") ?? "historical";
   try {
-    const result = type === "tt10" ? await importConferenceSeason() : await importHistorical();
+    let result;
+    if (type === "tt10" || type === "tt4") {
+      const conference = await importConferenceSeason();
+      await applyConferenceData();
+      const rosters = await importConferenceRosters();
+      result = { conference, rosters };
+    } else {
+      result = await importHistorical();
+    }
     return NextResponse.json({ type, result });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

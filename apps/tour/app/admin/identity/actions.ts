@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { isAdmin } from "@/lib/auth";
 import { linkPlayer, mergePlayers, applyIdentityRecovery, applyAutoLink } from "@/lib/services/identity";
-import { pruneTeamNamePlayers } from "@/lib/services/import";
+import { pruneOrphanPlayers } from "@/lib/services/import";
 import type { ActionResult } from "@/lib/action-result";
 
 // Remove phantom "players" that are actually team names (team-vs-team Game Log rows
@@ -11,7 +11,7 @@ import type { ActionResult } from "@/lib/action-result";
 export async function prunePhantomsAction(_prev: ActionResult | null, _formData: FormData): Promise<ActionResult> {
   if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   try {
-    const r = await pruneTeamNamePlayers();
+    const r = await pruneOrphanPlayers();
     revalidatePath("/admin/identity");
     revalidatePath("/admin/identity/auto-link");
     revalidatePath("/players");

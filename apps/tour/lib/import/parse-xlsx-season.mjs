@@ -90,13 +90,57 @@ export function signupsFromGrid(rows) {
   return out;
 }
 
-// Load one season xlsx → its conference + signup data (each null/empty if absent).
+// Draft Results grid → [{ team, captain, players:[...], subs:[...] }]. Teams are laid
+// out as COLUMNS (every team's name spans 2 merged cells, with a gap column between);
+// the label column (col 0) reads "Captain", "Player 1".."Player N", "Sub". Used to
+// import the conference season's rosters + draft order (the HTML "alltime" export
+// doesn't include that season).
+export function draftTeamsFromGrid(rows) {
+  if (!rows?.length) return [];
+  const norm = (s) => (s ?? "").trim().toLowerCase();
+  const capRow = rows.findIndex((r) => norm(r[0]) === "captain");
+  if (capRow < 1) return [];
+  const header = rows[capRow - 1];
+
+  // A team's first column: a non-empty header cell whose left neighbour is empty.
+  const cols = [];
+  for (let c = 1; c < header.length; c++) {
+    const v = (header[c] ?? "").trim();
+    if (v && !(header[c - 1] ?? "").trim() && !/conference$/i.test(v)) cols.push({ c, name: v });
+  }
+  if (!cols.length) return [];
+
+  const teams = cols.map(({ name }) => ({ team: name, captain: null, players: [], subs: [] }));
+  const clean = (s) => {
+    const v = (s ?? "").trim();
+    return v && !v.startsWith("#") ? v : null; // drop blanks and #N/A / #REF! formula errors
+  };
+  for (let r = capRow; r < rows.length; r++) {
+    const label = norm(rows[r][0]);
+    const isCaptain = label === "captain";
+    const isPlayer = /^player\s*\d+$/.test(label);
+    const isSub = /^sub/.test(label);
+    if (!isCaptain && !isPlayer && !isSub) continue;
+    cols.forEach(({ c }, i) => {
+      const nm = clean(rows[r][c]);
+      if (!nm) return;
+      if (isCaptain) teams[i].captain = teams[i].captain ?? nm;
+      else if (isSub) { if (!teams[i].subs.includes(nm)) teams[i].subs.push(nm); }
+      else if (!teams[i].players.includes(nm)) teams[i].players.push(nm);
+    });
+  }
+  return teams.filter((t) => t.captain || t.players.length);
+}
+
+// Load one season xlsx → its conference + signup + draft-roster data (each empty if absent).
 export async function readSeasonXlsx(path) {
   const wb = await loadWorkbook(path);
   const standings = tabGrid(wb, "Standings");
   const signups = tabGrid(wb, "signups");
+  const draft = tabGrid(wb, "Draft Results ") ?? tabGrid(wb, "Draft Results");
   return {
     conferences: standings ? conferencesFromStandingsGrid(standings) : {},
     signups: signups ? signupsFromGrid(signups) : [],
+    draftTeams: draft ? draftTeamsFromGrid(draft) : [],
   };
 }

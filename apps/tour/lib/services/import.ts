@@ -371,7 +371,7 @@ export async function seasonXlsxConfigs(
   // export and were re-added separately). Walked, since the upload may nest them; plus
   // an optional TOUR_XLSX_DIR for local dev. First file of each kind per season wins.
   const mains = new Map<number, string>();
-  const sigFiles = new Map<number, string>();
+  const sigFiles = new Map<number, string[]>();
   const walk = (d: string, depth: number) => {
     if (depth > 4) return;
     let entries: string[];
@@ -390,35 +390,40 @@ export async function seasonXlsxConfigs(
       }
       if (dirent.isDirectory()) walk(full, depth + 1);
       else {
-        const m = /^TT(\d+)(signups)?\.xlsx$/i.exec(name);
-        if (!m) continue;
-        const num = Number(m[1]);
-        const target = m[2] ? sigFiles : mains;
-        if (!target.has(num)) target.set(num, full);
+        // Main workbook: exactly TT<n>.xlsx. Signups: TT<n>Signups<anything>.xlsx
+        // (covers re-downloads like "TT4Signups (2).xlsx"); collect ALL of them.
+        const mainM = /^TT(\d+)\.xlsx$/i.exec(name);
+        const sigM = /^TT(\d+)signups.*\.xlsx$/i.exec(name);
+        if (mainM) {
+          const num = Number(mainM[1]);
+          if (!mains.has(num)) mains.set(num, full);
+        } else if (sigM) {
+          const num = Number(sigM[1]);
+          (sigFiles.get(num) ?? sigFiles.set(num, []).get(num)!).push(full);
+        }
       }
     }
   };
   for (const d of [dir, process.env.TOUR_XLSX_DIR].filter(Boolean) as string[]) walk(d, 0);
 
-  const seen = (list: { preferredName: string }[]) => new Set(list.map((s) => s.preferredName.toLowerCase()));
   for (const num of new Set([...mains.keys(), ...sigFiles.keys()])) {
     let conferences: Awaited<ReturnType<typeof readSeasonXlsx>>["conferences"] = {};
-    let signups: Awaited<ReturnType<typeof readSeasonXlsx>>["signups"] = [];
+    let draftTeams: Awaited<ReturnType<typeof readSeasonXlsx>>["draftTeams"] = [];
+    const signups: Awaited<ReturnType<typeof readSeasonXlsx>>["signups"] = [];
     if (mains.has(num)) {
       try {
         const r = await readSeasonXlsx(mains.get(num)!);
         conferences = r.conferences;
-        signups = r.signups;
+        draftTeams = r.draftTeams;
+        signups.push(...r.signups);
       } catch { /* unreadable — skip */ }
     }
-    if (sigFiles.has(num)) {
+    for (const f of sigFiles.get(num) ?? []) {
       try {
-        const r = await readSeasonXlsx(sigFiles.get(num)!);
-        const have = seen(signups);
-        for (const s of r.signups) if (!have.has(s.preferredName.toLowerCase())) signups.push(s); // supplement, don't clobber
+        signups.push(...(await readSeasonXlsx(f)).signups); // pair-deduped downstream
       } catch { /* unreadable — skip */ }
     }
-    out[num] = { conferences, signups };
+    out[num] = { conferences, signups, draftTeams };
   }
   return out;
 }
@@ -507,46 +512,55 @@ export async function applySignupRefsFromDir(dir = sheetsDir()) {
   return applySignupRefs(all);
 }
 
-// Remove phantom "players" that are actually team names — created by older imports that
-// turned team-vs-team Game Log rows into player matches (e.g. TT3). Deletes the bogus
-// team-vs-team sets + their matches, then any team-named legacy player left with no real
-// footprint (no sets, draft picks, or roster entries). Never touches a linked player or
-// a real player. Idempotent — safe to run anytime; runs at the end of importHistorical.
-export async function pruneTeamNamePlayers(): Promise<{ removed: number; names: string[]; setsDeleted: number }> {
+// Clean up bogus imported "players":
+//   1. Team-name phantoms — older imports turned team-vs-team Game Log rows (e.g. TT3)
+//      into player matches. Delete those team-vs-team sets + their matches.
+//   2. Orphans — any LEGACY player left with NO real footprint (no sets, draft picks,
+//      roster entries, career stats, awards, or captaincy). Catches both the de-setted
+//      team phantoms AND stray names that never belonged to a team.
+// Never touches a LINKED player or anyone with real data (a sub who played a match, an
+// MVP, etc. all keep their row). Idempotent; runs at the end of importHistorical.
+export async function pruneOrphanPlayers(): Promise<{ removed: number; names: string[]; setsDeleted: number }> {
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
   const teamNames = new Set((await prisma.team.findMany({ select: { name: true } })).map((t) => norm(t.name)));
   const players = await prisma.player.findMany({ select: { id: true, displayName: true, discordId: true } });
-  const phantomIds = new Set(
-    players.filter((p) => p.discordId.startsWith("legacy:") && teamNames.has(norm(p.displayName))).map((p) => p.id),
-  );
-  if (phantomIds.size === 0) return { removed: 0, names: [], setsDeleted: 0 };
 
-  // Delete sets (and their matches) where BOTH sides are phantom team-players.
-  const teamSets = await prisma.tourSet.findMany({
-    where: { AND: [{ playerAId: { in: [...phantomIds] } }, { playerBId: { in: [...phantomIds] } }] },
-    select: { id: true, matchId: true },
-  });
-  if (teamSets.length) {
-    await prisma.tourSet.deleteMany({ where: { id: { in: teamSets.map((s) => s.id) } } });
-    const matchIds = teamSets.map((s) => s.matchId).filter((x): x is string => !!x);
-    if (matchIds.length) await prisma.match.deleteMany({ where: { id: { in: matchIds } } });
+  // 1. Team-name phantoms: delete their team-vs-team sets + matches so they go orphan.
+  const teamPhantomIds = players
+    .filter((p) => p.discordId.startsWith("legacy:") && teamNames.has(norm(p.displayName)))
+    .map((p) => p.id);
+  let setsDeleted = 0;
+  if (teamPhantomIds.length) {
+    const teamSets = await prisma.tourSet.findMany({
+      where: { AND: [{ playerAId: { in: teamPhantomIds } }, { playerBId: { in: teamPhantomIds } }] },
+      select: { id: true, matchId: true },
+    });
+    if (teamSets.length) {
+      await prisma.tourSet.deleteMany({ where: { id: { in: teamSets.map((s) => s.id) } } });
+      const matchIds = teamSets.map((s) => s.matchId).filter((x): x is string => !!x);
+      if (matchIds.length) await prisma.match.deleteMany({ where: { id: { in: matchIds } } });
+      setsDeleted = teamSets.length;
+    }
   }
 
-  // Delete phantom players left with no real footprint.
+  // 2. Delete legacy players with zero footprint.
   const removed: string[] = [];
   for (const p of players) {
-    if (!phantomIds.has(p.id)) continue;
-    const [sets, picks, rosters] = await Promise.all([
+    if (!p.discordId.startsWith("legacy:")) continue;
+    const [sets, picks, rosters, career, awards, captain] = await Promise.all([
       prisma.tourSet.count({ where: { OR: [{ playerAId: p.id }, { playerBId: p.id }] } }),
       prisma.draftPick.count({ where: { playerId: p.id } }),
       prisma.rosterEntry.count({ where: { playerId: p.id } }),
+      prisma.playerCareerStat.count({ where: { playerId: p.id } }),
+      prisma.award.count({ where: { playerId: p.id } }),
+      prisma.teamSeason.count({ where: { captainPlayerId: p.id } }),
     ]);
-    if (sets === 0 && picks === 0 && rosters === 0) {
+    if (sets + picks + rosters + career + awards + captain === 0) {
       await prisma.player.delete({ where: { id: p.id } });
       removed.push(p.displayName);
     }
   }
-  return { removed: removed.length, names: removed, setsDeleted: teamSets.length };
+  return { removed: removed.length, names: removed, setsDeleted };
 }
 
 export async function importHistorical(dir = sheetsDir()) {
@@ -560,7 +574,7 @@ export async function importHistorical(dir = sheetsDir()) {
   // Seed the weekly roster-move log from the imported drafts (idempotent) so the
   // roster timeline + per-week lineup derivation work for historical seasons.
   const rosterMoves = await backfillDraftedMoves();
-  await pruneTeamNamePlayers(); // drop any team-vs-team phantom "players" (e.g. older TT3 rows)
+  await pruneOrphanPlayers(); // drop team-vs-team phantoms (e.g. TT3) + footprint-less orphans
   const [players, teams, teamSeasons, conferences, matches, tourSets] = await Promise.all([
     prisma.player.count(),
     prisma.team.count(),
@@ -634,4 +648,72 @@ export async function importConferenceSeason(dir = sheetsDir()) {
     made++;
   }
   return { conferences: Object.keys(confs).length, teams: tsByTeamName.size, matchups: made };
+}
+
+// Import the PLAYER rosters for conference seasons (e.g. TT4) from the season xlsx
+// Draft Results tab — the alltime HTML export only covers TT1-3, so without this the
+// conference season has teams but no players ("TT4 isn't done" / missing players).
+// Creates each team's FULL roster (captain + players + subs) and sets the real captain.
+// Only fills seasons that have NO rosters yet, so it never double-imports TT1-3.
+export async function importConferenceRosters(dir = sheetsDir()) {
+  const norm = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]/g, "");
+  const configs = await seasonXlsxConfigs(dir);
+  let rostersFilled = 0, playersAdded = 0;
+  const missed: string[] = [];
+
+  for (const [numStr, cfg] of Object.entries(configs)) {
+    const num = Number(numStr);
+    const draftTeams = cfg.draftTeams ?? [];
+    if (!draftTeams.length) continue;
+    const season = await prisma.tourSeason.findUnique({
+      where: { name: `Team Tour ${num}` },
+      include: { teamSeasons: { include: { team: true } } },
+    });
+    if (!season) continue;
+    const existing = await prisma.roster.count({ where: { teamSeasonId: { in: season.teamSeasons.map((t) => t.id) } } });
+    if (existing > 0) continue; // already has player data (TT1-3 from HTML) — leave it
+
+    const tsByName = new Map(season.teamSeasons.map((t) => [norm(t.team.name), t]));
+    const matchTeam = (name: string) => {
+      const n = norm(name);
+      return (
+        tsByName.get(n) ??
+        season.teamSeasons.find((t) => { const tn = norm(t.team.name); return tn.startsWith(n) || n.startsWith(tn); })
+      );
+    };
+
+    for (const dt of draftTeams) {
+      const ts = matchTeam(dt.team);
+      if (!ts) { missed.push(`TT${num}: ${dt.team}`); continue; }
+      const roster = await prisma.roster.upsert({
+        where: { teamSeasonId_weekBlock: { teamSeasonId: ts.id, weekBlock: "FULL" } },
+        create: { teamSeasonId: ts.id, weekBlock: "FULL" },
+        update: {},
+      });
+      const ordered = [
+        ...(dt.captain ? [{ name: dt.captain, isCaptain: true }] : []),
+        ...dt.players.map((name: string) => ({ name, isCaptain: false })),
+        ...dt.subs.map((name: string) => ({ name, isCaptain: false })),
+      ];
+      let seed = 1;
+      let captainId: string | null = null;
+      const seen = new Set<string>();
+      for (const m of ordered) {
+        const pid = (await resolvePlayerId(m.name, true))!;
+        if (seen.has(pid)) continue;
+        seen.add(pid);
+        if (m.isCaptain && !captainId) captainId = pid;
+        await prisma.rosterEntry.upsert({
+          where: { rosterId_playerId: { rosterId: roster.id, playerId: pid } },
+          create: { rosterId: roster.id, playerId: pid, seed, isCaptain: m.isCaptain },
+          update: { seed, isCaptain: m.isCaptain },
+        });
+        seed++;
+        playersAdded++;
+      }
+      if (captainId) await prisma.teamSeason.update({ where: { id: ts.id }, data: { captainPlayerId: captainId } });
+      rostersFilled++;
+    }
+  }
+  return { rostersFilled, playersAdded, missed };
 }
