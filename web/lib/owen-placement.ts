@@ -241,39 +241,11 @@ export function buildOwenPlacement(
     if (!moved) break;
   }
 
-  // 4. Hard-cap the top division (Legendary) at topTarget. It's a fixed elite
-  //    size, so finishing outside the top `topTarget` means relegation to
-  //    division 1 — the same boundary every division has, applied to the cap.
-  //    Relegate the WEAKEST first: rookies (no finish) → players who came from a
-  //    LOWER division (promotees before holders) → worse finish → lower MMR.
-  if (topTarget != null && n > 1) {
-    const weaker = (a: PlacementMember, b: PlacementMember): boolean => {
-      if (a.isRookie !== b.isRookie) return a.isRookie; // rookies are weakest
-      if (a.isRookie && b.isRookie) return a.mmr < b.mmr;
-      const af = a.fromIndex ?? 0;
-      const bf = b.fromIndex ?? 0;
-      if (af !== bf) return af > bf; // came from a lower division → weaker
-      const ar = a.standing?.rank ?? Infinity;
-      const br = b.standing?.rank ?? Infinity;
-      if (ar !== br) return ar > br; // worse finish → weaker
-      return a.mmr < b.mmr;
-    };
-    while (divs[0]!.members.length > topTarget) {
-      const m = divs[0]!.members;
-      // NEVER cap-drop a Legendary HOLDER (a returner who finished in Legendary).
-      // They only ever leave via the 1-down boundary relegation. The cap can only
-      // shed rookies / promotees that floated UP into Legendary (fromIndex > 0).
-      let worst = -1;
-      for (let i = 0; i < m.length; i++) {
-        const isHolder = !m[i]!.isRookie && (m[i]!.fromIndex ?? 0) === 0;
-        if (isHolder) continue;
-        if (worst === -1 || weaker(m[i]!, m[worst]!)) worst = i;
-      }
-      if (worst === -1) break; // only holders left — leave Legendary over-size
-      const [moved] = m.splice(worst, 1);
-      divs[1]!.members.push(moved!);
-    }
-  }
+  // NO hard-cap on Legendary. `topTarget` still SOFTLY bounds it (step 3 won't
+  // pack rookies above it, step 1 promotes only 1 up from Rare 1), but nobody is
+  // ever DROPPED out of Legendary to hit a size — players only leave via the
+  // normal 1-down relegation. So if Legendary finishes over-size it's left
+  // over-size; trimming it is a manual call in the editor, never automatic.
 
   return divs;
 }
