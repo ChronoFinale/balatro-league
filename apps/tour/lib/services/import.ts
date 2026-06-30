@@ -693,7 +693,7 @@ export async function importAllFromXlsx(dir = sheetsDir()) {
 // a Team Rankings section (TT3) are skipped, keeping their roster-order seeds.
 export async function applySeedRankings(dir = sheetsDir()) {
   const nrm = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]/g, "");
-  let baseSet = 0, reseeds = 0, seasonsApplied = 0;
+  let baseSet = 0, reseeds = 0, seasonsApplied = 0, adds = 0, drops = 0;
   for (const [num, path] of seasonXlsxPaths(dir)) {
     const blocks = await readSeasonRankings(path);
     if (!blocks.length) continue;
@@ -704,8 +704,8 @@ export async function applySeedRankings(dir = sheetsDir()) {
       const n = nrm(name);
       return tsByName.get(n) ?? season.teamSeasons.find((t) => { const tn = nrm(t.team.name); return tn.startsWith(n) || n.startsWith(tn); })?.id ?? null;
     };
-    // Idempotent: drop prior ranking-derived re-seeds (keep manual ones).
-    await prisma.rosterMove.deleteMany({ where: { seasonId: season.id, kind: "RESEED", createdBy: "import:rankings" } });
+    // Idempotent: drop ALL prior ranking-derived moves (RESEED + ADDED/QUIT), keep manual.
+    await prisma.rosterMove.deleteMany({ where: { seasonId: season.id, createdBy: "import:rankings" } });
 
     // Preload each team's roster + members once (avoids a findFirst per player).
     const tsIds = season.teamSeasons.map((t) => t.id);
@@ -721,25 +721,32 @@ export async function applySeedRankings(dir = sheetsDir()) {
     const ordered = [...blocks].sort((a, b) => (a.weeks[0] ?? 99) - (b.weeks[0] ?? 99));
     const lastRegEnd = Math.max(0, ...ordered.flatMap((b: { weeks: number[] }) => b.weeks));
     const prevSeed = new Map<string, number>(); // `${tsId}|${pid}` -> last seed
+    const prevTeamPlayers = new Map<string, Set<string>>(); // tsId -> players in the previous block (for add/drop diffs)
 
-    // Collect all writes, then flush in 3 batched ops (insert members, update base seeds,
-    // insert re-seed moves) instead of thousands of sequential round-trips.
+    // Collect all writes, then flush in batched ops instead of thousands of round-trips.
     const newEntries: { rosterId: string; playerId: string; seed: number; isCaptain: boolean }[] = [];
     const baseUpdates: { tsId: string; playerId: string; seed: number }[] = [];
     const reseedMoves: { seasonId: string; teamSeasonId: string; kind: "RESEED"; playerId: string; seed: number; effectiveWeek: number; reason: string; createdBy: string }[] = [];
+    const addedMoves: { seasonId: string; teamSeasonId: string; kind: "ADDED"; playerId: string; seed: number; effectiveWeek: number; reason: string; createdBy: string }[] = [];
+    const quitMoves: { seasonId: string; teamSeasonId: string; kind: "QUIT"; playerId: string; effectiveWeek: number; reason: string; createdBy: string }[] = [];
 
     for (let bi = 0; bi < ordered.length; bi++) {
       const b = ordered[bi] as { label: string; weeks: number[]; teams: { team: string; seeds: { player: string; seed: number }[] }[] };
       const isPlayoff = b.weeks.length === 0;
       const effWeek = isPlayoff ? lastRegEnd + 1 : b.weeks[0];
+      const period = isPlayoff ? "playoffs" : b.label;
       for (const t of b.teams) {
         const tsId = matchTs(t.team);
         if (!tsId) continue;
         const rosterId = rosterByTs.get(tsId);
         const members = membersByTs.get(tsId) ?? membersByTs.set(tsId, new Set()).get(tsId)!;
+        const cur = new Set<string>();
+        const seedOf = new Map<string, number>();
         for (const { player, seed } of t.seeds) {
           const pid = await resolvePlayerId(player, true);
           if (!pid) continue;
+          cur.add(pid);
+          seedOf.set(pid, seed);
           const key = `${tsId}|${pid}`;
           const isMember = members.has(pid);
           if (!isMember && rosterId) { newEntries.push({ rosterId, playerId: pid, seed, isCaptain: false }); members.add(pid); }
@@ -753,14 +760,25 @@ export async function applySeedRankings(dir = sheetsDir()) {
             reseeds++;
           }
         }
+        // Add/drop = who appeared/disappeared vs this team's previous block.
+        const prev = prevTeamPlayers.get(tsId);
+        if (bi > 0 && prev) {
+          for (const pid of cur) if (!prev.has(pid)) addedMoves.push({ seasonId: season.id, teamSeasonId: tsId, kind: "ADDED", playerId: pid, seed: seedOf.get(pid) ?? 99, effectiveWeek: effWeek, reason: `roster change (${period})`, createdBy: "import:rankings" });
+          for (const pid of prev) if (!cur.has(pid)) quitMoves.push({ seasonId: season.id, teamSeasonId: tsId, kind: "QUIT", playerId: pid, effectiveWeek: effWeek, reason: `roster change (${period})`, createdBy: "import:rankings" });
+        }
+        prevTeamPlayers.set(tsId, cur);
       }
     }
     if (newEntries.length) await prisma.rosterEntry.createMany({ data: newEntries, skipDuplicates: true });
     if (baseUpdates.length) await prisma.$transaction(baseUpdates.map((u) => prisma.rosterEntry.updateMany({ where: { playerId: u.playerId, roster: { teamSeasonId: u.tsId } }, data: { seed: u.seed } })));
     if (reseedMoves.length) await prisma.rosterMove.createMany({ data: reseedMoves });
+    if (addedMoves.length) await prisma.rosterMove.createMany({ data: addedMoves });
+    if (quitMoves.length) await prisma.rosterMove.createMany({ data: quitMoves });
+    adds += addedMoves.length;
+    drops += quitMoves.length;
     seasonsApplied++;
   }
-  return { seasonsApplied, baseSet, reseeds };
+  return { seasonsApplied, baseSet, reseeds, adds, drops };
 }
 
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { getTeamSeason, getTeamPlacement, getTeamWeeks } from "@/lib/team";
+import { getTeamSeason, getTeamPlacement, getTeamWeeks, getTeamMoves } from "@/lib/team";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +28,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
 
   const place = await getTeamPlacement(id, t.seasonName);
   const weeks = await getTeamWeeks(id);
+  const moves = await getTeamMoves(id);
 
   return (
     <main>
@@ -102,6 +103,29 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
           </tbody>
         </table>
       </div>
+
+      {moves.length > 0 && (
+        <>
+          <h2 style={{ fontSize: "1.1rem", margin: "1.5rem 0 0.5rem" }}>Roster moves</h2>
+          <div className="card">
+            <table>
+              <tbody>
+                {moves.map((m, i) => {
+                  const color = m.kind === "ADDED" || m.kind === "REINSTATED" ? "var(--success)" : m.kind === "QUIT" || m.kind === "BANNED" ? "var(--accent-2)" : "var(--muted)";
+                  return (
+                    <tr key={i}>
+                      <td className="muted num" style={{ width: 52 }}>Wk {m.week}</td>
+                      <td style={{ width: 84 }}><span className="pill" style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color }}>{m.label}</span></td>
+                      <td><Link href={`/players/${m.playerId}`}>{m.player}</Link></td>
+                      <td className="sub" style={{ textAlign: "right" }}>{m.detail ?? ""}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
       {weeks.length > 0 && (
         <>

@@ -216,6 +216,37 @@ export async function getTeamSeason(id: string): Promise<TeamSeasonView | null> 
   };
 }
 
+export interface TeamMove {
+  week: number;
+  kind: string;     // ADDED | QUIT | BANNED | REINSTATED | SUB | CAPTAIN_CHANGE
+  label: string;
+  player: string;
+  playerId: string;
+  detail?: string;
+}
+
+// A team's roster transactions over the season (adds, drops, subs, captain changes) from
+// the append-only move log — DRAFTED (the initial roster) and RESEED (seeds are shown in
+// the weekly view) are excluded. Ordered by week.
+export async function getTeamMoves(teamSeasonId: string): Promise<TeamMove[]> {
+  const moves = await prisma.rosterMove.findMany({
+    where: { teamSeasonId, kind: { notIn: ["DRAFTED", "RESEED"] } },
+    orderBy: [{ effectiveWeek: "asc" }, { createdAt: "asc" }],
+  });
+  if (!moves.length) return [];
+  const pids = [...new Set(moves.flatMap((m) => [m.playerId, m.outPlayerId, m.replacesPlayerId]).filter((x): x is string => !!x))];
+  const players = await prisma.player.findMany({ where: { id: { in: pids } }, select: { id: true, displayName: true } });
+  const pName = new Map(players.map((p) => [p.id, p.displayName]));
+  const LABEL: Record<string, string> = { ADDED: "Added", QUIT: "Left", BANNED: "Banned", REINSTATED: "Reinstated", SUB: "Sub", CAPTAIN_CHANGE: "Captain" };
+  return moves.map((m) => {
+    let detail: string | undefined;
+    if (m.kind === "SUB" && m.outPlayerId) detail = `for ${pName.get(m.outPlayerId) ?? "?"}${m.untilWeek ? ` · thru W${m.untilWeek}` : ""}`;
+    else if (m.kind === "ADDED" && m.replacesPlayerId) detail = `replacing ${pName.get(m.replacesPlayerId) ?? "?"}`;
+    if (m.reason && !detail) detail = m.reason;
+    return { week: m.effectiveWeek, kind: m.kind, label: LABEL[m.kind] ?? m.kind, player: pName.get(m.playerId) ?? "?", playerId: m.playerId, detail };
+  });
+}
+
 export interface TeamWeekSet {
   player: string;       // this team's player in the set
   playerId: string;
