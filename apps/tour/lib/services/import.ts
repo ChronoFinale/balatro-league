@@ -327,11 +327,22 @@ export async function importConferenceResults(dir = sheetsDir()) {
       subsAdded++;
     };
 
+    // A cross-conference game is listed in BOTH conferences' tabs, so the same player
+    // pair shows up twice in a week. A pair plays once per regular week — dedupe on
+    // (week, unordered pair). Playoffs (no week) are left alone: a pair can recur across
+    // rounds there.
+    const seenPair = new Set<string>();
     let i = 0;
     for (const r of results) {
       const aId = idByName.get(r.p1)!;
       const bId = idByName.get(r.p2)!;
       if (aId === bId) { i++; continue; }
+      if (r.week != null) {
+        const [lo, hi] = aId < bId ? [aId, bId] : [bId, aId];
+        const pairKey = `${r.week}|${lo}|${hi}`;
+        if (seenPair.has(pairKey)) { i++; continue; }
+        seenPair.add(pairKey);
+      }
       const tsA = matchTs(r.teamA);
       const tsB = matchTs(r.teamB);
       await ensureMember(tsA, aId);
