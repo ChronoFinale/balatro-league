@@ -17,8 +17,10 @@ import { formatSeasonLabel } from "@/lib/format-season";
 
 // No BMP data → start at the base (BMP starts everyone at 200; ×1.5 onto the
 // league scale = 300). A true unknown begins at the bottom, like a fresh account,
-// and climbs from results — or gets hand-set.
-const DEFAULT_SEED = 300;
+// and climbs from results — or gets hand-set. Exported so the placement preview
+// floors unseeded players to the SAME value the engine uses (instead of showing
+// "no MMR" and dumping them to the bottom undifferentiated).
+export const DEFAULT_SEED = 300;
 
 // Where each player's MMR starts before this season's games are replayed.
 //   current → their current hiddenMmr (preserves placement/ladder seeds)

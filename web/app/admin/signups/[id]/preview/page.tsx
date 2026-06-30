@@ -17,6 +17,7 @@ import { MmrSeedingTable } from "@/components/MmrSeedingTable";
 import { ContinuityPreview } from "@/components/ContinuityPreview";
 import { DraftArranger } from "@/components/DraftArranger";
 import { owenLadder } from "@/lib/season-plan";
+import { DEFAULT_SEED } from "@/lib/mmr-recompute";
 import { loadContinuityPlacement } from "@/lib/loaders/continuity";
 import { absorbSignupsIntoDraft } from "@/lib/build-season-continuity";
 import { getPlacementRules } from "@/lib/placement-rules";
@@ -125,7 +126,10 @@ export default async function PlacementPreviewPage({
         const p = playerByDiscordId.get(s.discordId);
         const snap = snapshotByDiscordId.get(s.discordId);
         const peak = snap?.peakMmr ?? snap?.rankedMmr ?? null;
-        const effectiveMmr = p?.hiddenMmr ?? (peak != null ? Math.round(peak * 1.5) : null);
+        // Floor unseeded players to the engine's default (300) instead of null,
+        // so they get a real "minimum rank" and sort sensibly rather than piling
+        // at the bottom as "no MMR".
+        const effectiveMmr = p?.hiddenMmr ?? (peak != null ? Math.round(peak * 1.5) : DEFAULT_SEED);
         return { discordId: s.discordId, displayName: s.displayName, rating: p?.rating ?? null, mmr: snap?.rankedMmr ?? null, hiddenMmr: effectiveMmr };
       });
       pill = <span className="pill" style={{ background: "rgba(118,199,255,0.2)", color: "var(--info)" }}>{players.length} signups · dry run</span>;
