@@ -286,3 +286,16 @@ th.sortable:hover { color: var(--accent); }
 .prose em { color: var(--muted); }
 .prose a { color: var(--accent-2); }
 .tbd { color: #1a1205; background: var(--accent); border-radius: 4px; padding: 0 4px; font-size: 0.9em; font-weight: 600; }
+
+/* Admin shell — a distinct bar so it's unmistakable you're in admin mode. */
+.admin-bar {
+  background: color-mix(in srgb, var(--accent-2) 14%, var(--surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent-2) 40%, var(--border));
+}
+.admin-badge {
+  display: inline-flex; align-items: center; gap: .35rem;
+  font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--accent-2);
+}
+.admin-link { color: var(--muted); transition: color .15s; }
+.admin-link:hover { color: var(--text); text-decoration: none; }

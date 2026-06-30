@@ -1,37 +1,18 @@
 import Link from "next/link";
-import { ArrowLeft, Plus, Fingerprint, Activity, Users } from "lucide-react";
-import { isAdmin } from "@/lib/auth";
+import { Plus } from "lucide-react";
 import { listSeasons } from "@/lib/services/seasons";
-import { Callout } from "@/components/Callout";
 import { ImportUpload } from "@/components/ImportUpload";
 
 export const dynamic = "force-dynamic";
 
+// Gate + admin sub-nav are handled by app/admin/layout.tsx.
 export default async function Admin() {
-  if (!(await isAdmin())) {
-    return (
-      <main>
-        <p>
-          <Link href="/" className="inline-flex items-center gap-1"><ArrowLeft className="size-3.5" /> home</Link>
-        </p>
-        <h1>Admin</h1>
-        <Callout type="admin">Admins only — you don&apos;t have access.</Callout>
-      </main>
-    );
-  }
-
   const seasons = await listSeasons();
   return (
     <main>
-      <h1>Admin</h1>
+      <h1>Dashboard</h1>
       <p className="sub flex items-center gap-1.5">
         <Link href="/admin/seasons/new" className="inline-flex items-center gap-1"><Plus className="size-3.5" /> New season</Link>
-        {" "}·{" "}
-        <Link href="/admin/identity" className="inline-flex items-center gap-1"><Fingerprint className="size-3.5" /> Identity manager</Link>
-        {" "}·{" "}
-        <Link href="/admin/teams" className="inline-flex items-center gap-1"><Users className="size-3.5" /> Teams</Link>
-        {" "}·{" "}
-        <Link href="/admin/env-health" className="inline-flex items-center gap-1"><Activity className="size-3.5" /> Env health</Link>
       </p>
 
       <div className="card">

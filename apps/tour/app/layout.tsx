@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { CommandPalette } from "@/components/CommandPalette";
 import { CommandButton } from "@/components/CommandButton";
 import { UserMenu } from "@/components/UserMenu";
+import { isAdmin } from "@/lib/auth";
 import "./globals.css";
 
 // Balatro-ish pixel font for headings (matches the league site).
@@ -29,10 +30,12 @@ const NAV = [
   { href: "/stats", label: "Stats", icon: BarChart3 },
   { href: "/hall-of-fame", label: "Hall of Fame", icon: Trophy },
   { href: "/rules", label: "Rules", icon: ScrollText },
-  { href: "/admin", label: "Admin", icon: Settings },
 ];
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Only admins see the Admin entry — everyone else never knows it's there.
+  const admin = await isAdmin();
+  const nav = admin ? [...NAV, { href: "/admin", label: "Admin", icon: Settings }] : NAV;
   return (
     <html lang="en" className={pixel.variable}>
       <body>
@@ -43,7 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               Team Tour
             </Link>
             <nav className="flex flex-wrap items-center gap-x-5 gap-y-1">
-              {NAV.map(({ href, label, icon: Icon }) => (
+              {nav.map(({ href, label, icon: Icon }) => (
                 <Link
                   key={href}
                   href={href}
