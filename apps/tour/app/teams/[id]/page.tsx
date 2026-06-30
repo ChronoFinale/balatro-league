@@ -126,9 +126,11 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
                     <tbody>
                       {w.sets.map((s, j) => (
                         <tr key={j}>
+                          <td className="muted num" style={{ width: 28 }}>{s.seed != null ? s.seed : ""}</td>
                           <td>{s.player}</td>
                           <td className="num" style={{ width: 56, textAlign: "center", color: s.win ? "var(--success)" : s.win === false ? "var(--accent-2)" : undefined }}>{s.scoreFor}–{s.scoreAgainst}</td>
                           <td style={{ textAlign: "right" }} className="muted">{s.oppPlayer}</td>
+                          <td className="muted num" style={{ width: 28, textAlign: "right" }}>{s.oppSeed != null ? s.oppSeed : ""}</td>
                         </tr>
                       ))}
                     </tbody>

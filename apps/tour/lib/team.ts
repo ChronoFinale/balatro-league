@@ -218,6 +218,8 @@ export async function getTeamSeason(id: string): Promise<TeamSeasonView | null> 
 export interface TeamWeekSet {
   player: string;       // this team's player in the set
   oppPlayer: string;
+  seed: number | null;      // this team's player's roster seed
+  oppSeed: number | null;   // opponent player's roster seed
   scoreFor: number;     // this team's player's games won
   scoreAgainst: number;
   win: boolean | null;  // null = tie
@@ -257,6 +259,14 @@ export async function getTeamWeeks(teamSeasonId: string): Promise<TeamWeek[]> {
   const oppName = new Map(oppTeams.map((t) => [t.id, t.team.name]));
   const pName = new Map(players.map((p) => [p.id, p.displayName]));
 
+  // Roster seeds for every player on our team and each opponent, keyed by team+player.
+  const entries = await prisma.rosterEntry.findMany({
+    where: { roster: { teamSeasonId: { in: [teamSeasonId, ...oppTsIds] } } },
+    select: { playerId: true, seed: true, roster: { select: { teamSeasonId: true } } },
+  });
+  const seedBy = new Map<string, number>();
+  for (const e of entries) seedBy.set(`${e.roster.teamSeasonId}|${e.playerId}`, e.seed);
+
   // Key by week + opponent: a team usually plays one opponent per week, but this keeps
   // two distinct matchups in the same week from being merged into one row.
   const byWeek = new Map<string, TeamWeek>();
@@ -279,6 +289,8 @@ export async function getTeamWeeks(teamSeasonId: string): Promise<TeamWeek[]> {
     wk.sets.push({
       player: pName.get(usPid) ?? "?",
       oppPlayer: pName.get(oppPid) ?? "?",
+      seed: seedBy.get(`${teamSeasonId}|${usPid}`) ?? null,
+      oppSeed: oppTsId ? seedBy.get(`${oppTsId}|${oppPid}`) ?? null : null,
       scoreFor: ourGames,
       scoreAgainst: oppGames,
       win: m.winnerId == null ? null : m.winnerId === usPid,
