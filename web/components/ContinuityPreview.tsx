@@ -80,10 +80,14 @@ export function ContinuityPreview({
         </div>
         <p className="muted" style={{ fontSize: 11, margin: "6px 0 0" }}>
           Returners hold their finish division (with promotion ↑ / relegation ↓); only newcomers fill gaps,
-          by MMR. <strong>Finishers are never shuffled by size-balancing.</strong> Top division is a fixed 6,
-          round-robin. Each row shows movement, last-season standing, <strong>BMP</strong> (balatromp ranked)
-          and our <strong>hidden MMR</strong> (right). To hand-move anyone, build it and drag on the season
-          page. Nothing here is saved.
+          by MMR. Top division is a fixed 6, round-robin. Each row shows movement, last-season standing,
+          <strong> BMP</strong> (balatromp ranked) and our <strong>hidden MMR</strong> (right). To hand-move
+          anyone, build it and drag on the season page. Nothing here is saved.
+        </p>
+        <p style={{ fontSize: 11, margin: "6px 0 0", color: "var(--accent-2)" }}>
+          🔒 <strong>Floor (minimum placement):</strong> a returner can only drop by <strong>one division</strong>
+          (relegation) — the size-balancer that fills out divisions <strong>only moves newcomers</strong>, never
+          a returner below their finish. Locked returners are tagged 🔒 below.
         </p>
       </div>
 
@@ -126,6 +130,14 @@ export function ContinuityPreview({
                   </span>
                   <span style={{ flex: "1 1 160px", fontWeight: 500 }}>
                     {m.displayName}
+                    {!m.isRookie && (
+                      <span
+                        style={{ fontSize: 10, marginLeft: 5, opacity: 0.65 }}
+                        title="Floor-protected: a returner can't be dropped below their finish by size-balancing — only by relegation (one division)."
+                      >
+                        🔒
+                      </span>
+                    )}
                     {m.isRookie && <span style={{ color: "var(--info)", fontSize: 11, marginLeft: 6 }}>NEW</span>}
                     {fromName && <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>← {fromName}</span>}
                   </span>
