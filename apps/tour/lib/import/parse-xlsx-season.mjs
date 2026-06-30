@@ -225,6 +225,37 @@ export function playoffResultsFromGrid(rows) {
   return sets;
 }
 
+// Playoffs tab → TEAM-level series for the bracket. Round comes from the column the
+// "Quarterfinal/Semifinal/Final" label sits in (exact column; an UNLABELED series — TT1
+// has no "Final" header — is left null, and the importer treats the champion's unlabeled
+// series as the final). Returns every [name, sA, sB, name] block with its round; the
+// importer keeps the team-vs-team ones (player rows are dropped by team-name match).
+export function playoffBracketFromGrid(rows) {
+  const isNum = (v) => /^\d+$/.test((v ?? "").trim());
+  const num = (v) => (isNum(v) ? Number((v ?? "").trim()) : 0);
+  const roundOf = (l) => {
+    const s = l.toLowerCase();
+    if (s.includes("final") && !s.includes("semi") && !s.includes("quarter")) return "FINAL";
+    if (s.includes("semi")) return "SEMIFINAL";
+    if (s.includes("quarter")) return "QUARTERFINAL";
+    return null;
+  };
+  const roundByCol = new Map();
+  for (const row of rows) for (let c = 0; c < row.length; c++) {
+    const r = roundOf((row[c] ?? "").trim());
+    if (r && !roundByCol.has(c)) roundByCol.set(c, r);
+  }
+  const series = [];
+  for (const row of rows) for (let c = 0; c < row.length - 3; c++) {
+    const a = (row[c] ?? "").trim(), b = (row[c + 3] ?? "").trim();
+    if (a && b && !isNum(row[c]) && !isNum(row[c + 3]) && (isNum(row[c + 1]) || isNum(row[c + 2]))) {
+      series.push({ round: roundByCol.get(c) ?? null, teamA: a, scoreA: num(row[c + 1]), scoreB: num(row[c + 2]), teamB: b });
+      c += 3;
+    }
+  }
+  return series;
+}
+
 // Read a season xlsx's player results — regular (conference tabs for conference
 // seasons, or the "Swiss" tab for TT3) + playoff (Playoffs tab). Each row carries a
 // `bracket` ("REGULAR" | "PLAYOFF"). Team-header rows are filtered by the importer.
@@ -241,6 +272,13 @@ export async function readSeasonResults(path) {
     }
   }
   return out;
+}
+
+// Read a season xlsx's TEAM-level playoff bracket (Playoffs tab).
+export async function readSeasonPlayoffs(path) {
+  const wb = await loadWorkbook(path);
+  const g = tabGrid(wb, "Playoffs") ?? tabGrid(wb, "Playoff");
+  return g ? playoffBracketFromGrid(g) : [];
 }
 
 // Team Rosters tab → [{ team, captain, players, subs }] for the MULTI-BAND layout

@@ -17,7 +17,7 @@ import { parseDrafts } from "../import/parse-drafts.mjs";
 import { parseAwards } from "../import/parse-awards.mjs";
 import { parsePlayerStats } from "../import/parse-player-stats.mjs";
 import { SEASON_CONFIG, DEFAULT_SEASON } from "../import/seasons-config.mjs";
-import { readSeasonXlsx, readSeasonResults } from "../import/parse-xlsx-season.mjs";
+import { readSeasonXlsx, readSeasonResults, readSeasonPlayoffs } from "../import/parse-xlsx-season.mjs";
 import { slug } from "../import/sheet.mjs";
 import { backfillDraftedMoves } from "./roster-ops";
 import { applySignupRefs } from "./identity";
@@ -721,19 +721,94 @@ export async function importSeasonShellsFromXlsx(dir = sheetsDir()) {
   return { seasons, teams };
 }
 
+// Import the TEAM-level playoff bracket + champion for each season from its xlsx Playoffs
+// tab. The champion is the team that won a series and lost none; we store the champion's
+// PATH as PlayoffSeries rows in the same "team A = champion" shape getChampionRun already
+// reads. Idempotent (clears the season's series first).
+export async function importPlayoffsFromXlsx(dir = sheetsDir()) {
+  const nrm = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]/g, "");
+  const mains = new Map<number, string>();
+  const walk = (d: string, depth: number) => {
+    if (depth > 4) return;
+    let entries: string[];
+    try { entries = readdirSync(d); } catch { return; }
+    for (const name of entries) {
+      const full = join(d, name);
+      let st: ReturnType<typeof statSync>;
+      try { st = statSync(full); } catch { continue; }
+      if (st.isDirectory()) walk(full, depth + 1);
+      else { const m = /^TT(\d+)\.xlsx$/i.exec(name); if (m && !mains.has(Number(m[1]))) mains.set(Number(m[1]), full); }
+    }
+  };
+  for (const d of [dir, process.env.TOUR_XLSX_DIR].filter(Boolean) as string[]) walk(d, 0);
+
+  const roundRank: Record<string, number> = { QUARTERFINAL: 0, SEMIFINAL: 1, FINAL: 2 };
+  let created = 0, champions = 0;
+  for (const [num, path] of mains) {
+    const season = await prisma.tourSeason.findUnique({ where: { name: `Team Tour ${num}` }, include: { teamSeasons: { include: { team: true } } } });
+    if (!season) continue;
+    const raw = (await readSeasonPlayoffs(path)) as { round: string | null; teamA: string; scoreA: number; scoreB: number; teamB: string }[];
+    if (!raw.length) continue;
+    const tsByName = new Map(season.teamSeasons.map((t) => [nrm(t.team.name), t.id]));
+    const matchTs = (name: string): string | null => {
+      const n = nrm(name);
+      return tsByName.get(n) ?? season.teamSeasons.find((t) => { const tn = nrm(t.team.name); return tn.startsWith(n) || n.startsWith(tn); })?.id ?? null;
+    };
+    // Keep team-vs-team series (player rows can't match a team name).
+    const series = raw.filter((s) => matchTs(s.teamA) && matchTs(s.teamB));
+    if (!series.length) continue;
+    // Champion = won a series, never lost one.
+    const winners = new Set<string>(), losers = new Set<string>();
+    for (const s of series) {
+      const aWon = s.scoreA >= s.scoreB;
+      winners.add(nrm(aWon ? s.teamA : s.teamB));
+      losers.add(nrm(aWon ? s.teamB : s.teamA));
+    }
+    const champion = [...winners].find((w) => !losers.has(w));
+    if (!champion) continue;
+
+    await prisma.playoffSeries.deleteMany({ where: { seasonId: season.id } });
+    const champPath = series
+      .filter((s) => nrm(s.teamA) === champion || nrm(s.teamB) === champion)
+      .map((s) => ({ ...s, round: (s.round ?? "FINAL") as string })) // champion's unlabeled series = the final
+      .sort((a, b) => (roundRank[a.round] ?? 9) - (roundRank[b.round] ?? 9));
+    let idx = 0;
+    for (const s of champPath) {
+      const champIsA = nrm(s.teamA) === champion;
+      await prisma.playoffSeries.create({
+        data: {
+          seasonId: season.id,
+          round: s.round as never,
+          bracketIndex: idx++,
+          teamSeasonAId: matchTs(champIsA ? s.teamA : s.teamB),
+          teamSeasonBId: matchTs(champIsA ? s.teamB : s.teamA),
+          scoreA: champIsA ? s.scoreA : s.scoreB,
+          scoreB: champIsA ? s.scoreB : s.scoreA,
+          winnerTeamSeasonId: matchTs(champIsA ? s.teamA : s.teamB),
+        },
+      });
+      created++;
+    }
+    champions++;
+  }
+  return { series: created, champions };
+}
+
 // THE all-xlsx import: build every season fully from its workbook — shells, then
-// conferences/seeds, rosters/draft/seeds/captains, and player results (regular +
-// playoff). Replaces importHistorical + importConferenceSeason (HTML). On a fresh DB
-// the "fill if empty" guards in the roster/result importers fill everything.
+// conferences/seeds, rosters/draft/seeds/captains, player results (regular + playoff),
+// and the playoff bracket + champion. Replaces importHistorical + importConferenceSeason
+// (HTML). On a fresh DB the "fill if empty" guards in the roster/result importers fill
+// everything.
 export async function importAllFromXlsx(dir = sheetsDir()) {
   const shells = await importSeasonShellsFromXlsx(dir);
   const conferences = await applyConferenceData(dir);
   const rosters = await importConferenceRosters(dir);
   const results = await importConferenceResults(dir);
+  const playoffs = await importPlayoffsFromXlsx(dir);
   const roster_moves = await backfillDraftedMoves();
   await pruneOrphanPlayers();
   const [players, tourSets] = await Promise.all([prisma.player.count(), prisma.tourSet.count()]);
-  return { ...shells, conferencesSet: conferences.teamsSet, rosters: rosters.rostersFilled, players: rosters.playersAdded, sets: results.sets, rosterMoves: roster_moves.created, totalPlayers: players, totalSets: tourSets };
+  return { ...shells, conferencesSet: conferences.teamsSet, rosters: rosters.rostersFilled, players: rosters.playersAdded, sets: results.sets, playoffSeries: playoffs.series, champions: playoffs.champions, rosterMoves: roster_moves.created, totalPlayers: players, totalSets: tourSets };
 }
 
 export async function importHistorical(dir = sheetsDir()) {
