@@ -34,7 +34,7 @@ export default async function BracketPage({ params }: { params: Promise<{ name: 
             <span className="muted">Champion:</span> <strong>{bracket.championTeamSeasonId ? <Link href={`/teams/${bracket.championTeamSeasonId}`}>{bracket.champion}</Link> : bracket.champion}</strong>
           </p>
         )}
-        <p className="sub">Click a series to see the player-by-player sets.</p>
+        <p className="sub">Each series shows its player-by-player sets — click a matchup to collapse it.</p>
         <div className="card" style={{ overflowX: "auto" }}>
           <div className="bracket">
             {bracket.rounds.map((r) => (
@@ -42,7 +42,7 @@ export default async function BracketPage({ params }: { params: Promise<{ name: 
                 <div className="bracket-label">{r.label}</div>
                 <div className="bracket-matches">
                   {r.series.map((s, i) => (
-                    <details className="bracket-match" key={i} style={{ cursor: s.sets.length ? "pointer" : "default" }}>
+                    <details className="bracket-match" key={i} open={s.sets.length > 0} style={{ cursor: s.sets.length ? "pointer" : "default" }}>
                       <summary style={{ listStyle: "none" }}>
                         <div className={`bracket-team${s.winner === "A" ? " win" : ""}`}>
                           <span>{s.aSeed ? `#${s.aSeed} ` : ""}{s.aTeamSeasonId ? <Link href={`/teams/${s.aTeamSeasonId}`}>{s.aName}</Link> : s.aName}</span>
