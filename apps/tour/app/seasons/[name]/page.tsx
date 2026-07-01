@@ -115,7 +115,7 @@ export default async function SeasonPage({ params }: { params: Promise<{ name: s
 
       {data.groups.map((g) => (
         <div className="card" key={g.conferenceId}>
-          {data.groups.length > 1 && <div className="bracket-title">{g.conferenceName} Conference</div>}
+          {data.groups.length > 1 && <div className="bracket-title">{/conference$/i.test(g.conferenceName.trim()) ? g.conferenceName : `${g.conferenceName} Conference`}</div>}
           <StandingsTable rows={g.rows} />
         </div>
       ))}

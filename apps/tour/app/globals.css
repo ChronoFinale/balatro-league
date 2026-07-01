@@ -256,7 +256,8 @@ th.sortable:hover { color: var(--accent); }
 /* championship-run bracket */
 .bracket-title { font-weight: 700; color: var(--accent); padding: 6px 2px 12px; }
 .bracket { display: flex; gap: 16px; align-items: flex-start; overflow-x: auto; padding-bottom: 8px; }
-.bracket-round { display: flex; flex-direction: column; gap: 6px; min-width: 230px; }
+.bracket-round { display: flex; flex-direction: column; gap: 6px; min-width: 300px; }
+.bracket-match table { width: 100%; }
 /* Rounds are columns (QF | SF | Final | Champion); series stack top-down and each shows its
    player-by-player sets when open. */
 .bracket-matches { display: flex; flex-direction: column; gap: 8px; }

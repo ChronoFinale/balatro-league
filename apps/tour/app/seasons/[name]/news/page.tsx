@@ -3,16 +3,27 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Newspaper } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { listSeasonNews } from "@/lib/services/news";
+import { rankingPool } from "@/lib/services/rankings";
+import { buildNameLinker, type Segment } from "@/lib/linkify";
 
 export const dynamic = "force-dynamic";
 
 const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
+// Render linkified segments inline (text segments keep their newlines under pre-wrap).
+function Linked({ parts }: { parts: Segment[] }) {
+  return <>{parts.map((s, i) => (s.href ? <Link key={i} href={s.href}>{s.text}</Link> : <span key={i}>{s.text}</span>))}</>;
+}
+
 export default async function SeasonNews({ params }: { params: Promise<{ name: string }> }) {
   const name = decodeURIComponent((await params).name);
   const season = await prisma.tourSeason.findUnique({ where: { name }, select: { id: true } });
   if (!season) notFound();
-  const posts = await listSeasonNews(name);
+  const [posts, pool] = await Promise.all([listSeasonNews(name), rankingPool(name)]);
+  const linker = buildNameLinker([
+    ...pool.teams.map((t) => ({ name: t.name, href: `/teams/${t.id}` })),
+    ...pool.players.map((p) => ({ name: p.name, href: `/players/${p.id}` })),
+  ]);
 
   return (
     <main>
@@ -29,10 +40,10 @@ export default async function SeasonNews({ params }: { params: Promise<{ name: s
           <article className="card" key={p.id}>
             <div className="flex flex-wrap items-baseline gap-2">
               {p.week != null && <span className="badge">Week {p.week}</span>}
-              <h2 style={{ fontSize: "1.15rem", margin: 0 }}>{p.title}</h2>
+              <h2 style={{ fontSize: "1.15rem", margin: 0 }}><Linked parts={linker(p.title)} /></h2>
             </div>
             <p className="sub" style={{ marginTop: 2 }}>{fmtDate(p.createdAt)}{p.createdBy ? ` · ${p.createdBy}` : ""}</p>
-            <div style={{ whiteSpace: "pre-wrap", marginTop: 8, lineHeight: 1.5 }}>{p.body}</div>
+            <div style={{ whiteSpace: "pre-wrap", marginTop: 8, lineHeight: 1.5 }}><Linked parts={linker(p.body)} /></div>
           </article>
         ))
       )}

@@ -2,9 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ListOrdered } from "lucide-react";
 import { prisma } from "@/lib/db";
-import { listSeasonRankings } from "@/lib/services/rankings";
+import { listSeasonRankings, rankingPool } from "@/lib/services/rankings";
+import { buildNameLinker, type Segment } from "@/lib/linkify";
 
 export const dynamic = "force-dynamic";
+
+function Linked({ parts }: { parts: Segment[] }) {
+  return <>{parts.map((s, i) => (s.href ? <Link key={i} href={s.href}>{s.text}</Link> : <span key={i}>{s.text}</span>))}</>;
+}
 
 const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
@@ -12,7 +17,11 @@ export default async function SeasonRankings({ params }: { params: Promise<{ nam
   const name = decodeURIComponent((await params).name);
   const season = await prisma.tourSeason.findUnique({ where: { name }, select: { id: true } });
   if (!season) notFound();
-  const rankings = await listSeasonRankings(name);
+  const [rankings, pool] = await Promise.all([listSeasonRankings(name), rankingPool(name)]);
+  const linker = buildNameLinker([
+    ...pool.teams.map((t) => ({ name: t.name, href: `/teams/${t.id}` })),
+    ...pool.players.map((p) => ({ name: p.name, href: `/players/${p.id}` })),
+  ]);
 
   return (
     <main>
@@ -44,7 +53,7 @@ export default async function SeasonRankings({ params }: { params: Promise<{ nam
                       <td className="num muted" style={{ width: 32 }}>{e.position}</td>
                       <td style={{ width: 34 }}>{e.tier ? <span className="badge">{e.tier}</span> : ""}</td>
                       <td className="font-semibold">{e.targetId ? <Link href={`${base}/${e.targetId}`}>{e.name}</Link> : e.name}</td>
-                      <td className="sub">{e.note ?? ""}</td>
+                      <td className="sub">{e.note ? <Linked parts={linker(e.note)} /> : ""}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -166,22 +166,21 @@ export async function getChampionRun(seasonName: string): Promise<ChampionRun | 
   const nameById = new Map(teamSeasons.map((t) => [t.id, t.team.name]));
   const tsByTeam = new Map(teamSeasons.map((t) => [t.teamId, t.id]));
 
-  // Determine the champion's teamSeason id.
-  const [championship, entryCount] = await Promise.all([
-    prisma.championship.findFirst({ where: { seasonId: season.id } }),
-    prisma.playoffEntry.count({ where: { seasonId: season.id } }),
-  ]);
-  let championTsId: string | null = null;
-  if (championship) {
-    championTsId = tsByTeam.get(championship.teamId) ?? null;
-  } else if (entryCount === 0) {
-    // Historical champion-path import: A is the champion in the (first) row.
-    championTsId = [...series].sort((a, b) => (ROUND_ORDER[a.round] ?? 9) - (ROUND_ORDER[b.round] ?? 9))[0]?.teamSeasonAId ?? null;
-  } else {
-    // Live bracket, not yet crowned → no champion to show.
-    const final = series.find((s) => s.round === "FINAL");
-    championTsId = final?.winnerTeamSeasonId ?? null;
-    if (!championTsId) return null;
+  // Determine the champion's teamSeason id: a stored Championship, else the FINAL's winner
+  // (full bracket — old champion-path imports also set the FINAL winner), else the team that
+  // won a series and never lost one.
+  const championship = await prisma.championship.findFirst({ where: { seasonId: season.id } });
+  let championTsId: string | null = championship ? tsByTeam.get(championship.teamId) ?? null : null;
+  if (!championTsId) championTsId = series.find((s) => s.round === "FINAL")?.winnerTeamSeasonId ?? null;
+  if (!championTsId) {
+    const winners = new Set<string>(), losers = new Set<string>();
+    for (const s of series) {
+      if (!s.winnerTeamSeasonId) continue;
+      winners.add(s.winnerTeamSeasonId);
+      const loser = s.winnerTeamSeasonId === s.teamSeasonAId ? s.teamSeasonBId : s.teamSeasonAId;
+      if (loser) losers.add(loser);
+    }
+    championTsId = [...winners].find((w) => !losers.has(w)) ?? null;
   }
   if (!championTsId) return null;
 
