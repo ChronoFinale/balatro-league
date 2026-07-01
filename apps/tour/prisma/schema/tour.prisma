@@ -482,6 +482,7 @@ model NewsPost {
   title     String
   body      String // free text; line breaks preserved on render
   createdBy String? // author (discord id / name)
+  postedAt  DateTime @default(now()) // display/sort date; settable so archival posts keep their original date
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -504,6 +505,7 @@ model PowerRanking {
   title          String
   author         String? // free-text attribution ("Team Tour News Network", a person's name)
   authorPlayerId String? // optional link to the ranker's player profile
+  postedAt       DateTime            @default(now()) // display/sort date; settable for archival rankings
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
   entries        PowerRankingEntry[]

@@ -9,6 +9,8 @@ import { createNewsAction, updateNewsAction, deleteNewsAction } from "./actions"
 export const dynamic = "force-dynamic";
 
 const inputCls = "w-full rounded border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1";
+const toDateInput = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
 // Gate + admin shell come from app/admin/layout.tsx.
 export default async function NewsAdmin({ params }: { params: Promise<{ name: string }> }) {
@@ -29,10 +31,11 @@ export default async function NewsAdmin({ params }: { params: Promise<{ name: st
           <input type="hidden" name="season" value={seasonName} />
           <div className="flex flex-wrap items-end gap-2 mb-2">
             <label className="block"><span className="sub">Week (optional)</span><input type="number" name="week" min={1} className={`${inputCls} w-20`} /></label>
+            <label className="block"><span className="sub">Date</span><input type="date" name="postedAt" className={`${inputCls} w-40`} /></label>
             <label className="block flex-1" style={{ minWidth: 240 }}><span className="sub">Title</span><input name="title" placeholder="Week 3 previews — Sock Conference" className={inputCls} /></label>
           </div>
           <label className="block mb-1"><span className="sub">Body</span><textarea name="body" rows={10} className={inputCls} placeholder="Paste the writeup here (Markdown supported)" /></label>
-          <p className="sub mb-2" style={{ fontSize: "0.8rem" }}>Markdown supported: **bold**, *italic*, ~~strike~~, `code`, &gt; quotes, and - lists. Paste straight from Discord. Team and player names auto-link.</p>
+          <p className="sub mb-2" style={{ fontSize: "0.8rem" }}>Markdown supported: **bold**, *italic*, ~~strike~~, `code`, &gt; quotes, and - lists. Paste straight from Discord. Leave the date blank for today, or set it to keep an archival post&apos;s original date.</p>
           <SubmitButton pendingText="Posting…">Post</SubmitButton>
         </ActionFlashForm>
       </div>
@@ -44,7 +47,7 @@ export default async function NewsAdmin({ params }: { params: Promise<{ name: st
         posts.map((p) => (
           <div className="card" key={p.id}>
             <div className="flex items-center justify-between gap-2">
-              <div className="font-semibold flex items-center gap-2">{p.week != null && <span className="badge">Wk {p.week}</span>}{p.title}</div>
+              <div className="font-semibold flex items-center gap-2">{p.week != null && <span className="badge">Wk {p.week}</span>}{p.title}<span className="sub" style={{ fontWeight: 400 }}>· {fmtDate(p.postedAt)}</span></div>
               <form action={deleteNewsAction}>
                 <input type="hidden" name="season" value={seasonName} />
                 <input type="hidden" name="id" value={p.id} />
@@ -58,6 +61,7 @@ export default async function NewsAdmin({ params }: { params: Promise<{ name: st
                 <input type="hidden" name="id" value={p.id} />
                 <div className="flex flex-wrap items-end gap-2 mb-2">
                   <label className="block"><span className="sub">Week</span><input type="number" name="week" min={1} defaultValue={p.week ?? undefined} className={`${inputCls} w-20`} /></label>
+                  <label className="block"><span className="sub">Date</span><input type="date" name="postedAt" defaultValue={toDateInput(p.postedAt)} className={`${inputCls} w-40`} /></label>
                   <label className="block flex-1" style={{ minWidth: 240 }}><span className="sub">Title</span><input name="title" defaultValue={p.title} className={inputCls} /></label>
                 </div>
                 <label className="block mb-2"><span className="sub">Body</span><textarea name="body" rows={10} defaultValue={p.body} className={inputCls} /></label>

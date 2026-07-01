@@ -18,11 +18,20 @@ const wk = (fd: FormData) => {
   return v != null && String(v).trim() !== "" && Number.isFinite(n) && n > 0 ? n : null;
 };
 
+// A "YYYY-MM-DD" date input -> local-noon Date (noon avoids day-shifting across timezones).
+// Empty means "leave the current/default date" (null → service skips the field).
+const postedAt = (fd: FormData): Date | null => {
+  const v = String(fd.get("postedAt") ?? "").trim();
+  if (!v) return null;
+  const d = new Date(`${v}T12:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
 export async function createNewsAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   const season = String(formData.get("season") ?? "");
   try {
-    await createNews(season, { week: wk(formData), title: String(formData.get("title") ?? ""), body: String(formData.get("body") ?? "") });
+    await createNews(season, { week: wk(formData), title: String(formData.get("title") ?? ""), body: String(formData.get("body") ?? ""), postedAt: postedAt(formData) });
     rev(season);
     return { ok: true, message: "Posted." };
   } catch (e) {
@@ -34,7 +43,7 @@ export async function updateNewsAction(_prev: ActionResult, formData: FormData):
   if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   const season = String(formData.get("season") ?? "");
   try {
-    await updateNews(String(formData.get("id") ?? ""), { week: wk(formData), title: String(formData.get("title") ?? ""), body: String(formData.get("body") ?? "") });
+    await updateNews(String(formData.get("id") ?? ""), { week: wk(formData), title: String(formData.get("title") ?? ""), body: String(formData.get("body") ?? ""), postedAt: postedAt(formData) });
     rev(season);
     return { ok: true, message: "Updated." };
   } catch (e) {

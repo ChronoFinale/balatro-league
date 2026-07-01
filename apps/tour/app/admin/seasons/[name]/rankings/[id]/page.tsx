@@ -11,6 +11,7 @@ import { updateRankingAction, addEntryAction, removeEntryAction } from "../actio
 export const dynamic = "force-dynamic";
 
 const inputCls = "rounded border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1";
+const toDateInput = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export default async function RankingEdit({ params }: { params: Promise<{ name: string; id: string }> }) {
   const { name, id } = await params;
@@ -35,6 +36,7 @@ export default async function RankingEdit({ params }: { params: Promise<{ name: 
           <input type="hidden" name="id" value={r.id} />
           <div className="flex flex-wrap items-end gap-2">
             <label className="block"><span className="sub">Week</span><input type="number" name="week" min={1} defaultValue={r.week ?? undefined} className={`${inputCls} w-16`} /></label>
+            <label className="block"><span className="sub">Date</span><input type="date" name="postedAt" defaultValue={toDateInput(r.postedAt)} className={`${inputCls} w-40`} /></label>
             <label className="block flex-1" style={{ minWidth: 200 }}><span className="sub">Title</span><input name="title" defaultValue={r.title} className={`${inputCls} w-full`} /></label>
             <label className="block"><span className="sub">Author</span><input name="author" defaultValue={r.author ?? ""} className={`${inputCls} w-28`} /></label>
             <label className="block"><span className="sub">Author profile</span><FormSelect name="authorPlayerId" options={[{ value: "", label: "— none —" }, ...pool.players.map((p) => ({ value: p.id, label: p.name }))]} /></label>

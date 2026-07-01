@@ -26,6 +26,7 @@ export default async function RankingsAdmin({ params }: { params: Promise<{ name
           <input type="hidden" name="season" value={seasonName} />
           <label className="block"><span className="sub">Kind</span><FormSelect name="kind" options={[{ value: "TEAM", label: "Teams" }, { value: "PLAYER", label: "Players" }]} /></label>
           <label className="block"><span className="sub">Week</span><input type="number" name="week" min={1} placeholder="opt" className={`${inputCls} w-16`} /></label>
+          <label className="block"><span className="sub">Date</span><input type="date" name="postedAt" className={`${inputCls} w-40`} /></label>
           <label className="block flex-1" style={{ minWidth: 200 }}><span className="sub">Title</span><input name="title" placeholder="Week 3 Team Power Rankings" className={`${inputCls} w-full`} /></label>
           <label className="block"><span className="sub">Author</span><input name="author" placeholder="TTNN" className={`${inputCls} w-28`} /></label>
           <label className="block"><span className="sub">Author profile (opt)</span><FormSelect name="authorPlayerId" options={[{ value: "", label: "— none —" }, ...pool.players.map((p) => ({ value: p.id, label: p.name }))]} /></label>

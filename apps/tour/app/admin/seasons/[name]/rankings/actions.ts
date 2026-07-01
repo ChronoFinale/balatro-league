@@ -14,6 +14,8 @@ function rev(season: string, id?: string) {
   revalidatePath(`/seasons/${enc}`);
 }
 const wk = (fd: FormData) => { const v = fd.get("week"); const n = Number(v); return v != null && String(v).trim() !== "" && Number.isFinite(n) && n > 0 ? n : null; };
+// "YYYY-MM-DD" -> local-noon Date (noon avoids day-shift across timezones); empty -> null (keep default/current).
+const postedAt = (fd: FormData): Date | null => { const v = String(fd.get("postedAt") ?? "").trim(); if (!v) return null; const d = new Date(`${v}T12:00:00`); return Number.isNaN(d.getTime()) ? null : d; };
 
 export async function createRankingAction(formData: FormData) {
   if (!(await isAdmin())) return;
@@ -24,6 +26,7 @@ export async function createRankingAction(formData: FormData) {
     title: String(formData.get("title") ?? ""),
     author: String(formData.get("author") ?? "") || null,
     authorPlayerId: String(formData.get("authorPlayerId") ?? "") || null,
+    postedAt: postedAt(formData),
   });
   rev(season, r.id);
   redirect(`/admin/seasons/${encodeURIComponent(season)}/rankings/${r.id}`);
@@ -41,7 +44,7 @@ export async function updateRankingAction(_prev: ActionResult, formData: FormDat
   const season = String(formData.get("season") ?? "");
   const id = String(formData.get("id") ?? "");
   try {
-    await updateRanking(id, { week: wk(formData), title: String(formData.get("title") ?? ""), author: String(formData.get("author") ?? "") || null, authorPlayerId: String(formData.get("authorPlayerId") ?? "") || null });
+    await updateRanking(id, { week: wk(formData), title: String(formData.get("title") ?? ""), author: String(formData.get("author") ?? "") || null, authorPlayerId: String(formData.get("authorPlayerId") ?? "") || null, postedAt: postedAt(formData) });
     rev(season, id);
     return { ok: true, message: "Saved." };
   } catch (e) {

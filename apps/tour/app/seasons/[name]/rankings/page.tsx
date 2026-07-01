@@ -43,7 +43,7 @@ export default async function SeasonRankings({ params }: { params: Promise<{ nam
                 <h2 style={{ fontSize: "1.15rem", margin: 0 }}>{r.title}</h2>
               </div>
               <p className="sub" style={{ marginTop: 2 }}>
-                {fmtDate(r.createdAt)}
+                {fmtDate(r.postedAt)}
                 {r.author ? <> · by {r.authorPlayerId ? <Link href={`/players/${r.authorPlayerId}`}>{r.author}</Link> : r.author}</> : null}
               </p>
               <table style={{ marginTop: 8 }}>

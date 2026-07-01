@@ -20,7 +20,7 @@ export interface RankingView {
   title: string;
   author: string | null;
   authorPlayerId: string | null;
-  createdAt: Date;
+  postedAt: Date;
   entries: RankingEntryView[];
 }
 
@@ -48,7 +48,7 @@ export async function rankingPool(seasonName: string): Promise<{ teams: { id: st
 export async function listSeasonRankings(seasonName: string): Promise<RankingView[]> {
   const sid = await seasonIdOf(seasonName);
   if (!sid) return [];
-  const rankings = await prisma.powerRanking.findMany({ where: { seasonId: sid }, include: { entries: { orderBy: { position: "asc" } } }, orderBy: { createdAt: "desc" } });
+  const rankings = await prisma.powerRanking.findMany({ where: { seasonId: sid }, include: { entries: { orderBy: { position: "asc" } } }, orderBy: [{ postedAt: "desc" }, { createdAt: "desc" }] });
   // resolve names for all referenced teams + players
   const tsIds = [...new Set(rankings.flatMap((r) => r.entries.map((e) => e.teamSeasonId).filter((x): x is string => !!x)))];
   const pIds = [...new Set(rankings.flatMap((r) => r.entries.map((e) => e.playerId).filter((x): x is string => !!x)))];
@@ -65,7 +65,7 @@ export async function listSeasonRankings(seasonName: string): Promise<RankingVie
     title: r.title,
     author: r.author,
     authorPlayerId: r.authorPlayerId,
-    createdAt: r.createdAt,
+    postedAt: r.postedAt,
     entries: r.entries.map((e) => ({
       id: e.id,
       position: e.position,
@@ -81,16 +81,16 @@ export async function getRanking(id: string) {
   return prisma.powerRanking.findUnique({ where: { id }, include: { entries: { orderBy: { position: "asc" } } } });
 }
 
-export async function createRanking(seasonName: string, data: { kind: RankKind; week: number | null; title: string; author: string | null; authorPlayerId: string | null }) {
+export async function createRanking(seasonName: string, data: { kind: RankKind; week: number | null; title: string; author: string | null; authorPlayerId: string | null; postedAt?: Date | null }) {
   const sid = await seasonIdOf(seasonName);
   if (!sid) throw new Error("No such season.");
   if (!data.title.trim()) throw new Error("A title is required.");
-  return prisma.powerRanking.create({ data: { seasonId: sid, kind: data.kind, week: data.week, title: data.title.trim(), author: data.author?.trim() || null, authorPlayerId: data.authorPlayerId || null } });
+  return prisma.powerRanking.create({ data: { seasonId: sid, kind: data.kind, week: data.week, title: data.title.trim(), author: data.author?.trim() || null, authorPlayerId: data.authorPlayerId || null, ...(data.postedAt ? { postedAt: data.postedAt } : {}) } });
 }
 
-export async function updateRanking(id: string, data: { week: number | null; title: string; author: string | null; authorPlayerId: string | null }) {
+export async function updateRanking(id: string, data: { week: number | null; title: string; author: string | null; authorPlayerId: string | null; postedAt?: Date | null }) {
   if (!data.title.trim()) throw new Error("A title is required.");
-  return prisma.powerRanking.update({ where: { id }, data: { week: data.week, title: data.title.trim(), author: data.author?.trim() || null, authorPlayerId: data.authorPlayerId || null } });
+  return prisma.powerRanking.update({ where: { id }, data: { week: data.week, title: data.title.trim(), author: data.author?.trim() || null, authorPlayerId: data.authorPlayerId || null, ...(data.postedAt ? { postedAt: data.postedAt } : {}) } });
 }
 
 export async function deleteRanking(id: string) {
