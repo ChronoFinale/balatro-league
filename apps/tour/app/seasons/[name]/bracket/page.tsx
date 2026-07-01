@@ -1,5 +1,6 @@
+import { Fragment } from "react";
 import Link from "next/link";
-import { ArrowLeft, Trophy } from "lucide-react";
+import { ArrowLeft, Trophy, ChevronRight } from "lucide-react";
 import { getPublicBracket, getChampionRun } from "@/lib/playoffs";
 import { getPlayoffPicture } from "@/lib/playoff-picture";
 
@@ -37,8 +38,10 @@ export default async function BracketPage({ params }: { params: Promise<{ name: 
         <p className="sub">Each series shows its player-by-player sets — click a matchup to collapse it.</p>
         <div className="card" style={{ overflowX: "auto" }}>
           <div className="bracket">
-            {bracket.rounds.map((r) => (
-              <div className="bracket-round" key={r.round}>
+            {bracket.rounds.map((r, ri) => (
+              <Fragment key={r.round}>
+                {ri > 0 && <div className="bracket-arrow" aria-hidden><ChevronRight className="size-5" /></div>}
+              <div className="bracket-round">
                 <div className="bracket-label">{r.label}</div>
                 <div className="bracket-matches">
                   {r.series.map((s, i) => (
@@ -72,8 +75,11 @@ export default async function BracketPage({ params }: { params: Promise<{ name: 
                   ))}
                 </div>
               </div>
+              </Fragment>
             ))}
             {bracket.championTeamSeasonId && (
+              <>
+              <div className="bracket-arrow" aria-hidden><ChevronRight className="size-5" /></div>
               <div className="bracket-round">
                 <div className="bracket-label">Champion</div>
                 <div className="bracket-matches">
@@ -82,6 +88,7 @@ export default async function BracketPage({ params }: { params: Promise<{ name: 
                   </div>
                 </div>
               </div>
+              </>
             )}
           </div>
         </div>
@@ -99,21 +106,31 @@ export default async function BracketPage({ params }: { params: Promise<{ name: 
         <div className="card">
           <div className="bracket-title flex items-center gap-2"><Trophy className="size-4" /> <Link href={`/teams/${run.championTeamSeasonId}`}>{run.champion}</Link></div>
           <div className="bracket">
-            {run.rounds.map((r) => (
-              <div className="bracket-round" key={r.round}>
-                <div className="bracket-label">{r.label}</div>
-                <div className="bracket-match">
-                  <div className="bracket-team win">
-                    <span><Link href={`/teams/${run.championTeamSeasonId}`}>{run.champion}</Link></span>
-                    <span className="score">{r.champScore}</span>
-                  </div>
-                  <div className="bracket-team">
-                    <span>{r.opponentTeamSeasonId ? <Link href={`/teams/${r.opponentTeamSeasonId}`}>{r.opponent}</Link> : (r.opponent ?? "—")}</span>
-                    <span className="score">{r.oppScore}</span>
+            {run.rounds.map((r, ri) => (
+              <Fragment key={r.round}>
+                {ri > 0 && <div className="bracket-arrow" aria-hidden><ChevronRight className="size-5" /></div>}
+                <div className="bracket-round">
+                  <div className="bracket-label">{r.label}</div>
+                  <div className="bracket-match">
+                    <div className="bracket-team win">
+                      <span><Link href={`/teams/${run.championTeamSeasonId}`}>{run.champion}</Link></span>
+                      <span className="score">{r.champScore}</span>
+                    </div>
+                    <div className="bracket-team">
+                      <span>{r.opponentTeamSeasonId ? <Link href={`/teams/${r.opponentTeamSeasonId}`}>{r.opponent}</Link> : (r.opponent ?? "—")}</span>
+                      <span className="score">{r.oppScore}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              </Fragment>
             ))}
+            <div className="bracket-arrow" aria-hidden><ChevronRight className="size-5" /></div>
+            <div className="bracket-round">
+              <div className="bracket-label">Champion</div>
+              <div className="bracket-champion flex items-center justify-center gap-1.5">
+                <Trophy className="size-4" /> <Link href={`/teams/${run.championTeamSeasonId}`}>{run.champion}</Link>
+              </div>
+            </div>
           </div>
         </div>
       </main>

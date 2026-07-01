@@ -278,8 +278,11 @@ th.sortable:hover { color: var(--accent); }
 .post-body hr { border: 0; border-top: 1px solid var(--border); margin: 0.9em 0; }
 
 /* Rounds are columns (QF | SF | Final | Champion); series stack top-down and each shows its
-   player-by-player sets when open. */
+   player-by-player sets when open. Chevrons between columns give it a bracket flow. */
 .bracket-matches { display: flex; flex-direction: column; gap: 8px; }
+.bracket-arrow { align-self: stretch; display: flex; align-items: center; color: var(--accent-2); flex: 0 0 auto; }
+.bracket-round { position: relative; }
+.bracket-round .bracket-label { padding-bottom: 4px; }
 .bracket-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 .bracket-match > summary::-webkit-details-marker { display: none; }
 .bracket-match[open] { border-color: var(--accent-2); }
