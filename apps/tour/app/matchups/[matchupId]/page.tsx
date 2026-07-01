@@ -43,18 +43,18 @@ export default async function CaptainPairing({ params }: { params: Promise<{ mat
     );
   }
 
-  const teamCol = (t: { name: string; captainName: string; players: { name: string; seed: number; paired: boolean; pending: boolean }[] }, mine: boolean) => (
+  const teamCol = (t: { name: string; captainName: string; captainId: string; players: { playerId: string; name: string; seed: number; paired: boolean; pending: boolean }[] }, mine: boolean) => (
     <div className="card" style={{ marginBottom: 0, borderColor: mine ? "var(--accent-2)" : undefined }}>
       <div className="flex items-center justify-between gap-2">
         <span className="font-semibold">{t.name}</span>
         {mine && <span className="badge">you</span>}
       </div>
-      <div className="sub flex items-center gap-1"><Crown className="size-3 text-[var(--accent)]" /> {t.captainName}</div>
+      <div className="sub flex items-center gap-1"><Crown className="size-3 text-[var(--accent)]" /> <Link href={`/players/${t.captainId}`}>{t.captainName}</Link></div>
       <ol className="mt-2 list-none p-0" style={{ margin: 0 }}>
         {t.players.map((p) => (
-          <li key={p.name + p.seed} className="flex items-baseline gap-2 py-0.5" style={{ opacity: p.paired ? 0.5 : 1 }}>
+          <li key={p.playerId} className="flex items-baseline gap-2 py-0.5" style={{ opacity: p.paired ? 0.5 : 1 }}>
             <span className="rank" style={{ width: "1.4rem" }}>{p.seed}</span>
-            <span style={{ textDecoration: p.paired ? "line-through" : undefined }}>{p.name}</span>
+            <span style={{ textDecoration: p.paired ? "line-through" : undefined }}><Link href={`/players/${p.playerId}`}>{p.name}</Link></span>
             {p.pending && <span className="badge" style={{ color: "var(--accent-2)" }}>proposed</span>}
           </li>
         ))}
@@ -79,8 +79,8 @@ export default async function CaptainPairing({ params }: { params: Promise<{ mat
               {c.pairs.map((p, i) => (
                 <tr key={i}>
                   <td className="rank">{i + 1}</td>
-                  <td>#{p.aSeed} {p.aName}</td>
-                  <td>#{p.bSeed} {p.bName}</td>
+                  <td>#{p.aSeed} <Link href={`/players/${p.aPlayerId}`}>{p.aName}</Link></td>
+                  <td>#{p.bSeed} <Link href={`/players/${p.bPlayerId}`}>{p.bName}</Link></td>
                   <td className="sub">{p.status}</td>
                 </tr>
               ))}

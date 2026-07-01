@@ -287,7 +287,8 @@ export async function getCaptainPairing(matchupId: string, viewerPlayerId: strin
   const decorate = (team: typeof m.teamA) => ({
     name: team.name,
     captainName: m.nameOf.get(team.captainId) ?? "—",
-    players: team.roster.map((p) => ({ name: m.nameOf.get(p.playerId) ?? p.playerId, seed: p.seed, paired: paired.has(p.playerId), pending: p.playerId === pend?.playerId })),
+    captainId: team.captainId,
+    players: team.roster.map((p) => ({ playerId: p.playerId, name: m.nameOf.get(p.playerId) ?? p.playerId, seed: p.seed, paired: paired.has(p.playerId), pending: p.playerId === pend?.playerId })),
   });
 
   return {
@@ -311,8 +312,10 @@ export async function getCaptainPairing(matchupId: string, viewerPlayerId: strin
     respondOptions: myTurnToRespond ? eligibleResponses(state).map((p) => ({ playerId: p.playerId, name: m.nameOf.get(p.playerId) ?? p.playerId, seed: p.seed })) : [],
     pairs: m.matchup.sets.map((s) => ({
       aName: m.nameOf.get(s.playerAId) ?? s.playerAId,
+      aPlayerId: s.playerAId,
       aSeed: s.seedA,
       bName: m.nameOf.get(s.playerBId) ?? s.playerBId,
+      bPlayerId: s.playerBId,
       bSeed: s.seedB,
       status: s.status,
     })),
