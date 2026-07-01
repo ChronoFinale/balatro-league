@@ -487,3 +487,40 @@ model NewsPost {
 
   @@index([seasonId])
 }
+
+// ── Power rankings (team or player) ─────────────────────────────────────────
+// An ordered, optionally-tiered list ranking teams or players, attributed to an
+// author (free text + optional player link), tagged to a season and week.
+enum PowerRankingKind {
+  TEAM
+  PLAYER
+}
+
+model PowerRanking {
+  id             String              @id @default(cuid())
+  seasonId       String
+  week           Int? // optional — a week's rankings
+  kind           PowerRankingKind
+  title          String
+  author         String? // free-text attribution ("Team Tour News Network", a person's name)
+  authorPlayerId String? // optional link to the ranker's player profile
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  entries        PowerRankingEntry[]
+
+  @@index([seasonId])
+}
+
+model PowerRankingEntry {
+  id           String  @id @default(cuid())
+  rankingId    String
+  position     Int // 1..N
+  tier         String? // "S" / "A" / "1" etc. (optional)
+  teamSeasonId String? // for TEAM rankings
+  playerId     String? // for PLAYER rankings
+  note         String? // optional blurb
+
+  ranking PowerRanking @relation(fields: [rankingId], references: [id], onDelete: Cascade)
+
+  @@index([rankingId])
+}

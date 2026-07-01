@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Users, Shield, Shuffle, CalendarDays, UserCog, Trophy, Flag, Hash, ExternalLink, Newspaper } from "lucide-react";
+import { ArrowLeft, Users, Shield, Shuffle, CalendarDays, UserCog, Trophy, Flag, Hash, ExternalLink, Newspaper, ListOrdered } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 import { getSeasonAdmin } from "@/lib/services/seasons";
 import { Callout } from "@/components/Callout";
@@ -47,6 +47,7 @@ export default async function SeasonAdmin({ params }: { params: Promise<{ name: 
     { key: "end", label: "Season end", icon: Flag, href: `/admin/seasons/${enc}/end`, count: season.state === "DONE" ? "crowned · awards" : "crown + awards", ready: true },
     { key: "discord", label: "Discord roles", icon: Hash, href: `/admin/seasons/${enc}/discord`, count: season.playerRoleId ? "synced" : "preview", ready: true },
     { key: "news", label: "News Network", icon: Newspaper, href: `/admin/seasons/${enc}/news`, count: "previews · recaps", ready: true },
+    { key: "rankings", label: "Power rankings", icon: ListOrdered, href: `/admin/seasons/${enc}/rankings`, count: "teams · players", ready: true },
   ];
 
   return (
