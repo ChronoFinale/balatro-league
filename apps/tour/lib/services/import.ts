@@ -740,6 +740,7 @@ export async function applySeedRankings(dir = sheetsDir()) {
         if (!tsId) continue;
         const rosterId = rosterByTs.get(tsId);
         const members = membersByTs.get(tsId) ?? membersByTs.set(tsId, new Set()).get(tsId)!;
+        const prevBlock = prevTeamPlayers.get(tsId); // this team's roster in the IMMEDIATELY previous block
         const cur = new Set<string>();
         const seedOf = new Map<string, number>();
         for (const { player, seed } of t.seeds) {
@@ -755,10 +756,11 @@ export async function applySeedRankings(dir = sheetsDir()) {
             prevSeed.set(key, seed);
             baseSet++;
           } else {
-            // A re-seed only for a player who was ALREADY on this team and whose seed moved;
-            // a brand-new player this block is an add (handled below), not a re-seed.
+            // A re-seed only for a player who was on this team the PREVIOUS block and whose
+            // seed moved. A player who wasn't there last block is an ADD (handled below),
+            // never a re-seed — so an added player doesn't get mislabeled as re-seeded.
             const known = prevSeed.get(key);
-            if (known != null && known !== seed) {
+            if (prevBlock?.has(pid) && known != null && known !== seed) {
               reseedMoves.push({ seasonId: season.id, teamSeasonId: tsId, kind: "RESEED", playerId: pid, seed, effectiveWeek: effWeek, reason: `ranking ${b.label}`, createdBy: "import:rankings" });
               reseeds++;
             }
