@@ -26,11 +26,13 @@ import { addExistingPlayerToDivision, addLatePlayerToDivision, deleteDivision } 
 import { PlayerSearch, type PlayerOption } from "@/components/PlayerSearch";
 import { addDivisionToTier } from "@/app/admin/seasons/actions";
 import { Button } from "@/components/ui/button";
+import { CopyId } from "@/components/CopyId";
 
 export interface EditorMember {
   id: string;
   playerId: string;
   playerName: string;
+  discordId?: string | null; // shown as a click-to-copy chip for admin lookups
   divisionId: string;
   draftOrder: number;
   // Per-row context fields rendered as inline chips. Null = no data
@@ -516,13 +518,16 @@ export function DraggableDivisionsEditor({
                               }}
                             >
                               <span style={{ color: "var(--muted)" }} title="Drag to move">⋮⋮</span>
-                              <Link
-                                href={`/profile/${m.playerId}`}
-                                style={{ color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-                                onPointerDown={(e) => e.stopPropagation()}
-                              >
-                                {m.playerName}
-                              </Link>
+                              <div style={{ display: "grid", minWidth: 0 }}>
+                                <Link
+                                  href={`/profile/${m.playerId}`}
+                                  style={{ color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                >
+                                  {m.playerName}
+                                </Link>
+                                {m.discordId && <CopyId id={m.discordId} style={{ justifySelf: "start" }} />}
+                              </div>
                               <input
                                 type="number"
                                 title="Hidden league MMR — edit to set (moving a player never changes it)"

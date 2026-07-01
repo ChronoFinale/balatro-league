@@ -425,6 +425,7 @@ async function AdminSeasonPanel({
                   id: m.id,
                   playerId: m.player.id,
                   playerName: m.player.displayName,
+                  discordId: m.player.discordId,
                   divisionId: d.id,
                   draftOrder: m.draftOrder,
                   leagueRating: ctx?.leagueRating ?? m.player.rating,

@@ -14,6 +14,7 @@
 import { useMemo, useState } from "react";
 import { generateSchedule, summariseSchedule } from "@/lib/schedule";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { CopyId } from "@/components/CopyId";
 import type { ContinuityDivision } from "@/lib/loaders/continuity";
 
 export function ContinuityPreview({
@@ -142,6 +143,7 @@ export function ContinuityPreview({
                     )}
                     {m.isRookie && <span style={{ color: "var(--info)", fontSize: 11, marginLeft: 6 }}>NEW</span>}
                     {fromName && <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>← {fromName}</span>}
+                    <CopyId id={m.discordId} style={{ marginLeft: 6, verticalAlign: "middle" }} />
                   </span>
                   <span className="muted" style={{ fontSize: 11, minWidth: 78, textAlign: "right" }} title="Last-season standing">
                     {m.standing ? `#${m.standing.rank} · ${m.standing.record}` : m.isRookie ? "—" : "no games"}
