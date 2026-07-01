@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { ArrowLeft, Crown, Shuffle } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
-import { getDraftSetup, getDraft } from "@/lib/services/draft";
+import { getDraftSetup, getDraft, getDraftEditData } from "@/lib/services/draft";
 import { Callout } from "@/components/Callout";
 import { ActionFlashForm } from "@/components/ActionFlashForm";
 import { SubmitButton } from "@/components/SubmitButton";
 import { ConfirmButton } from "@/components/ConfirmButton";
-import { setupDraftAction, resetDraftAction, makePickAction } from "./actions";
+import { FormSelect } from "@/components/FormSelect";
+import { setupDraftAction, resetDraftAction, makePickAction, reassignPickAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -82,6 +83,7 @@ export default async function DraftAdmin({ params }: { params: Promise<{ name: s
     );
   }
   const done = board.state === "DONE" || !board.current;
+  const editData = done ? await getDraftEditData(seasonName) : null;
 
   return (
     <main>
@@ -138,6 +140,24 @@ export default async function DraftAdmin({ params }: { params: Promise<{ name: s
           </div>
         ))}
       </div>
+
+      {/* Fix a pick (imported / completed drafts) */}
+      {done && editData && editData.picks.length > 0 && (
+        <>
+          <h2 className="mt-6 mb-1 text-[1.1rem]">Fix a pick</h2>
+          <div className="card">
+            <p className="sub px-0.5">Reassign a draft slot to the right player. This fixes the draft board, heatmap and each player&apos;s draft round — team membership + seeds are separate (use <Link href={`/admin/seasons/${enc}/roster`}>Roster ops</Link>).</p>
+            <ActionFlashForm action={reassignPickAction}>
+              <input type="hidden" name="season" value={seasonName} />
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="block"><span className="sub">Pick</span><FormSelect name="pickId" options={[{ value: "", label: "— select pick —" }, ...editData.picks.map((p) => ({ value: p.id, label: p.label }))]} /></label>
+                <label className="block"><span className="sub">Should be</span><FormSelect name="playerId" options={[{ value: "", label: "— player —" }, ...editData.players.map((p) => ({ value: p.id, label: p.name }))]} /></label>
+                <SubmitButton size="sm" variant="secondary" pendingText="…">Reassign</SubmitButton>
+              </div>
+            </ActionFlashForm>
+          </div>
+        </>
+      )}
 
       {/* Pool */}
       {!done && (

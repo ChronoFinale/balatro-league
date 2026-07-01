@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { isAdmin } from "@/lib/auth";
-import { setupDraft, resetDraft, makePick } from "@/lib/services/draft";
+import { setupDraft, resetDraft, makePick, reassignDraftPick } from "@/lib/services/draft";
 import type { ActionResult } from "@/lib/action-result";
 
 function rev(season: string) {
@@ -20,6 +20,19 @@ export async function setupDraftAction(_prev: ActionResult, formData: FormData):
     return { ok: true, message: `Draft built: ${r.teams} teams · ${r.rounds} rounds · ${r.picks} picks (${r.players} in pool).` };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Setup failed." };
+  }
+}
+
+export async function reassignPickAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
+  const season = String(formData.get("season") ?? "");
+  try {
+    await reassignDraftPick(String(formData.get("pickId") ?? ""), String(formData.get("playerId") ?? ""));
+    rev(season);
+    revalidatePath(`/seasons/${encodeURIComponent(season)}/draft`);
+    return { ok: true, message: "Pick reassigned." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Could not reassign." };
   }
 }
 

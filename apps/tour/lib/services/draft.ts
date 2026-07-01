@@ -174,6 +174,40 @@ export async function getDraft(seasonName: string) {
   };
 }
 
+// ── Draft-pick EDITOR (fix an imported/completed draft) ────────────────────
+// The live board's pool is the approved-signup set (empty for imported seasons), so
+// editing a finished draft needs its own path: list every pick + a pool of everyone
+// rostered that season, and reassign a pick to a different player.
+export async function getDraftEditData(seasonName: string) {
+  const season = await prisma.tourSeason.findUnique({ where: { name: seasonName }, include: { draft: { select: { id: true } } } });
+  if (!season?.draft) return null;
+  const picks = await prisma.draftPick.findMany({ where: { draftId: season.draft.id }, orderBy: [{ teamSeasonId: "asc" }, { round: "asc" }] });
+  const tsIds = [...new Set(picks.map((p) => p.teamSeasonId))];
+  const teamSeasons = await prisma.teamSeason.findMany({ where: { id: { in: tsIds } }, include: { team: true } });
+  const tName = new Map(teamSeasons.map((t) => [t.id, t.team.name]));
+  const entries = await prisma.rosterEntry.findMany({ where: { roster: { teamSeason: { seasonId: season.id } } }, select: { playerId: true } });
+  const pids = [...new Set([...entries.map((e) => e.playerId), ...picks.map((p) => p.playerId).filter((x): x is string => !!x)])];
+  const players = await prisma.player.findMany({ where: { id: { in: pids } }, select: { id: true, displayName: true } });
+  const pName = new Map(players.map((p) => [p.id, p.displayName]));
+  return {
+    picks: picks
+      .map((p) => ({ id: p.id, sort: `${tName.get(p.teamSeasonId) ?? ""}${p.round}`, label: `${tName.get(p.teamSeasonId) ?? "?"} · R${p.round} · ${p.playerId ? pName.get(p.playerId) ?? "?" : "(empty)"}` }))
+      .sort((a, b) => a.sort.localeCompare(b.sort)),
+    players: players.map((p) => ({ id: p.id, name: p.displayName })).sort((a, b) => a.name.localeCompare(b.name)),
+  };
+}
+
+// Reassign a single draft pick to a different player (fixes the draft board / heatmap /
+// R# display). Roster membership is separate — use Roster ops for who's actually on a team.
+export async function reassignDraftPick(pickId: string, newPlayerId: string) {
+  if (!pickId) throw new Error("Pick a slot to fix.");
+  if (!newPlayerId) throw new Error("Pick the player it should be.");
+  const player = await prisma.player.findUnique({ where: { id: newPlayerId }, select: { id: true } });
+  if (!player) throw new Error("No such player.");
+  await prisma.draftPick.update({ where: { id: pickId }, data: { playerId: newPlayerId } });
+  return { ok: true };
+}
+
 // Assign the on-the-clock pick to a player from the approved pool, then advance.
 // When the last slot fills, mark the draft DONE + materialize rosters.
 export async function makePick(seasonName: string, playerId: string) {
