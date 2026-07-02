@@ -1,13 +1,16 @@
 // Periodic sweep for stale match sessions. Runs on bot boot (to catch
 // expirations that happened during a redeploy) and every minute thereafter.
 //
-// Five passes:
+// Six passes:
 //   1. WAITING_ACCEPT past expiresAt → cancel (5 min default expiry,
 //      handleAccept also checks but the sweep is the safety net when
 //      nobody clicks at all).
+//   1b. An UNDERWAY match (a game has started) idle > 3h → auto-PAUSE it
+//      (not cancel), so the 7-day paused grace protects it. Runs before
+//      pass 2 so an in-progress match never reaches the 24h idle-cancel.
 //   2. Any non-terminal state (excluding PAUSED) with updatedAt > 24h
-//      ago → cancel as 'abandoned'. Catches mid-game sessions where
-//      players ghosted. PAUSED gets its own longer grace via pass 3.
+//      ago → cancel as 'abandoned'. Catches ghosted setups (pre-game-1)
+//      that pass 1b intentionally skips. PAUSED gets its grace via pass 3.
 //   3. PAUSED sessions with pausedAt > 7d ago → cancel. Players who
 //      pause are explicitly opting in to "we'll come back" — the long
 //      grace lets life happen without the idle sweep killing the match.
@@ -36,10 +39,31 @@ import { enqueueBootstrapDivision, enqueueLeagueInfoRefresh } from "./queue.js";
 import { recordAudit, SYSTEM_ACTOR } from "./audit.js";
 import { applyPendingMatchMmr } from "./mmr-live.js";
 import { sweepQueueMatches } from "./league-queue.js";
+import { tryGetDiscordClient } from "./discord.js";
+import { renderMatch } from "./match-render.js";
+import type { MatchSession } from "@prisma/client";
 
 const SWEEP_INTERVAL_MS = 60 * 1000;
 const IDLE_CANCEL_HOURS = 24;
 const PAUSED_CANCEL_DAYS = 7;
+// A match that's actually UNDERWAY (a game has started) idle this long gets
+// auto-PAUSED instead of left for the 24h idle-cancel — pausing preserves it
+// (7-day grace) so a match players walked away from mid-game isn't destroyed.
+const AUTO_PAUSE_HOURS = 3;
+// "A game has started" = playing game 1, or anywhere in games 2/3. Deliberately
+// excludes the pre-game-1 ban/pick SETUP and the unaccepted WAITING_ACCEPT invite
+// (those keep their existing expiry / 24h-idle handling), plus PAUSED/terminal.
+const IN_PROGRESS_STATES: MatchSession["state"][] = [
+  "GAME_1_PLAYING",
+  "GAME_2_CHOOSE_FIRST",
+  "GAME_2_BAN",
+  "GAME_2_PICK",
+  "GAME_2_PLAYING",
+  "GAME_3_CHOOSE_FIRST",
+  "GAME_3_BAN",
+  "GAME_3_PICK",
+  "GAME_3_PLAYING",
+];
 
 let cachedRest: REST | null = null;
 function rest(): REST {
@@ -92,6 +116,83 @@ export async function sweepExpiredInvites(): Promise<number> {
   }
   console.log(`[match-sweep] cancelled ${expired.length} expired invite(s)`);
   return expired.length;
+}
+
+// Re-render a just-paused session's live message to the paused UI (so the
+// Resume button appears) and ping both players — Discord doesn't notify on edits,
+// so the ping is what actually tells them to come back. Best-effort: any failure
+// is logged and swallowed (the DB pause already protected the match).
+async function notifyAutoPaused(session: MatchSession): Promise<void> {
+  const client = tryGetDiscordClient();
+  if (!client) return;
+  const channelId = session.threadId ?? session.channelId;
+  if (!channelId) return;
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (!channel || !("send" in channel) || !("messages" in channel)) return;
+  const [playerA, playerB] = await Promise.all([
+    prisma.player.findUnique({ where: { id: session.playerAId } }),
+    prisma.player.findUnique({ where: { id: session.playerBId } }),
+  ]);
+  if (!playerA || !playerB) return;
+  if (session.matchMessageId) {
+    try {
+      const { content, embeds, components } = renderMatch(session, playerA, playerB);
+      await channel.messages.edit(session.matchMessageId, { content, embeds, components });
+    } catch (err) {
+      logDiscordError("match-sweep.auto-pause.render", err, { sessionId: session.id, threadId: channelId });
+    }
+  }
+  await channel
+    .send({
+      content:
+        `⏸️ <@${playerA.discordId}> <@${playerB.discordId}> — this match was **auto-paused** after ` +
+        `${AUTO_PAUSE_HOURS}h with no activity so it doesn't get cancelled. When you're both back, hit ` +
+        `**Resume** on the match message above (or just report your result). It'll stay paused for up ` +
+        `to ${PAUSED_CANCEL_DAYS} days.`,
+    })
+    .catch((err) => logDiscordError("match-sweep.auto-pause.notify", err, { sessionId: session.id, threadId: channelId }));
+}
+
+// Auto-pause matches that are actually underway (a game has started) but idle for
+// AUTO_PAUSE_HOURS+. Instead of letting them ride to the 24h idle-cancel, pause
+// them — exactly like a manual pause (pausedFromState so Resume restores the
+// phase) — so the 7-day paused grace protects them. Catches the common "played
+// but forgot to report the winner, then walked away" case.
+export async function sweepAutoPauseIdle(): Promise<number> {
+  const cutoff = new Date(Date.now() - AUTO_PAUSE_HOURS * 60 * 60 * 1000);
+  const idle = await prisma.matchSession.findMany({
+    where: {
+      state: { in: IN_PROGRESS_STATES },
+      updatedAt: { lt: cutoff },
+    },
+    take: 50,
+  });
+  if (idle.length === 0) return 0;
+
+  let paused = 0;
+  for (const session of idle) {
+    const updated = await prisma.matchSession
+      .update({
+        where: { id: session.id },
+        data: {
+          state: "PAUSED",
+          pausedFromState: session.state,
+          pausedAt: new Date(),
+          pauseInitiatorPlayerId: null,
+          resumeInitiatorPlayerId: null,
+          version: { increment: 1 },
+        },
+      })
+      .catch((err) => {
+        console.warn(`[match-sweep auto-pause] pause ${session.id} failed:`, err);
+        return null;
+      });
+    if (!updated) continue;
+    paused++;
+    await notifyAutoPaused(updated);
+  }
+  console.log(`[match-sweep auto-pause] paused ${paused} idle in-progress session(s) (>${AUTO_PAUSE_HOURS}h)`);
+  return paused;
 }
 
 // Cancel sessions stuck in a non-terminal state with no activity for
@@ -354,6 +455,7 @@ export async function sweepScheduledStarts(): Promise<number> {
 export function startMatchSweep(): void {
   // Run all passes once immediately on boot.
   sweepExpiredInvites().catch((err) => console.warn("[match-sweep] boot expiry sweep failed:", err));
+  sweepAutoPauseIdle().catch((err) => console.warn("[match-sweep] boot auto-pause sweep failed:", err));
   sweepIdleSessions().catch((err) => console.warn("[match-sweep] boot idle sweep failed:", err));
   sweepPausedSessions().catch((err) => console.warn("[match-sweep] boot paused sweep failed:", err));
   sweepLeakedThreads().catch((err) => console.warn("[match-sweep] boot leaked sweep failed:", err));
@@ -366,6 +468,7 @@ export function startMatchSweep(): void {
     .catch((err) => console.warn("[match-sweep] boot queue sweep failed:", err));
   setInterval(() => {
     sweepExpiredInvites().catch((err) => console.warn("[match-sweep] expiry tick failed:", err));
+    sweepAutoPauseIdle().catch((err) => console.warn("[match-sweep] auto-pause tick failed:", err));
     sweepIdleSessions().catch((err) => console.warn("[match-sweep] idle tick failed:", err));
     sweepPausedSessions().catch((err) => console.warn("[match-sweep] paused tick failed:", err));
     sweepLeakedThreads().catch((err) => console.warn("[match-sweep] leaked tick failed:", err));
