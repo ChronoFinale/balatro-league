@@ -22,7 +22,7 @@ function PickButton({ season, s, side, signedIn }: { season: string; s: PickSet;
       {picked && <Check className="size-3" style={{ color: "var(--accent)" }} />}
     </span>
   );
-  if (s.decided || !signedIn) {
+  if (s.locked || !signedIn) {
     return <span style={{ padding: "3px 8px", borderRadius: 6, border: `1px solid ${border}`, background: bg, fontWeight: picked || isWinner ? 600 : 400 }}>{inner}</span>;
   }
   return (
@@ -52,7 +52,7 @@ export default async function SeasonPickem({ params }: { params: Promise<{ name:
     <main>
       <p><Link href={`/seasons/${enc}`} className="inline-flex items-center gap-1"><ArrowLeft className="size-3.5" /> {name}</Link></p>
       <h1 className="flex items-center gap-2"><Target className="size-5 text-[var(--accent)]" /> Pick&apos;em</h1>
-      <p className="sub">Predict the winner of each set. Picks lock when the set is played · +1 per correct pick.{pickem.openCount === 0 ? " No open sets right now — check back when the week's matchups are posted." : ` ${pickem.openCount} open.`}</p>
+      <p className="sub">Predict the winner of each set — change your pick any time until the match starts · +1 per correct pick.{pickem.openCount === 0 ? " No open sets right now — check back when the week's matchups are posted." : ` ${pickem.openCount} open.`}</p>
 
       {!viewer.discordId && (
         <div className="card"><p className="sub">Sign in with Discord to make picks — you can still see everyone&apos;s standing below.</p></div>
@@ -95,7 +95,7 @@ export default async function SeasonPickem({ params }: { params: Promise<{ name:
                     <td><PickButton season={name} s={s} side="A" signedIn={!!viewer.discordId} /></td>
                     <td className="muted num" style={{ textAlign: "center", width: 32 }}>vs</td>
                     <td style={{ textAlign: "right" }}><PickButton season={name} s={s} side="B" signedIn={!!viewer.discordId} /></td>
-                    <td className="sub" style={{ textAlign: "right", width: 90 }}>{s.decided ? "final" : "open"}{s.teamA && s.teamB ? "" : ""}</td>
+                    <td className="sub" style={{ textAlign: "right", width: 90 }}>{s.decided ? "final" : s.locked ? "locked" : "open"}</td>
                   </tr>
                 );
               })}

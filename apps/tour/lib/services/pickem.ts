@@ -16,6 +16,7 @@ export interface PickSet {
   teamBId: string | null;
   teamB: string | null;
   decided: boolean;
+  locked: boolean; // the set has started (left PROPOSED/SCHEDULED) — no more picks
   winnerId: string | null;
   myPick: string | null; // the viewer's picked playerId, if any
 }
@@ -52,7 +53,7 @@ export async function getSeasonPickem(seasonName: string, viewerDiscordId?: stri
 
   const sets = await prisma.tourSet.findMany({
     where: { seasonId },
-    select: { id: true, week: true, playerAId: true, playerBId: true, matchId: true, teamSeasonAId: true, teamSeasonBId: true },
+    select: { id: true, week: true, playerAId: true, playerBId: true, matchId: true, teamSeasonAId: true, teamSeasonBId: true, status: true },
     orderBy: [{ week: "asc" }],
   });
   const winnerBySet = await winnersForSets(sets);
@@ -75,7 +76,8 @@ export async function getSeasonPickem(seasonName: string, viewerDiscordId?: stri
   for (const s of sets) {
     const winnerId = winnerBySet.get(s.id) ?? null;
     const decided = winnerId != null;
-    if (!decided) openCount++;
+    const locked = decided || !(OPEN_STATUSES as readonly string[]).includes(s.status);
+    if (!locked) openCount++;
     const wk = s.week ?? 0;
     const row: PickSet = {
       setId: s.id,
@@ -89,6 +91,7 @@ export async function getSeasonPickem(seasonName: string, viewerDiscordId?: stri
       teamBId: s.teamSeasonBId,
       teamB: s.teamSeasonBId ? tName.get(s.teamSeasonBId) ?? null : null,
       decided,
+      locked,
       winnerId,
       myPick: myBySet.get(s.id) ?? null,
     };
@@ -98,11 +101,15 @@ export async function getSeasonPickem(seasonName: string, viewerDiscordId?: stri
   return { seasonId, weeks, openCount };
 }
 
-// Record/replace a viewer's pick for a set. Only while the set is still open.
+// Record/replace a viewer's pick for a set. Picks lock the moment the set STARTS —
+// i.e. once it leaves PROPOSED/SCHEDULED (a report lands or a live match begins) —
+// not merely when the result posts. You can update your pick any time before that.
+const OPEN_STATUSES = ["PROPOSED", "SCHEDULED"] as const;
 export async function makePick(discordId: string, name: string | null, setId: string, pickedPlayerId: string): Promise<void> {
-  const set = await prisma.tourSet.findUnique({ where: { id: setId }, select: { id: true, seasonId: true, playerAId: true, playerBId: true, matchId: true } });
+  const set = await prisma.tourSet.findUnique({ where: { id: setId }, select: { id: true, seasonId: true, playerAId: true, playerBId: true, matchId: true, status: true } });
   if (!set) throw new Error("No such set.");
   if (pickedPlayerId !== set.playerAId && pickedPlayerId !== set.playerBId) throw new Error("Pick must be one of the two players.");
+  if (!(OPEN_STATUSES as readonly string[]).includes(set.status)) throw new Error("That set has started — picks are locked.");
   if (set.matchId) {
     const m = await prisma.match.findUnique({ where: { id: set.matchId }, select: { winnerId: true } });
     if (m?.winnerId) throw new Error("That set is already decided.");
