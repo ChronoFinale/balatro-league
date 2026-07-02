@@ -23,6 +23,7 @@ export interface Viewer {
   avatar: string | null;
   tier: Tier;
   playerId: string | null; // resolved core Player.id when the discordId is mapped
+  roleIds: string[]; // the viewer's Tour-guild role ids (for ROLE-based capability grants)
 }
 
 const ADMIN_TIERS: readonly Tier[] = ["OWNER", "TO"];
@@ -86,6 +87,7 @@ export async function getViewer(): Promise<Viewer> {
     avatar: user?.avatar ?? null,
     tier,
     playerId,
+    roleIds,
   };
 }
 
