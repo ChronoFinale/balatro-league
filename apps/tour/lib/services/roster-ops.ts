@@ -4,7 +4,12 @@
 // for the season) stays in RosterEntry, which is left untouched; this layer is
 // purely lineup-over-time. One team per season, so a player is on at most one team.
 import { prisma } from "../db";
+import { enqueueRoleReconcile } from "../queue";
 import { getSeasonStrikeCounts, getCareerStrikeCounts, getSeasonStrikeLog, AT_RISK_THRESHOLD } from "./strikes";
+
+// Roster mutations change who should hold the season's Discord roles — nudge the bot.
+// Fire-and-forget (enqueueRoleReconcile never throws).
+const queueRoleSync = (seasonName: string) => enqueueRoleReconcile(seasonName);
 
 export const KIND_LABEL: Record<string, string> = {
   DRAFTED: "Drafted",
@@ -132,6 +137,8 @@ export async function setCoCaptain(teamSeasonId: string, playerId: string, isCoC
   const entries = await prisma.rosterEntry.findMany({ where: { playerId, roster: { teamSeasonId } }, select: { id: true } });
   if (!entries.length) throw new Error("That player isn't on this team's roster.");
   await prisma.rosterEntry.updateMany({ where: { id: { in: entries.map((e) => e.id) } }, data: { isCoCaptain } });
+  const ts = await prisma.teamSeason.findUnique({ where: { id: teamSeasonId }, select: { season: { select: { name: true } } } });
+  if (ts) await queueRoleSync(ts.season.name);
   return { ok: true };
 }
 
@@ -148,6 +155,7 @@ export async function changeCaptain(seasonName: string, teamSeasonId: string, ne
     data: { seasonId, teamSeasonId, kind: "CAPTAIN_CHANGE", playerId: newCaptainPlayerId, replacesPlayerId: ts.captainPlayerId, effectiveWeek, reason: reason.trim() || "captain change", createdBy: by },
   });
   await prisma.teamSeason.update({ where: { id: teamSeasonId }, data: { captainPlayerId: newCaptainPlayerId } });
+  await queueRoleSync(seasonName);
   return { ok: true };
 }
 
@@ -224,6 +232,7 @@ export async function substitute(seasonName: string, teamSeasonId: string, outPl
   await prisma.rosterMove.create({
     data: { seasonId, teamSeasonId, kind: "SUB", playerId: inPlayerId, outPlayerId, effectiveWeek, untilWeek, seed, reason: reason.trim(), createdBy: by },
   });
+  await queueRoleSync(seasonName);
   return { ok: true };
 }
 
@@ -233,6 +242,7 @@ export async function recordDeparture(kind: "QUIT" | "BANNED", seasonName: strin
   if (!playerId) throw new Error("Pick the player.");
   if (!effectiveWeek || effectiveWeek < 1) throw new Error("Pick the week it takes effect.");
   await prisma.rosterMove.create({ data: { seasonId, teamSeasonId, kind, playerId, effectiveWeek, reason: reason.trim(), createdBy: by } });
+  await queueRoleSync(seasonName);
   return { ok: true };
 }
 
@@ -241,6 +251,7 @@ export async function reinstate(seasonName: string, teamSeasonId: string, player
   if (!playerId) throw new Error("Pick the player.");
   if (!effectiveWeek || effectiveWeek < 1) throw new Error("Pick the week it takes effect.");
   await prisma.rosterMove.create({ data: { seasonId, teamSeasonId, kind: "REINSTATED", playerId, effectiveWeek, reason: reason.trim() || "reinstated", createdBy: by } });
+  await queueRoleSync(seasonName);
   return { ok: true };
 }
 
@@ -255,12 +266,18 @@ export async function replacePlayer(seasonName: string, teamSeasonId: string, in
   await prisma.rosterMove.create({
     data: { seasonId, teamSeasonId, kind: "ADDED", playerId: inPlayerId, replacesPlayerId: replacesPlayerId || null, effectiveWeek, seed, reason: reason.trim(), createdBy: by },
   });
+  await queueRoleSync(seasonName);
   return { ok: true };
 }
 
 // Escape hatch for a mis-entered move (the proper "they came back" is reinstate).
 export async function removeMove(moveId: string) {
+  const move = await prisma.rosterMove.findUnique({ where: { id: moveId }, select: { seasonId: true } });
   await prisma.rosterMove.delete({ where: { id: moveId } });
+  if (move) {
+    const season = await prisma.tourSeason.findUnique({ where: { id: move.seasonId }, select: { name: true } });
+    if (season) await queueRoleSync(season.name);
+  }
 }
 
 // One-time backfill: seed DRAFTED moves so seasons drafted before this model still derive

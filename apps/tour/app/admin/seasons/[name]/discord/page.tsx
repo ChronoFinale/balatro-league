@@ -1,8 +1,11 @@
 import Link from "next/link";
-import { ArrowLeft, ShieldCheck, AlertTriangle, Crown, Users } from "lucide-react";
+import { ArrowLeft, ShieldCheck, AlertTriangle, Crown, Users, RefreshCw } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 import { getRolePreview } from "@/lib/services/discord-roles";
 import { Callout } from "@/components/Callout";
+import { ActionFlashForm } from "@/components/ActionFlashForm";
+import { SubmitButton } from "@/components/SubmitButton";
+import { syncRolesNowAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +51,11 @@ export default async function DiscordRolesAdmin({ params }: { params: Promise<{ 
           "Roles not created yet — the bot will create the Player + Captain roles on its first sync (needs the Tour bot token + guild)."
         )}
       </Callout>
+
+      <ActionFlashForm action={syncRolesNowAction} className="mb-3">
+        <input type="hidden" name="season" value={seasonName} />
+        <SubmitButton variant="secondary" size="sm" pendingText="Queueing…"><RefreshCw className="size-3.5" /> Sync now</SubmitButton>
+      </ActionFlashForm>
 
       {p.unmappable.length > 0 && (
         <Callout type="admin">

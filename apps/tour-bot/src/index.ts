@@ -1,0 +1,78 @@
+// Pizza Power Team Tour bot — entry point. Mirrors the league bot's boot pattern:
+// graceful intent fallback (GuildMembers is privileged; without it role sync degrades to
+// adds-only), a hard guild lock (TOUR_GUILD_ID), a Railway healthcheck, and pg-boss
+// workers for web-enqueued jobs. The bot is "thin hands": ALL reads/writes go through the
+// tour web's /api/bot/* service layer (src/api.ts) — no Prisma, no domain logic here.
+import { Client, GatewayIntentBits, Events } from "discord.js";
+import { env } from "./env";
+import { startHealthCheck } from "./healthcheck";
+import { startQueue } from "./queue";
+
+// Intent ladder: try with GuildMembers (needed to enumerate role holders for full
+// reconciliation); if the portal doesn't grant it, fall back to Guilds-only and keep
+// running (role sync becomes adds-only and logs it).
+const INTENT_LADDER: { name: string; intents: GatewayIntentBits[] }[] = [
+  { name: "full (Guilds + GuildMembers)", intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] },
+  { name: "reduced (Guilds only)", intents: [GatewayIntentBits.Guilds] },
+];
+
+async function login(): Promise<Client> {
+  let lastErr: unknown;
+  for (const rung of INTENT_LADDER) {
+    const client = new Client({ intents: rung.intents });
+    try {
+      await client.login(env.DISCORD_TOKEN);
+      console.log(`[boot] logged in with ${rung.name} intents`);
+      return client;
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/disallowed intents/i.test(msg)) {
+        console.warn(`[boot] ${rung.name} rejected (privileged intent not enabled) — trying the next rung`);
+        client.destroy();
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
+async function main() {
+  startHealthCheck();
+  const client = await login();
+
+  client.once(Events.ClientReady, (c) => {
+    console.log(`[boot] ready as ${c.user.tag}`);
+    const guild = c.guilds.cache.get(env.TOUR_GUILD_ID);
+    if (guild) console.log(`[boot] guild lock: ${guild.name} (${guild.id})`);
+    else console.warn(`[boot] NOT in the configured guild ${env.TOUR_GUILD_ID} yet — invite the bot there.`);
+  });
+
+  // Guild lock — refuse interactions anywhere but the configured guild (slash commands
+  // arrive in C4; the lock is in place from day one).
+  client.on(Events.InteractionCreate, async (interaction) => {
+    if (interaction.guildId !== env.TOUR_GUILD_ID) {
+      if (interaction.isRepliable()) {
+        await interaction.reply({ content: "This bot only serves the Pizza Power Team Tour server.", ephemeral: true }).catch(() => {});
+      }
+      return;
+    }
+    // C4 will route /ppt commands here.
+  });
+
+  await startQueue(client);
+
+  const shutdown = () => {
+    console.log("[boot] shutting down");
+    client.destroy();
+    process.exit(0);
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+}
+
+main().catch((err) => {
+  console.error("[boot] fatal:", err);
+  process.exit(1);
+});

@@ -10,6 +10,7 @@ import { prisma } from "../db";
 import { buildDraft } from "@balatro/tour-core";
 import { getAllTimePlayers } from "../stats";
 import { notifyLive } from "../notify";
+import { enqueueRoleReconcile } from "../queue";
 
 export async function getDraftSetup(seasonName: string) {
   const season = await prisma.tourSeason.findUnique({
@@ -293,6 +294,7 @@ export async function makePick(seasonName: string, playerId: string) {
   if (stillOpen === 0) {
     await prisma.draft.update({ where: { id: season.draft.id }, data: { state: "DONE" } });
     await materializeRosters(season.id, season.draft.id);
+    await enqueueRoleReconcile(seasonName); // rosters exist now — provision + assign Discord roles
   } else if (season.draft.state === "PENDING") {
     await prisma.draft.update({ where: { id: season.draft.id }, data: { state: "ACTIVE" } });
   }
