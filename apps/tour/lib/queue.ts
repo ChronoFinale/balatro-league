@@ -54,3 +54,34 @@ export async function enqueueRoleReconcile(seasonName: string): Promise<void> {
     console.warn("[pg-boss tour-web] enqueueRoleReconcile failed:", err);
   }
 }
+
+// A set was decided (confirmed / forfeit) — post it to #results. Singleton per set so
+// re-confirms / admin re-reports never double-post.
+export async function enqueueAnnounceResult(setId: string): Promise<void> {
+  try {
+    await ensureStarted();
+    await getBoss().send("tour.announce.result", { setId }, {
+      retryLimit: 3,
+      retryBackoff: true,
+      singletonKey: `announce-set:${setId}`,
+      singletonSeconds: 60,
+    });
+  } catch (err) {
+    console.warn("[pg-boss tour-web] enqueueAnnounceResult failed:", err);
+  }
+}
+
+// A matchup's team result just became decided — post the rollup banner.
+export async function enqueueAnnounceMatchup(matchupId: string): Promise<void> {
+  try {
+    await ensureStarted();
+    await getBoss().send("tour.announce.matchup", { matchupId }, {
+      retryLimit: 3,
+      retryBackoff: true,
+      singletonKey: `announce-matchup:${matchupId}`,
+      singletonSeconds: 60,
+    });
+  } catch (err) {
+    console.warn("[pg-boss tour-web] enqueueAnnounceMatchup failed:", err);
+  }
+}

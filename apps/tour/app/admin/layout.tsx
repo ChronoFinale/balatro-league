@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Settings, Fingerprint, Users, Activity, LayoutDashboard, KeyRound } from "lucide-react";
+import { Settings, Fingerprint, Users, Activity, LayoutDashboard, KeyRound, Settings2 } from "lucide-react";
 import { getViewer, isAdmin } from "@/lib/auth";
 import { hasAnyAccess } from "@/lib/permissions";
 import { Callout } from "@/components/Callout";
@@ -13,6 +13,7 @@ const ADMIN_NAV = [
   { href: "/admin/access", label: "Access", icon: KeyRound },
   { href: "/admin/identity", label: "Identity", icon: Fingerprint },
   { href: "/admin/teams", label: "Teams", icon: Users },
+  { href: "/admin/config", label: "Config", icon: Settings2 },
   { href: "/admin/env-health", label: "System", icon: Activity },
 ];
 

@@ -496,6 +496,16 @@ model RoleBinding {
   @@index([tier])
 }
 
+// ── Site/bot configuration (key/value — league LeagueConfig pattern) ────────
+// Channel ids for the bot (channel.results, channel.draft, channel.announcements),
+// the slash-command registration hash (bot.commandHash), and future knobs. Editable
+// at /admin/config; the bot reads via /api/bot/config.
+model TourConfig {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 // ── Fine-grained mod capabilities ───────────────────────────────────────────
 // A TO delegates a slice of their power (news, rankings, rosters, draft, schedule) to a
 // specific Discord USER or a Discord ROLE, optionally scoped to one season. Layered ON TOP

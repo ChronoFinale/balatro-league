@@ -8,8 +8,11 @@ import type { Client, Guild } from "discord.js";
 import { env } from "./env";
 import { apiGet } from "./api";
 import { reconcileSeasonRoles } from "./roles";
+import { announceSet, announceMatchup } from "./announce";
 
 const RECONCILE_QUEUE = "tour.roles.reconcile";
+const ANNOUNCE_SET_QUEUE = "tour.announce.result";
+const ANNOUNCE_MATCHUP_QUEUE = "tour.announce.matchup";
 
 async function guildOf(client: Client): Promise<Guild> {
   return client.guilds.cache.get(env.TOUR_GUILD_ID) ?? (await client.guilds.fetch(env.TOUR_GUILD_ID));
@@ -31,6 +34,22 @@ export async function startQueue(client: Client): Promise<PgBoss> {
         `[roles] ${season}: +${r.added} -${r.removed} (skipped ${r.skipped}, unmappable ${r.unmappable})` +
           `${r.provisioned.length ? ` provisioned ${r.provisioned.join(" ")}` : ""}${r.addsOnly ? " [adds-only: no GuildMembers intent]" : ""}`,
       );
+    }
+  });
+
+  // Results → #results (channel.results in TourConfig; unset = log + complete).
+  await boss.createQueue(ANNOUNCE_SET_QUEUE).catch(() => {});
+  await boss.work(ANNOUNCE_SET_QUEUE, { batchSize: 1 }, async (jobs) => {
+    for (const job of jobs) {
+      const { setId } = job.data as { setId: string };
+      if (setId) await announceSet(client, setId);
+    }
+  });
+  await boss.createQueue(ANNOUNCE_MATCHUP_QUEUE).catch(() => {});
+  await boss.work(ANNOUNCE_MATCHUP_QUEUE, { batchSize: 1 }, async (jobs) => {
+    for (const job of jobs) {
+      const { matchupId } = job.data as { matchupId: string };
+      if (matchupId) await announceMatchup(client, matchupId);
     }
   });
 

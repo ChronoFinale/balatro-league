@@ -8,6 +8,7 @@
 import { prisma } from "../db";
 import { rollupMatchup } from "./report";
 import { notifyLive } from "../notify";
+import { enqueueAnnounceResult } from "../queue";
 import { isDeck, isStake } from "../balatro";
 
 async function loadSetForPlayer(setId: string, playerId: string) {
@@ -101,6 +102,7 @@ export async function playerConfirmSet(setId: string, playerId: string) {
   await prisma.match.update({ where: { id: set.matchId }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
   await prisma.tourSet.update({ where: { id: setId }, data: { status: "CONFIRMED" } });
   if (set.matchupId) await rollupMatchup(set.matchupId);
+  await enqueueAnnounceResult(setId);
   return { ok: true };
 }
 

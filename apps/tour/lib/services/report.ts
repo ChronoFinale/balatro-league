@@ -6,6 +6,7 @@
 // completed matchups, exactly like the imported team-only seasons.
 import { prisma } from "../db";
 import { notifyLive } from "../notify";
+import { enqueueAnnounceResult, enqueueAnnounceMatchup } from "../queue";
 
 export async function reportSet(setId: string, gamesTeamA: number, gamesTeamB: number) {
   const set = await prisma.tourSet.findUnique({ where: { id: setId } });
@@ -41,6 +42,7 @@ export async function reportSet(setId: string, gamesTeamA: number, gamesTeamB: n
   }
   await prisma.tourSet.update({ where: { id: setId }, data: { matchId, status: "CONFIRMED" } });
   if (set.matchupId) await rollupMatchup(set.matchupId);
+  await enqueueAnnounceResult(setId);
   return { ok: true };
 }
 
@@ -72,6 +74,7 @@ export async function forfeitSet(setId: string, forfeitTeam: "A" | "B") {
   else matchId = (await prisma.match.create({ data })).id;
   await prisma.tourSet.update({ where: { id: setId }, data: { matchId, status: "FORFEIT" } });
   if (set.matchupId) await rollupMatchup(set.matchupId);
+  await enqueueAnnounceResult(setId);
   return { ok: true };
 }
 
@@ -118,10 +121,13 @@ export async function rollupMatchup(matchupId: string) {
   const decided = setsA >= setsToWin || setsB >= setsToWin || (total > 0 && confirmed === total);
   if (decided) {
     const winnerTeamSeasonId = setsA > setsB ? matchup.teamSeasonAId : setsB > setsA ? matchup.teamSeasonBId : null;
+    // Only announce the team-result banner the FIRST time it becomes decided.
+    const wasDecided = matchup.setsWonA != null && matchup.setsWonB != null;
     await prisma.matchup.update({
       where: { id: matchupId },
       data: { setsWonA: setsA, setsWonB: setsB, gamesWonA: gamesA, gamesWonB: gamesB, winnerTeamSeasonId },
     });
+    if (!wasDecided) await enqueueAnnounceMatchup(matchupId);
   } else {
     await prisma.matchup.update({
       where: { id: matchupId },
