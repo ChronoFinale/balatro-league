@@ -196,6 +196,41 @@ guild (`TOUR_GUILD_ID`) + staging `TOUR_WEB_URL`/`TOUR_ADMIN_TOKEN`; role sync, 
 draft channel, and match threads all rehearse in the test server, then go live by flipping
 env vars. Local dev (embedded PG) remains the first line for every feature.
 
+## The draft as a show (owner-requested; community-driven)
+
+**Tenet #1 (applies to everything): never make it robotic.** The platform gives people
+levers to run things their way — it enables the show, it never becomes the show.
+
+### STREAM capability + streamer draft pacing
+- New `Capability.STREAM`, grantable at `/admin/access` (person or Discord role, season-
+  scopable) — slots straight into the existing ModGrant system.
+- Draft gains `pacing: OPEN | CASTED` + `unlockedThrough Int` (pickIndex). OPEN = today's
+  async draft (default). CASTED = picks beyond `unlockedThrough` are held: `makePick`
+  refuses them, the board + overlay show "held for the cast".
+- Streamer console (web, gated STREAM capability OR TO — TOs can always pace): toggle
+  cast mode, **Unlock next pick**, re-lock. Captains still make their own picks — the
+  pacer only controls the reveal rhythm.
+
+### Draft predictions — two ways to play (drop-in friendly, per the tenet)
+- **Mock board (pre-draft):** `DraftPrediction { seasonId, predictorDiscordId,
+  predictorName, slot (overall #), predictedPlayerId }` — fill round-1 slots before the
+  draft; locks when the draft starts. Exact slot = 2, right player anywhere in that
+  round = 1.
+- **Live next-pick guesses (during the draft):** anyone can guess the CURRENT upcoming
+  pick in real time — no mock board needed, play whenever you're free. Guess locks the
+  moment that pick is made; +1 per correct call. The unlock→pick window in CASTED mode
+  is the natural "chat, lock in your guesses" segment.
+- One predictors leaderboard (board pts + live pts shown separately + combined).
+- **Streamer hooks:** `/overlay/draft-predictions/<season>` (SSE-live) — consensus for
+  the upcoming pick ("62% say A2bot"), then "N of M called it!" after the reveal, plus a
+  live predictors leaderboard. AND a public JSON endpoint with the raw prediction data so
+  streamers can build their OWN overlays (enable, don't prescribe).
+
+### Fantasy draft (needs owner design before build)
+- Users assemble a fantasy roster from the signup pool; scored weekly by their players'
+  real results (set wins, upsets?). Open decisions: roster size, one-per-real-team rule
+  vs salary cap, when rosters lock, scoring weights. Season-long engagement loop.
+
 ## Future ideas (owner-flagged, not yet scheduled)
 
 - **Twitch integration** (PizzaPower55's channel is the community hub):

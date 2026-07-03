@@ -178,9 +178,21 @@ export async function teardownSim(seasonName: string): Promise<{ playersDeleted:
   const simDiscordIds = simPlayers.filter((p) => simIds.includes(p.id)).map((p) => p.discordId);
   if (simDiscordIds.length) await prisma.prediction.deleteMany({ where: { predictorDiscordId: { in: simDiscordIds } } });
   await prisma.prediction.deleteMany({ where: { predictorDiscordId: { gte: SIM_FAN_BASE.toString() } } });
+  let playersDeleted = 0;
   if (simIds.length) {
     await prisma.rosterMove.deleteMany({ where: { playerId: { in: simIds } } });
-    await prisma.player.deleteMany({ where: { id: { in: simIds } } });
+    // Sim players can be shared across sim seasons — only delete the ones no
+    // Match still references (players of another live sim season survive).
+    const r = await prisma.player.deleteMany({
+      where: {
+        id: { in: simIds },
+        matchesAsA: { none: {} },
+        matchesAsB: { none: {} },
+        reportedMatches: { none: {} },
+        disputedMatches: { none: {} },
+      },
+    });
+    playersDeleted = r.count;
   }
-  return { playersDeleted: simIds.length };
+  return { playersDeleted };
 }

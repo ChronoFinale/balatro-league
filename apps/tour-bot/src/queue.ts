@@ -92,7 +92,7 @@ export async function startQueue(client: Client): Promise<PgBoss> {
     const list = Array.isArray(seasons) ? seasons : (seasons.seasons ?? []);
     for (const s of list) {
       // Only live-ish seasons need role upkeep; DONE seasons keep their roles frozen.
-      if (s.state && ["SIGNUPS", "DRAFTING", "REGULAR", "PLAYOFFS"].includes(s.state)) {
+      if (s.state && ["SIGNUPS", "SIGNUPS_CLOSED", "DRAFTING", "REGULAR", "PLAYOFFS"].includes(s.state)) {
         await boss.send(RECONCILE_QUEUE, { season: s.name }, { singletonKey: `roles:${s.name}`, singletonSeconds: 30 });
       }
     }

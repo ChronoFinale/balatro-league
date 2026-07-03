@@ -70,15 +70,17 @@ const clean = (v: string | undefined) => {
   return t || null;
 };
 
-// Phases where adding a signup makes sense (the pool is still forming). After the
-// draft builds rosters (REGULAR onward) there's no pool to add to.
-const SIGNUP_OPEN_STATES = ["SIGNUPS", "DRAFTING"] as const;
+// Signups are open ONLY in the SIGNUPS state. SIGNUPS_CLOSED locks the pool while the
+// committee reviews it, sets structure, and builds teams.
+const SIGNUP_OPEN_STATES = ["SIGNUPS"] as const;
 
 // Upsert by (season, discordId) — idempotent, so re-submitting updates the row.
-export async function addSignup(seasonName: string, input: SignupInput) {
+// opts.force lets an ADMIN add a latecomer during the committee window (SIGNUPS_CLOSED);
+// self-serve callers never pass it.
+export async function addSignup(seasonName: string, input: SignupInput, opts?: { force?: boolean }) {
   const season = await prisma.tourSeason.findUnique({ where: { name: seasonName }, select: { id: true, state: true } });
   if (!season) throw new Error(`No season "${seasonName}"`);
-  if (!(SIGNUP_OPEN_STATES as readonly string[]).includes(season.state)) {
+  if (!opts?.force && !(SIGNUP_OPEN_STATES as readonly string[]).includes(season.state)) {
     throw new Error(`Signups are closed for ${seasonName} (it's ${season.state.toLowerCase()}).`);
   }
   const seasonId = season.id;
@@ -166,6 +168,19 @@ export async function priorParticipation(discordIds: string[]): Promise<Map<stri
 // The season currently accepting self-serve signups (SIGNUPS state), if any.
 export async function getOpenSignupSeason() {
   return prisma.tourSeason.findFirst({ where: { state: "SIGNUPS" }, orderBy: { createdAt: "desc" } });
+}
+
+// A season whose signups JUST closed (committee window) — so /signup can say
+// "Signups for X are closed" instead of the generic "no season open".
+export async function getClosedSignupSeason() {
+  return prisma.tourSeason.findFirst({ where: { state: "SIGNUPS_CLOSED" }, orderBy: { createdAt: "desc" } });
+}
+
+// Bulk status move (the review queue's select-all approve/reject).
+export async function setSignupStatusBulk(signupIds: string[], status: SignupStatus): Promise<number> {
+  if (!signupIds.length) return 0;
+  const r = await prisma.signup.updateMany({ where: { id: { in: signupIds } }, data: { status } });
+  return r.count;
 }
 
 export async function getMySignup(seasonId: string, discordId: string) {

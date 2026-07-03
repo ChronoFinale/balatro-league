@@ -4,7 +4,7 @@
 import { prisma } from "./db";
 
 const num = (s: string) => Number(s.match(/(\d+)/)?.[1] ?? 0);
-const ACTIVE_STATES = ["SIGNUPS", "DRAFTING", "REGULAR", "PLAYOFFS"];
+const ACTIVE_STATES = ["SIGNUPS", "SIGNUPS_CLOSED", "DRAFTING", "REGULAR", "PLAYOFFS"];
 
 export interface MySet {
   setId: string;

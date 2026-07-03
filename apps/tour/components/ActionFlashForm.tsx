@@ -14,11 +14,13 @@ export function ActionFlashForm({
   children,
   className,
   style,
+  id,
 }: {
   action: (prev: ActionResult, formData: FormData) => Promise<ActionResult>;
   children: ReactNode;
   className?: string;
   style?: CSSProperties;
+  id?: string; // lets external inputs join via the HTML form="" attribute (e.g. bulk row checkboxes)
 }) {
   const [state, formAction] = useActionState(action, null);
   return (
@@ -28,7 +30,7 @@ export function ActionFlashForm({
           {state.message}
         </div>
       )}
-      <form action={formAction} className={className} style={style}>
+      <form id={id} action={formAction} className={className} style={style}>
         {children}
       </form>
     </div>

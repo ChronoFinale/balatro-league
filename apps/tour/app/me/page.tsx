@@ -10,7 +10,7 @@ import { FormSelect } from "@/components/FormSelect";
 import { SubmitButton } from "@/components/SubmitButton";
 import { DECKS, STAKES } from "@/lib/balatro";
 import { LiveRefresh } from "@/components/LiveRefresh";
-import { reportSetAction, confirmSetAction, disputeSetAction } from "./actions";
+import { reportSetAction, confirmSetAction, disputeSetAction, renameMyTeamAction } from "./actions";
 
 const g = "w-12 rounded border border-[var(--border)] bg-[var(--surface-2)] px-1 py-0.5 text-center";
 const deckOpts = [{ value: "", label: "deck" }, ...DECKS.map((d) => ({ value: d, label: d }))];
@@ -86,7 +86,19 @@ export default async function MyTour() {
                 {home.teams.map((t) => (
                   <tr key={t.teamSeasonId}>
                     <td><Link href={`/seasons/${encodeURIComponent(t.seasonName)}`}>{t.seasonName}</Link>{t.active && <span className="badge" style={{ marginLeft: 6 }}>active</span>}</td>
-                    <td><Link href={`/teams/${t.teamSeasonId}`}>{t.teamName}</Link></td>
+                    <td>
+                      <Link href={`/teams/${t.teamSeasonId}`}>{t.teamName}</Link>
+                      {t.isCaptain && t.active && (
+                        <details className="mt-0.5">
+                          <summary className="sub" style={{ cursor: "pointer" }}>rename</summary>
+                          <ActionFlashForm action={renameMyTeamAction} className="mt-1 flex items-center gap-1.5">
+                            <input type="hidden" name="teamSeasonId" value={t.teamSeasonId} />
+                            <input name="teamName" defaultValue={t.teamName} required maxLength={48} className="w-44 rounded border border-[var(--border)] bg-[var(--surface-2)] px-1.5 py-0.5" />
+                            <SubmitButton size="sm" variant="secondary" pendingText="…">Save</SubmitButton>
+                          </ActionFlashForm>
+                        </details>
+                      )}
+                    </td>
                     <td className="num">{t.seed}</td>
                     <td className="sub">{t.isCaptain ? <span className="inline-flex items-center gap-1"><Crown className="size-3.5 text-[var(--accent)]" /> Captain</span> : "Player"}</td>
                     <td style={{ textAlign: "right" }}><Link href={`/seasons/${encodeURIComponent(t.seasonName)}`}>Season →</Link></td>

@@ -5,10 +5,13 @@ import { prisma } from "../db";
 
 export type SeasonFormat = "SWISS" | "CONFERENCES";
 
+// Creation is MINIMAL by design: structure (format, team size, conferences, playoff
+// field) depends on how many people sign up, so it's decided later in Season settings
+// (during SIGNUPS_CLOSED). Everything beyond `name` is an optional default.
 export interface CreateSeasonInput {
   name: string;
-  format: SeasonFormat;
-  teamSize: number;
+  format?: SeasonFormat;
+  teamSize?: number;
   setsToWin?: number;
   conferenceCount?: number;
   playoffTeams?: number;
@@ -49,9 +52,10 @@ export async function getSeasonAdmin(name: string) {
 export async function createSeason(input: CreateSeasonInput) {
   const name = (input.name ?? "").trim();
   if (!name) throw new Error("Season name is required");
-  if (input.format !== "SWISS" && input.format !== "CONFERENCES") throw new Error("format must be SWISS or CONFERENCES");
+  const format = input.format ?? "CONFERENCES";
+  if (format !== "SWISS" && format !== "CONFERENCES") throw new Error("format must be SWISS or CONFERENCES");
   const teamSize = Number(input.teamSize) || 11;
-  if (teamSize < 1) throw new Error("teamSize must be ≥ 1");
+  if (teamSize < 1) throw new Error("teamSize must be >= 1");
 
   const existing = await prisma.tourSeason.findUnique({ where: { name }, select: { id: true } });
   if (existing) throw new Error(`A season named "${name}" already exists`);
@@ -59,7 +63,7 @@ export async function createSeason(input: CreateSeasonInput) {
   return prisma.tourSeason.create({
     data: {
       name,
-      format: input.format,
+      format,
       teamSize,
       setsToWin: Number(input.setsToWin) || majority(teamSize),
       conferenceCount: Number(input.conferenceCount) || 2,
@@ -68,6 +72,58 @@ export async function createSeason(input: CreateSeasonInput) {
       state: "SIGNUPS",
     },
   });
+}
+
+// ── Conference management (Season settings) ─────────────────────────────────
+// Real conference names are decided AFTER signups close (committee knows the field
+// size). setupDraft consumes these rows; it only invents generic names when none exist.
+export async function listConferences(seasonName: string) {
+  const season = await prisma.tourSeason.findUnique({ where: { name: seasonName }, select: { id: true } });
+  if (!season) throw new Error(`No season "${seasonName}"`);
+  return prisma.conference.findMany({
+    where: { seasonId: season.id },
+    include: { _count: { select: { teamSeasons: true } } },
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function addConference(seasonName: string, name: string) {
+  const season = await prisma.tourSeason.findUnique({ where: { name: seasonName }, select: { id: true } });
+  if (!season) throw new Error(`No season "${seasonName}"`);
+  const clean = name.trim();
+  if (!clean) throw new Error("Conference name is required.");
+  const conf = await prisma.conference.upsert({
+    where: { seasonId_name: { seasonId: season.id, name: clean } },
+    create: { seasonId: season.id, name: clean },
+    update: {},
+  });
+  await syncConferenceCount(season.id);
+  return conf;
+}
+
+export async function renameConference(conferenceId: string, newName: string) {
+  const clean = newName.trim();
+  if (!clean) throw new Error("Conference name is required.");
+  const conf = await prisma.conference.findUnique({ where: { id: conferenceId }, select: { seasonId: true } });
+  if (!conf) throw new Error("No such conference.");
+  const clash = await prisma.conference.findUnique({ where: { seasonId_name: { seasonId: conf.seasonId, name: clean } } });
+  if (clash && clash.id !== conferenceId) throw new Error(`A conference named "${clean}" already exists this season.`);
+  return prisma.conference.update({ where: { id: conferenceId }, data: { name: clean } });
+}
+
+export async function removeConference(conferenceId: string) {
+  const teams = await prisma.teamSeason.count({ where: { conferenceId } });
+  if (teams > 0) throw new Error(`That conference has ${teams} team(s) — move them first.`);
+  const conf = await prisma.conference.delete({ where: { id: conferenceId } });
+  await syncConferenceCount(conf.seasonId);
+  return conf;
+}
+
+// Keep the season's conferenceCount column in step with the actual rows ("Unassigned"
+// is a parking placeholder for teams made before the structure is decided — not counted).
+async function syncConferenceCount(seasonId: string) {
+  const n = await prisma.conference.count({ where: { seasonId, NOT: { name: "Unassigned" } } });
+  await prisma.tourSeason.update({ where: { id: seasonId }, data: { conferenceCount: Math.max(1, n) } });
 }
 
 // Delete a season + all its season-scoped data. Conferences / teamSeasons /
@@ -90,7 +146,7 @@ export interface UpdateSeasonInput {
   setsToWin?: number;
   conferenceCount?: number;
   playoffTeams?: number;
-  state?: "SIGNUPS" | "DRAFTING" | "REGULAR" | "PLAYOFFS" | "DONE";
+  state?: "SIGNUPS" | "SIGNUPS_CLOSED" | "DRAFTING" | "REGULAR" | "PLAYOFFS" | "DONE";
 }
 
 export async function updateSeason(name: string, patch: UpdateSeasonInput) {

@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { getViewer } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { playerReportSet, playerConfirmSet, playerDisputeSet } from "@/lib/services/player-report";
+import { renameTeam } from "@/lib/services/teams-admin";
 import type { ActionResult } from "@/lib/action-result";
 
 // The actor is always the signed-in viewer's playerId — the service verifies they're
@@ -24,6 +26,21 @@ export async function reportSetAction(_prev: ActionResult, formData: FormData): 
     return { ok: true, message: games.length ? "Reported with game details — waiting on your opponent." : "Reported — waiting on your opponent to confirm." };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Report failed." };
+  }
+}
+
+// Captains (and co-captains) name their own team — can("ROSTERS", { teamSeasonId })
+// is the gate, so TOs and ROSTERS mods pass too.
+export async function renameMyTeamAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const teamSeasonId = String(formData.get("teamSeasonId") ?? "");
+  if (!(await can("ROSTERS", { teamSeasonId }))) return { ok: false, message: "Only the team's captain can rename it." };
+  try {
+    const r = await renameTeam(teamSeasonId, String(formData.get("teamName") ?? ""));
+    revalidatePath("/me");
+    revalidatePath(`/teams/${teamSeasonId}`);
+    return { ok: true, message: `Your team is now ${r.name}.` };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Rename failed." };
   }
 }
 

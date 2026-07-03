@@ -3,24 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { assertAdmin, isAdmin } from "@/lib/auth";
-import { createSeason, updateSeason } from "@/lib/services/seasons";
+import { createSeason, updateSeason, addConference, renameConference, removeConference } from "@/lib/services/seasons";
 import { importFromZip, previewFromZip } from "@/lib/services/import-upload";
 import type { ActionResult } from "@/lib/action-result";
 
-// Server actions = thin form wrappers over the same services the API route calls.
+// Creation is minimal (name only) — structure is decided later in Season settings once
+// the signup pool's size is known. Lands on the new season's hub.
 export async function createSeasonAction(formData: FormData) {
   await assertAdmin();
-  await createSeason({
-    name: String(formData.get("name") ?? ""),
-    format: String(formData.get("format") ?? "SWISS") as "SWISS" | "CONFERENCES",
-    teamSize: Number(formData.get("teamSize") ?? 11),
-    setsToWin: Number(formData.get("setsToWin") ?? 0) || undefined,
-    conferenceCount: Number(formData.get("conferenceCount") ?? 2),
-    playoffTeams: Number(formData.get("playoffTeams") ?? 8),
-  });
+  const name = String(formData.get("name") ?? "").trim();
+  await createSeason({ name });
   revalidatePath("/admin");
   revalidatePath("/");
-  redirect("/admin");
+  redirect(`/admin/seasons/${encodeURIComponent(name)}`);
 }
 
 // Import history from an uploaded .zip of the sheets (works in prod — no local
@@ -58,6 +53,7 @@ export async function updateSeasonStateAction(formData: FormData) {
   const name = String(formData.get("name") ?? "");
   const state = String(formData.get("state") ?? "") as
     | "SIGNUPS"
+    | "SIGNUPS_CLOSED"
     | "DRAFTING"
     | "REGULAR"
     | "PLAYOFFS"
@@ -66,4 +62,63 @@ export async function updateSeasonStateAction(formData: FormData) {
   revalidatePath("/admin");
   revalidatePath(`/admin/seasons/${encodeURIComponent(name)}`);
   revalidatePath(`/seasons/${encodeURIComponent(name)}`);
+  revalidatePath("/signup");
+}
+
+function revSeason(name: string) {
+  revalidatePath(`/admin/seasons/${encodeURIComponent(name)}`);
+  revalidatePath(`/seasons/${encodeURIComponent(name)}`);
+}
+
+// Season settings (structure — decided once the pool is known; locked after the draft).
+export async function updateSeasonSettingsAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
+  const name = String(formData.get("name") ?? "");
+  try {
+    await updateSeason(name, {
+      format: String(formData.get("format") ?? "") === "SWISS" ? "SWISS" : "CONFERENCES",
+      teamSize: Number(formData.get("teamSize")) || undefined,
+      setsToWin: Number(formData.get("setsToWin")) || undefined,
+      playoffTeams: Number(formData.get("playoffTeams")) || undefined,
+    });
+    revSeason(name);
+    return { ok: true, message: "Settings saved." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Save failed." };
+  }
+}
+
+export async function addConferenceAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
+  const name = String(formData.get("season") ?? "");
+  try {
+    const c = await addConference(name, String(formData.get("confName") ?? ""));
+    revSeason(name);
+    return { ok: true, message: `Added "${c.name}".` };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Failed." };
+  }
+}
+
+export async function renameConferenceAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
+  const name = String(formData.get("season") ?? "");
+  try {
+    await renameConference(String(formData.get("conferenceId") ?? ""), String(formData.get("confName") ?? ""));
+    revSeason(name);
+    return { ok: true, message: "Renamed." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Failed." };
+  }
+}
+
+export async function removeConferenceAction(formData: FormData) {
+  if (!(await isAdmin())) return;
+  const name = String(formData.get("season") ?? "");
+  try {
+    await removeConference(String(formData.get("conferenceId") ?? ""));
+  } catch {
+    /* blocked (has teams) — the page shows the count */
+  }
+  revSeason(name);
 }

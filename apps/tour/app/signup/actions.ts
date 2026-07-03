@@ -48,7 +48,7 @@ export async function submitSignupAction(_prev: ActionResult, formData: FormData
     // Re-signing after pulling out / being passed over re-enters the pool.
     if (row.status === "WITHDRAWN" || row.status === "REJECTED") await setSignupStatus(row.id, "PENDING");
     revalidatePath("/signup");
-    return { ok: true, message: `You're signed up${bmp ? ` — BMP rank pulled: ${bmp.rankedTier} (${bmp.rankedMmr} MMR)` : ""}. The committee will review your entry.` };
+    return { ok: true, message: "You're signed up. The committee will review your entry." };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Sign-up failed." };
   }

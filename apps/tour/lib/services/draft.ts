@@ -37,9 +37,6 @@ export async function setupDraft(seasonName: string) {
     where: { seasonId: season.id, status: "APPROVED" },
     orderBy: { createdAt: "asc" },
   });
-  const captains = approved.filter((s) => s.willingToCaptain);
-  if (captains.length < 2) throw new Error("Need at least 2 approved, willing captains to set up a draft.");
-  if (approved.length < captains.length) throw new Error("Pool is smaller than the captain count.");
 
   const rounds = season.teamSize; // players per team, incl. the captain
 
@@ -55,45 +52,64 @@ export async function setupDraft(seasonName: string) {
     playerByDiscord.set(s.discordId, p.id);
   }
 
-  // 2. Conferences (SWISS = one pool).
-  const confCount = season.format === "SWISS" ? 1 : Math.max(1, season.conferenceCount);
-  const confIds: string[] = [];
-  for (let i = 0; i < confCount; i++) {
-    const cname = confCount === 1 ? "Main" : `Conference ${i + 1}`;
-    const c = await prisma.conference.upsert({
-      where: { seasonId_name: { seasonId: season.id, name: cname } },
-      create: { seasonId: season.id, name: cname },
-      update: {},
-      select: { id: true },
-    });
-    confIds.push(c.id);
-  }
-
-  // 3. Team + TeamSeason per captain. Order = add order (seed = i+1); conference round-robin.
+  // 2+3. Teams. PRE-MADE teams (the committee built them on the Teams page) take
+  // precedence: use them in seed order, captains from captainPlayerId. Otherwise fall
+  // back to auto-creating one team per approved willing captain.
   const teamSeasonIds: string[] = [];
   const captainOf = new Map<string, string>();
-  for (let i = 0; i < captains.length; i++) {
-    const cap = captains[i];
-    const captainPlayerId = playerByDiscord.get(cap.discordId)!;
-    const teamName = cap.displayName ?? cap.discordId;
-    const team = await prisma.team.upsert({
-      where: { name: teamName },
-      create: { name: teamName },
-      update: {},
-      select: { id: true },
-    });
-    const ts = await prisma.teamSeason.create({
-      data: {
-        seasonId: season.id,
-        teamId: team.id,
-        conferenceId: confIds[i % confIds.length],
-        captainPlayerId,
-        seed: i + 1,
-      },
-      select: { id: true },
-    });
-    teamSeasonIds.push(ts.id);
-    captainOf.set(ts.id, captainPlayerId);
+  const premade = await prisma.teamSeason.findMany({ where: { seasonId: season.id }, orderBy: { seed: "asc" }, select: { id: true, captainPlayerId: true } });
+  if (premade.length > 0) {
+    if (premade.length < 2) throw new Error("Need at least 2 teams to draft — add more on the Teams page.");
+    for (const ts of premade) {
+      teamSeasonIds.push(ts.id);
+      captainOf.set(ts.id, ts.captainPlayerId);
+    }
+  } else {
+    const captains = approved.filter((s) => s.willingToCaptain);
+    if (captains.length < 2) throw new Error("Need at least 2 approved, willing captains (or pre-made teams) to set up a draft.");
+    if (approved.length < captains.length) throw new Error("Pool is smaller than the captain count.");
+
+    // Conferences: use the season's REAL rows (Season settings); invent generic names
+    // only when none exist (legacy/API path). "Unassigned" is a parking slot, not real.
+    let confIds = (await prisma.conference.findMany({ where: { seasonId: season.id, NOT: { name: "Unassigned" } }, orderBy: { name: "asc" }, select: { id: true } })).map((c) => c.id);
+    if (confIds.length === 0) {
+      const confCount = season.format === "SWISS" ? 1 : Math.max(1, season.conferenceCount);
+      for (let i = 0; i < confCount; i++) {
+        const cname = confCount === 1 ? "Main" : `Conference ${i + 1}`;
+        const c = await prisma.conference.upsert({
+          where: { seasonId_name: { seasonId: season.id, name: cname } },
+          create: { seasonId: season.id, name: cname },
+          update: {},
+          select: { id: true },
+        });
+        confIds.push(c.id);
+      }
+    }
+    if (season.format === "SWISS") confIds = confIds.slice(0, 1);
+
+    for (let i = 0; i < captains.length; i++) {
+      const cap = captains[i];
+      const captainPlayerId = playerByDiscord.get(cap.discordId)!;
+      const teamName = cap.displayName ?? cap.discordId;
+      const team = await prisma.team.upsert({
+        where: { name: teamName },
+        create: { name: teamName },
+        update: {},
+        select: { id: true },
+      });
+      const ts = await prisma.teamSeason.create({
+        data: {
+          seasonId: season.id,
+          teamId: team.id,
+          conferenceId: confIds[i % confIds.length],
+          captainPlayerId,
+          seed: i + 1,
+        },
+        select: { id: true },
+      });
+      teamSeasonIds.push(ts.id);
+      captainOf.set(ts.id, captainPlayerId);
+    }
   }
 
   // 4. Build the snake board (captain self-picks round 1) + persist Draft + picks.

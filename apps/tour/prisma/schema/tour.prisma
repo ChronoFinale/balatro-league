@@ -22,6 +22,7 @@ datasource db {
 // ── Enums ──────────────────────────────────────────────────────────────────
 enum TourSeasonState {
   SIGNUPS
+  SIGNUPS_CLOSED // pool locked; committee reviews, sets structure, builds teams
   DRAFTING
   REGULAR
   PLAYOFFS

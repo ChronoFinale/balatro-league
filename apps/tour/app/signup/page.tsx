@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { LogIn } from "lucide-react";
 import { getViewer } from "@/lib/auth";
-import { getOpenSignupSeason, getMySignup, priorParticipation, SIGNUP_OPTIONS } from "@/lib/services/signups";
+import { getOpenSignupSeason, getClosedSignupSeason, getMySignup, priorParticipation, SIGNUP_OPTIONS } from "@/lib/services/signups";
 import { Callout } from "@/components/Callout";
 import { ActionFlashForm } from "@/components/ActionFlashForm";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -37,10 +37,36 @@ export default async function SignupPage() {
   const [viewer, season] = await Promise.all([getViewer(), getOpenSignupSeason()]);
 
   if (!season) {
+    // Just closed? Say so (and let a signed-in registrant still see their status / withdraw).
+    const closed = await getClosedSignupSeason();
+    if (!closed) {
+      return (
+        <main>
+          <h1>Sign up</h1>
+          <Callout type="info">No season is open for signups right now. Check back when the next Team Tour opens.</Callout>
+        </main>
+      );
+    }
+    const closedMine = viewer.discordId ? await getMySignup(closed.id, viewer.discordId) : null;
+    const closedStatus = closedMine ? STATUS[closedMine.status] : null;
     return (
       <main>
-        <h1>Sign up</h1>
-        <Callout type="info">No season is open for signups right now. Check back when the next Team Tour opens.</Callout>
+        <h1>Sign up — {closed.name}</h1>
+        <Callout type="info">
+          Signups for <strong>{closed.name}</strong> are closed — the committee is reviewing the pool and building teams.
+          {!closedMine && " If you missed the window, reach out to a TO on Discord."}
+        </Callout>
+        {closedStatus && (
+          <Callout type={closedMine!.status === "APPROVED" ? "success" : closedMine!.status === "REJECTED" ? "danger" : "info"}>
+            Your entry: <strong style={{ color: closedStatus.color }}>{closedStatus.label}</strong>
+          </Callout>
+        )}
+        {closedMine && (closedMine.status === "PENDING" || closedMine.status === "APPROVED") && (
+          <form action={withdrawSignupAction} className="mt-2">
+            <input type="hidden" name="season" value={closed.name} />
+            <SubmitButton variant="secondary" size="sm" pendingText="…">Withdraw from this season</SubmitButton>
+          </form>
+        )}
       </main>
     );
   }
@@ -77,7 +103,6 @@ export default async function SignupPage() {
       {status && (
         <Callout type={mine!.status === "APPROVED" ? "success" : mine!.status === "REJECTED" ? "danger" : "info"}>
           Status: <strong style={{ color: status.color }}>{status.label}</strong>
-          {mine?.bmpTier ? <> · BMP rank pulled: <strong>{mine.bmpTier}{mine.bmpMmr != null ? ` (${mine.bmpMmr} MMR)` : ""}</strong></> : null}
         </Callout>
       )}
 

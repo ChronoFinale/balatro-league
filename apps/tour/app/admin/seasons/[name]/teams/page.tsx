@@ -1,0 +1,187 @@
+import Link from "next/link";
+import { ArrowLeft, Crown } from "lucide-react";
+import { isAdmin } from "@/lib/auth";
+import { getSeasonAdmin, listConferences } from "@/lib/services/seasons";
+import { captainPool, listSeasonTeams } from "@/lib/services/teams-admin";
+import { Callout } from "@/components/Callout";
+import { ActionFlashForm } from "@/components/ActionFlashForm";
+import { FormSelect } from "@/components/FormSelect";
+import { SubmitButton } from "@/components/SubmitButton";
+import { ConfirmButton } from "@/components/ConfirmButton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { createTeamAction, renameTeamAdminAction, setTeamConferenceAction, deleteTeamAction } from "./actions";
+
+export const dynamic = "force-dynamic";
+
+// Manual team building — the committee window (but teams CAN form during signups too;
+// they park in "Unassigned" until the conference structure is decided).
+export default async function TeamsAdmin({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ name: string }>;
+  searchParams: Promise<{ captain?: string }>;
+}) {
+  if (!(await isAdmin())) {
+    return (
+      <main>
+        <h1>Admin</h1>
+        <Callout type="admin">Admins only — you don&apos;t have access.</Callout>
+      </main>
+    );
+  }
+
+  const { name } = await params;
+  const { captain: prefillCaptain } = await searchParams;
+  const seasonName = decodeURIComponent(name);
+  const data = await getSeasonAdmin(seasonName);
+  if (!data) {
+    return (
+      <main>
+        <p><Link href="/admin" className="inline-flex items-center gap-1"><ArrowLeft className="size-3.5" /> admin</Link></p>
+        <h1>Season not found</h1>
+      </main>
+    );
+  }
+  const { season } = data;
+  const enc = encodeURIComponent(seasonName);
+  const [pool, teams, allConfs] = await Promise.all([
+    captainPool(seasonName),
+    listSeasonTeams(seasonName),
+    listConferences(seasonName),
+  ]);
+  const conferences = allConfs.filter((c) => c.name !== "Unassigned");
+  const structureLocked = !!season.draft;
+
+  const interestTag = (ci: string | null) =>
+    ci === "Yes, I would love to!" ? " · wants to captain" : ci === "I will if it is needed" ? " · captain if needed" : "";
+  const captainOptions = pool.map((p) => ({
+    value: p.discordId,
+    label: `${p.name}${interestTag(p.captainInterest)}${p.alreadyCaptain ? " · already captains" : ""}`,
+    disabled: p.alreadyCaptain,
+  }));
+  const confOptions = (current?: string | null) =>
+    conferences.map((c) => ({ value: c.id, label: c.name, disabled: c.id === current }));
+
+  return (
+    <main>
+      <p>
+        <Link href={`/admin/seasons/${enc}`} className="inline-flex items-center gap-1"><ArrowLeft className="size-3.5" /> {seasonName}</Link>
+      </p>
+      <h1>Teams</h1>
+      <p className="sub">
+        {teams.length} team(s). Pick a captain from the approved pool — the team starts as
+        &quot;Team {"{captain}"}&quot; and the captain can rename it from their /me page. Seed order = creation order
+        (draft order); adjust later via roster ops if needed.
+      </p>
+      {structureLocked && <Callout type="admin">The draft exists — teams are baked in. Changes here won&apos;t reshape the draft.</Callout>}
+
+      <div className="card">
+        <div className="bracket-title">Create a team</div>
+        {pool.length === 0 ? (
+          <p className="sub" style={{ margin: 0 }}>
+            No approved signups yet — approve players in <Link href={`/admin/seasons/${enc}/signups`}>Signups</Link> first.
+          </p>
+        ) : (
+          <ActionFlashForm action={createTeamAction} className="flex flex-wrap items-end gap-3">
+            <input type="hidden" name="season" value={seasonName} />
+            <div className="grid gap-1.5">
+              <Label>Captain *</Label>
+              <FormSelect
+                name="captainDiscordId"
+                required
+                placeholder="Pick from approved signups"
+                defaultValue={prefillCaptain && pool.some((p) => p.discordId === prefillCaptain && !p.alreadyCaptain) ? prefillCaptain : ""}
+                options={captainOptions}
+                triggerClassName="w-72"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="teamName">Team name</Label>
+              <Input id="teamName" name="teamName" placeholder={'optional — defaults to "Team {captain}"'} maxLength={48} className="w-64" />
+            </div>
+            {conferences.length > 0 && (
+              <div className="grid gap-1.5">
+                <Label>Conference</Label>
+                <FormSelect
+                  name="conferenceId"
+                  placeholder="auto"
+                  options={[{ value: "", label: conferences.length === 1 ? conferences[0].name : "decide later (Unassigned)" }, ...conferences.map((c) => ({ value: c.id, label: c.name }))]}
+                  triggerClassName="w-56"
+                />
+              </div>
+            )}
+            <SubmitButton pendingText="Creating…">Create team</SubmitButton>
+          </ActionFlashForm>
+        )}
+        {conferences.length === 0 && (
+          <p className="sub" style={{ marginBottom: 0 }}>
+            No conferences defined yet — new teams park in &quot;Unassigned&quot;. Add conferences in Season settings when the structure is decided.
+          </p>
+        )}
+      </div>
+
+      <div className="card" style={{ overflowX: "auto" }}>
+        <table>
+          <thead>
+            <tr>
+              <th className="num">Seed</th>
+              <th>Team</th>
+              <th>Captain</th>
+              <th>Conference</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {teams.map((t) => (
+              <tr key={t.teamSeasonId}>
+                <td className="num">{t.seed}</td>
+                <td>
+                  <ActionFlashForm action={renameTeamAdminAction} className="flex items-center gap-2">
+                    <input type="hidden" name="season" value={seasonName} />
+                    <input type="hidden" name="teamSeasonId" value={t.teamSeasonId} />
+                    <Input name="teamName" defaultValue={t.name} required maxLength={48} className="w-56" />
+                    <SubmitButton variant="secondary" size="sm">Rename</SubmitButton>
+                  </ActionFlashForm>
+                </td>
+                <td>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Crown className="size-3.5 text-[var(--accent)]" aria-hidden /> {t.captain}
+                  </span>
+                </td>
+                <td>
+                  {conferences.length > 0 ? (
+                    <form action={setTeamConferenceAction} className="flex items-center gap-2">
+                      <input type="hidden" name="season" value={seasonName} />
+                      <input type="hidden" name="teamSeasonId" value={t.teamSeasonId} />
+                      <FormSelect name="conferenceId" defaultValue={t.conference === "Unassigned" ? "" : t.conferenceId} placeholder="Unassigned" options={confOptions()} size="sm" triggerClassName="w-40" />
+                      <SubmitButton variant="secondary" size="sm">Move</SubmitButton>
+                    </form>
+                  ) : (
+                    <span className="sub">{t.conference}</span>
+                  )}
+                </td>
+                <td>
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <Link href={`/admin/seasons/${enc}/roster`} className="text-sm">roster ops</Link>
+                    <form action={deleteTeamAction} className="inline">
+                      <input type="hidden" name="season" value={seasonName} />
+                      <input type="hidden" name="teamSeasonId" value={t.teamSeasonId} />
+                      <ConfirmButton message={`Delete ${t.name}? This removes the team-season and everything on it (roster, sets, picks).`} variant="destructive" size="sm">
+                        Delete
+                      </ConfirmButton>
+                    </form>
+                  </span>
+                </td>
+              </tr>
+            ))}
+            {teams.length === 0 && (
+              <tr><td colSpan={5} className="sub">No teams yet — create the first one above.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </main>
+  );
+}
