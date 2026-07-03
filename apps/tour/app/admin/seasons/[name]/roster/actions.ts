@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { can, seasonIdByName } from "@/lib/permissions";
 import { substitute, recordDeparture, reinstate, replacePlayer, removeMove, changeCaptain, reseed, swapSeeds, setCoCaptain } from "@/lib/services/roster-ops";
 import { addStrike, removeStrike } from "@/lib/services/strikes";
@@ -10,6 +11,11 @@ function rev(season: string) {
   const enc = encodeURIComponent(season);
   revalidatePath(`/admin/seasons/${enc}/roster`);
   revalidatePath(`/admin/seasons/${enc}`);
+}
+
+// Per-row timeline actions redirect back with a toast message (not an inline banner).
+function backToRoster(season: string, msg: string, ok = true): never {
+  redirect(`/admin/seasons/${encodeURIComponent(season)}/roster?${ok ? "ok" : "err"}=${encodeURIComponent(msg)}`);
 }
 
 // ROSTERS capability (or TO), or the captain of the given team (team-scoped). Actions without
@@ -71,19 +77,31 @@ export async function replaceAction(_prev: ActionResult, formData: FormData): Pr
 export async function reinstateAction(formData: FormData) {
   const season = String(formData.get("season") ?? "");
   if (!(await allow(season, String(formData.get("teamSeasonId") ?? "")))) return;
+  let msg = "Player reinstated.";
+  let ok = true;
   try {
     await reinstate(season, String(formData.get("teamSeasonId") ?? ""), String(formData.get("playerId") ?? ""), wk(formData, "effectiveWeek"), String(formData.get("reason") ?? ""));
-  } catch {
-    /* ignore — reinstate is best-effort from the timeline button */
+  } catch (e) {
+    ok = false;
+    msg = e instanceof Error ? e.message : "Reinstate failed.";
   }
   rev(season);
+  backToRoster(season, msg, ok);
 }
 
 export async function removeMoveAction(formData: FormData) {
   const season = String(formData.get("season") ?? "");
   if (!(await allow(season, String(formData.get("teamSeasonId") ?? "")))) return;
-  await removeMove(String(formData.get("moveId") ?? ""));
+  let msg = "Move removed from the timeline.";
+  let ok = true;
+  try {
+    await removeMove(String(formData.get("moveId") ?? ""));
+  } catch (e) {
+    ok = false;
+    msg = e instanceof Error ? e.message : "Could not remove the move.";
+  }
   rev(season);
+  backToRoster(season, msg, ok);
 }
 
 export async function changeCaptainAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
@@ -152,6 +170,14 @@ export async function addStrikeAction(_prev: ActionResult, formData: FormData): 
 export async function removeStrikeAction(formData: FormData) {
   const season = String(formData.get("season") ?? "");
   if (!(await allow(season, String(formData.get("teamSeasonId") ?? "")))) return;
-  await removeStrike(String(formData.get("strikeId") ?? ""));
+  let msg = "Reliability note removed.";
+  let ok = true;
+  try {
+    await removeStrike(String(formData.get("strikeId") ?? ""));
+  } catch (e) {
+    ok = false;
+    msg = e instanceof Error ? e.message : "Could not remove the note.";
+  }
   rev(season);
+  backToRoster(season, msg, ok);
 }

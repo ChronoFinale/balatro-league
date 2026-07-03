@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { isAdmin } from "@/lib/auth";
 import { generateSeasonSchedule, resetSchedule } from "@/lib/services/schedule";
 import type { ActionResult } from "@/lib/action-result";
@@ -26,6 +27,14 @@ export async function generateScheduleAction(_prev: ActionResult, formData: Form
 export async function resetScheduleAction(formData: FormData) {
   if (!(await isAdmin())) return;
   const season = String(formData.get("season") ?? "");
-  await resetSchedule(season);
+  let msg = "Schedule reset — all weeks and matchups cleared.";
+  let ok = true;
+  try {
+    await resetSchedule(season);
+  } catch (e) {
+    ok = false;
+    msg = e instanceof Error ? e.message : "Reset failed.";
+  }
   rev(season);
+  redirect(`/admin/seasons/${encodeURIComponent(season)}/schedule?${ok ? "ok" : "err"}=${encodeURIComponent(msg)}`);
 }

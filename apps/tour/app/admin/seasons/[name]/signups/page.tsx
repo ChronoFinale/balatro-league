@@ -84,11 +84,13 @@ export default async function Signups({
   const countOf = (t: (typeof TABS)[number]) => signups.filter((s) => t.match(s.status)).length;
   const approved = countOf(TABS[1]);
 
-  // One status-change button (a tiny server-action form).
+  // One status-change button (a tiny server-action form). Carries the active tab so the
+  // post-action redirect keeps the queue view; feedback surfaces as a toast.
   const StatusBtn = ({ id, status, label, variant }: { id: string; status: string; label: string; variant?: "default" | "secondary" }) => (
     <form action={setSignupStatusAction} className="inline">
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="season" value={seasonName} />
+      <input type="hidden" name="tab" value={tab.key} />
       <input type="hidden" name="status" value={status} />
       <SubmitButton size="sm" variant={variant}>{label}</SubmitButton>
     </form>
@@ -236,6 +238,7 @@ export default async function Signups({
                     <form action={removeSignupAction} className="inline">
                       <input type="hidden" name="id" value={s.id} />
                       <input type="hidden" name="season" value={seasonName} />
+                      <input type="hidden" name="tab" value={tab.key} />
                       <ConfirmButton message="Remove this signup?" variant="destructive" size="sm">Remove</ConfirmButton>
                     </form>
                   </span>

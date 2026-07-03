@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { Silkscreen } from "next/font/google";
 import { Pizza, CalendarDays, Users, Shield, Trophy, BarChart3, ScrollText, Settings, ExternalLink } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
+import { FlashToast } from "@/components/FlashToast";
 import { CommandPalette } from "@/components/CommandPalette";
 import { CommandButton } from "@/components/CommandButton";
 import { UserMenu } from "@/components/UserMenu";
@@ -71,6 +73,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </header>
         {children}
         <CommandPalette />
+        {/* Global: any server action that redirects with ?ok=…/?err=… surfaces as a toast. */}
+        <Suspense fallback={null}>
+          <FlashToast />
+        </Suspense>
         <Toaster />
       </body>
     </html>

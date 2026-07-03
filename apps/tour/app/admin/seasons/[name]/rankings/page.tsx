@@ -5,6 +5,7 @@ import { can, seasonIdByName } from "@/lib/permissions";
 import { NoAccess } from "@/components/NoAccess";
 import { FormSelect } from "@/components/FormSelect";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { SubmitButton } from "@/components/SubmitButton";
 import { createRankingAction, deleteRankingAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +34,7 @@ export default async function RankingsAdmin({ params }: { params: Promise<{ name
           <label className="block flex-1" style={{ minWidth: 200 }}><span className="sub">Title</span><input name="title" placeholder="Week 3 Team Power Rankings" className={`${inputCls} w-full`} /></label>
           <label className="block"><span className="sub">Author</span><input name="author" placeholder="TTNN" className={`${inputCls} w-28`} /></label>
           <label className="block"><span className="sub">Author profile (opt)</span><FormSelect name="authorPlayerId" options={[{ value: "", label: "— none —" }, ...pool.players.map((p) => ({ value: p.id, label: p.name }))]} /></label>
-          <button type="submit" className="rounded bg-[var(--accent-2)] px-3 py-1.5 text-sm text-white">Create + add entries</button>
+          <SubmitButton pendingText="Creating…">Create + add entries</SubmitButton>
         </form>
       </div>
 

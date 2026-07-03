@@ -48,6 +48,8 @@ export async function uploadImportAction(_prev: ActionResult, formData: FormData
   }
 }
 
+const STATE_LABEL: Record<string, string> = { SIGNUPS: "Signups open", SIGNUPS_CLOSED: "Signups closed", DRAFTING: "Drafting", REGULAR: "Regular season", PLAYOFFS: "Playoffs", DONE: "Done" };
+
 export async function updateSeasonStateAction(formData: FormData) {
   await assertAdmin();
   const name = String(formData.get("name") ?? "");
@@ -58,11 +60,18 @@ export async function updateSeasonStateAction(formData: FormData) {
     | "REGULAR"
     | "PLAYOFFS"
     | "DONE";
-  await updateSeason(name, { state });
+  let msg = `State set to ${STATE_LABEL[state] ?? state}.`;
+  let ok = true;
+  try {
+    await updateSeason(name, { state });
+  } catch (e) {
+    ok = false;
+    msg = e instanceof Error ? e.message : "Could not change state.";
+  }
   revalidatePath("/admin");
-  revalidatePath(`/admin/seasons/${encodeURIComponent(name)}`);
   revalidatePath(`/seasons/${encodeURIComponent(name)}`);
   revalidatePath("/signup");
+  redirect(`/admin/seasons/${encodeURIComponent(name)}?${ok ? "ok" : "err"}=${encodeURIComponent(msg)}`);
 }
 
 function revSeason(name: string) {
@@ -115,10 +124,15 @@ export async function renameConferenceAction(_prev: ActionResult, formData: Form
 export async function removeConferenceAction(formData: FormData) {
   if (!(await isAdmin())) return;
   const name = String(formData.get("season") ?? "");
+  let msg = "Conference removed.";
+  let ok = true;
   try {
-    await removeConference(String(formData.get("conferenceId") ?? ""));
-  } catch {
-    /* blocked (has teams) — the page shows the count */
+    const c = await removeConference(String(formData.get("conferenceId") ?? ""));
+    msg = `Removed "${c.name}".`;
+  } catch (e) {
+    ok = false;
+    msg = e instanceof Error ? e.message : "Could not remove the conference.";
   }
   revSeason(name);
+  redirect(`/admin/seasons/${encodeURIComponent(name)}?${ok ? "ok" : "err"}=${encodeURIComponent(msg)}`);
 }

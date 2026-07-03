@@ -61,20 +61,29 @@ export default async function DraftAdmin({ params }: { params: Promise<{ name: s
 
   // ── No draft yet → setup ──────────────────────────────────────────────────
   if (!setup.season.draft) {
-    const teams = setup.captains.length;
+    // Pre-made teams (built on the Teams page) take precedence over auto-create-from-
+    // willing-captains, so gate + copy on those when they exist.
+    const usePremade = setup.premadeTeams > 0;
+    const teams = usePremade ? setup.premadeTeams : setup.captains.length;
     const rounds = setup.season.teamSize;
     return (
       <main>
         {back}
         <h1>Draft setup</h1>
         <p className="sub">
-          {setup.approved.length} approved · {teams} willing captains. Building the draft creates a team per captain,
-          splits them across conferences, and pre-fills each captain&apos;s round-1 self-pick.
+          {usePremade ? (
+            <>{setup.approved.length} approved · {teams} team{teams === 1 ? "" : "s"} built on the <Link href={`/admin/seasons/${enc}/teams`}>Teams</Link> page. Building the draft seeds them in order and pre-fills each captain&apos;s round-1 self-pick.</>
+          ) : (
+            <>{setup.approved.length} approved · {teams} willing captains. Building the draft creates a team per captain, splits them across conferences, and pre-fills each captain&apos;s round-1 self-pick.</>
+          )}
         </p>
         {teams < 2 ? (
           <Callout type="admin">
-            Need at least 2 approved, willing captains to build a draft — approve captains in{" "}
-            <Link href={`/admin/seasons/${enc}/signups`}>signups</Link>.
+            {usePremade ? (
+              <>Need at least 2 teams to draft — build them on the <Link href={`/admin/seasons/${enc}/teams`}>Teams</Link> page.</>
+            ) : (
+              <>Need at least 2 teams. Build them on the <Link href={`/admin/seasons/${enc}/teams`}>Teams</Link> page, or approve willing captains in <Link href={`/admin/seasons/${enc}/signups`}>signups</Link> to auto-create them.</>
+            )}
           </Callout>
         ) : (
           <div className="card">
@@ -112,7 +121,7 @@ export default async function DraftAdmin({ params }: { params: Promise<{ name: s
         <form action={resetDraftAction}>
           <input type="hidden" name="season" value={seasonName} />
           <ConfirmButton
-            message="Reset the draft? This deletes the teams, conferences, and all picks for this season."
+            message="Reset the draft? This deletes ALL picks AND every team + conference for this season — including any you built by hand on the Teams page — and reopens signups. This can't be undone."
             variant="destructive"
             size="sm"
           >

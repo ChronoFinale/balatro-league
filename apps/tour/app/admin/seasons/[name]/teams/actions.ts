@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { isAdmin } from "@/lib/auth";
 import { createTeamForSeason, renameTeam, setTeamConference, deleteTeamSeason } from "@/lib/services/teams-admin";
 import type { ActionResult } from "@/lib/action-result";
@@ -10,6 +11,11 @@ function rev(season: string) {
   revalidatePath(`/admin/seasons/${enc}/teams`);
   revalidatePath(`/admin/seasons/${enc}`);
   revalidatePath(`/seasons/${enc}`);
+}
+
+// Per-row table actions redirect back with a toast message (not an inline banner).
+function backToTeams(season: string, msg: string, ok = true): never {
+  redirect(`/admin/seasons/${encodeURIComponent(season)}/teams?${ok ? "ok" : "err"}=${encodeURIComponent(msg)}`);
 }
 
 export async function createTeamAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
@@ -43,21 +49,30 @@ export async function renameTeamAdminAction(_prev: ActionResult, formData: FormD
 export async function setTeamConferenceAction(formData: FormData) {
   if (!(await isAdmin())) return;
   const season = String(formData.get("season") ?? "");
+  let msg = "Moved conference.";
+  let ok = true;
   try {
     await setTeamConference(String(formData.get("teamSeasonId") ?? ""), String(formData.get("conferenceId") ?? ""));
-  } catch {
-    /* same-season guard — nothing sensible to show inline; the row keeps its old conference */
+  } catch (e) {
+    ok = false;
+    msg = e instanceof Error ? e.message : "Move failed.";
   }
   rev(season);
+  backToTeams(season, msg, ok);
 }
 
 export async function deleteTeamAction(formData: FormData) {
   if (!(await isAdmin())) return;
   const season = String(formData.get("season") ?? "");
+  let msg = "Team deleted.";
+  let ok = true;
   try {
-    await deleteTeamSeason(String(formData.get("teamSeasonId") ?? ""));
-  } catch {
-    /* already gone or bad id — the refreshed list shows reality */
+    const r = await deleteTeamSeason(String(formData.get("teamSeasonId") ?? ""));
+    msg = `Deleted ${r.team}${r.setsDeleted ? ` (+${r.setsDeleted} sets)` : ""}.`;
+  } catch (e) {
+    ok = false;
+    msg = e instanceof Error ? e.message : "Delete failed.";
   }
   rev(season);
+  backToTeams(season, msg, ok);
 }

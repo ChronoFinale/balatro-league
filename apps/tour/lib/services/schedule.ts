@@ -81,6 +81,13 @@ export async function generateSeasonSchedule(seasonName: string) {
     matchups += fxs.length;
   }
 
+  // Generating the schedule opens regular-season play — advance the lifecycle to match
+  // the other auto-advances (draft→DRAFTING, playoffs→PLAYOFFS, crown→DONE). Only step
+  // forward from the pre-regular states so a re-run can't drag a live season backwards.
+  if (season.state === "DRAFTING" || season.state === "SIGNUPS_CLOSED" || season.state === "SIGNUPS") {
+    await prisma.tourSeason.update({ where: { id: season.id }, data: { state: "REGULAR" } });
+  }
+
   return { weeks: byWeek.size, matchups };
 }
 

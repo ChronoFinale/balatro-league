@@ -18,11 +18,13 @@ export async function getDraftSetup(seasonName: string) {
     include: { draft: { select: { id: true, state: true } } },
   });
   if (!season) return null;
-  const approved = await prisma.signup.findMany({
-    where: { seasonId: season.id, status: "APPROVED" },
-    orderBy: { createdAt: "asc" },
-  });
-  return { season, approved, captains: approved.filter((s) => s.willingToCaptain) };
+  const [approved, premadeTeams] = await Promise.all([
+    prisma.signup.findMany({ where: { seasonId: season.id, status: "APPROVED" }, orderBy: { createdAt: "asc" } }),
+    prisma.teamSeason.count({ where: { seasonId: season.id } }),
+  ]);
+  // setupDraft prefers pre-made teams (built on the Teams page) and only falls back to
+  // auto-creating one per willing captain — so the setup gate must count teams first.
+  return { season, approved, premadeTeams, captains: approved.filter((s) => s.willingToCaptain) };
 }
 
 export async function setupDraft(seasonName: string) {

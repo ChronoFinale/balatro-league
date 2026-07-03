@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { can, seasonIdByName } from "@/lib/permissions";
 import { setupDraft, resetDraft, makePick, reassignDraftPick, onClockTeam } from "@/lib/services/draft";
 import type { ActionResult } from "@/lib/action-result";
@@ -43,8 +44,16 @@ export async function reassignPickAction(_prev: ActionResult, formData: FormData
 export async function resetDraftAction(formData: FormData) {
   const season = String(formData.get("season") ?? "");
   if (!(await allowRun(season))) return;
-  await resetDraft(season);
+  let msg = "Draft reset — teams, conferences, and picks cleared.";
+  let ok = true;
+  try {
+    await resetDraft(season);
+  } catch (e) {
+    ok = false;
+    msg = e instanceof Error ? e.message : "Reset failed.";
+  }
   rev(season);
+  redirect(`/admin/seasons/${encodeURIComponent(season)}/draft?${ok ? "ok" : "err"}=${encodeURIComponent(msg)}`);
 }
 
 // Assign the on-the-clock pick to a pool player. Plain action (per-pool-player pick
