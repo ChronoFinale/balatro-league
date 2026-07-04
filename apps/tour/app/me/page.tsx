@@ -88,7 +88,7 @@ export default async function MyTour() {
                     <td><Link href={`/seasons/${encodeURIComponent(t.seasonName)}`}>{t.seasonName}</Link>{t.active && <span className="badge" style={{ marginLeft: 6 }}>active</span>}</td>
                     <td>
                       <Link href={`/teams/${t.teamSeasonId}`}>{t.teamName}</Link>
-                      {t.isCaptain && t.active && (
+                      {(t.isCaptain || t.isCoCaptain) && t.active && (
                         <details className="mt-0.5">
                           <summary className="sub" style={{ cursor: "pointer" }}>rename</summary>
                           <ActionFlashForm action={renameMyTeamAction} className="mt-1 flex items-center gap-1.5">
@@ -100,7 +100,7 @@ export default async function MyTour() {
                       )}
                     </td>
                     <td className="num">{t.seed}</td>
-                    <td className="sub">{t.isCaptain ? <span className="inline-flex items-center gap-1"><Crown className="size-3.5 text-[var(--accent)]" /> Captain</span> : "Player"}</td>
+                    <td className="sub">{t.isCaptain ? <span className="inline-flex items-center gap-1"><Crown className="size-3.5 text-[var(--accent)]" /> Captain</span> : t.isCoCaptain ? <span className="inline-flex items-center gap-1"><Crown className="size-3.5 text-[var(--muted)]" /> Co-captain</span> : "Player"}</td>
                     <td style={{ textAlign: "right" }}><Link href={`/seasons/${encodeURIComponent(t.seasonName)}`}>Season →</Link></td>
                   </tr>
                 ))}

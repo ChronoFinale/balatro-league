@@ -29,6 +29,7 @@ export interface MyTeam {
   active: boolean;
   seed: number;
   isCaptain: boolean;
+  isCoCaptain: boolean; // team-scoped ROSTERS powers (rename etc.) but not THE captain
 }
 
 export interface PlayerHome {
@@ -55,6 +56,7 @@ export async function getPlayerHome(playerId: string): Promise<PlayerHome> {
         active: ACTIVE_STATES.includes(ts.season.state),
         seed: e.seed,
         isCaptain: e.isCaptain || ts.captainPlayerId === playerId,
+        isCoCaptain: !!e.isCoCaptain && !(e.isCaptain || ts.captainPlayerId === playerId),
       });
     }
   }
