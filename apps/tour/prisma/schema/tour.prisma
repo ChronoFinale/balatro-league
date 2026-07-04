@@ -373,6 +373,14 @@ model FantasyLeague {
   tradesEnabled Boolean      @default(true)
   createdAt     DateTime     @default(now())
 
+  // Live snake-draft lifecycle (derived state — no enum needed):
+  //   draftStartedAt == null            -> OPEN (managers may still join)
+  //   set, madePicks < rosterSize*teams -> DRAFTING
+  //   madePicks == total                -> DONE
+  draftStartedAt DateTime? // set once when the TO starts the draft (locks joins + order)
+  orderJson      String? // JSON array of FantasyTeam.id in frozen snake seed order
+  onClockSince   DateTime? // bumped each pick — powers the cosmetic ElapsedClock
+
   teams FantasyTeam[]
 }
 
@@ -381,6 +389,9 @@ model FantasyTeam {
   leagueId         String
   managerDiscordId String
   name             String
+
+  joinOrder Int // 1-based claim order (cuid order is not a reliable snake seed)
+  createdAt DateTime @default(now())
 
   league FantasyLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   picks  FantasyPick[]

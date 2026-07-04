@@ -38,7 +38,7 @@ async function main() {
     const managers = process.argv.includes("--managers") ? Number(arg("managers", "0")) : undefined;
     const r = await simulateFantasy(name, { scope, managers });
     console.log(`Fantasy (${r.scope}, roster ${r.rosterSize}) — ${r.setsCounted} sets counted:`);
-    r.standings.forEach((s, i) => console.log(`  ${String(i + 1).padStart(2)}. ${s.managerId.padEnd(10)} ${s.points} pts (${s.sets} player-sets)`));
+    r.standings.forEach((s, i) => console.log(`  ${String(i + 1).padStart(2)}. ${s.managerName.padEnd(10)} ${s.points} pts (${s.sets} player-sets)`));
   } else if (cmd === "teardown") {
     const r = await teardownSim(name);
     console.log(`Removed "${name}" + ${r.playersDeleted} sim players.`);

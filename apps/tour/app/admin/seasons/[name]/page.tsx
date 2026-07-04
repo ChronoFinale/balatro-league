@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { ArrowLeft, Users, Shield, Shuffle, CalendarDays, UserCog, Trophy, Flag, Hash, ExternalLink, Newspaper, ListOrdered, Trash2 } from "lucide-react";
+import { ArrowLeft, Users, Shield, Shuffle, CalendarDays, UserCog, Trophy, Flag, Hash, ExternalLink, Newspaper, ListOrdered, Trash2, Gamepad2 } from "lucide-react";
 import { getViewer, isAdmin } from "@/lib/auth";
 import { capabilitiesFor, captainTeamsFor, seasonIdByName } from "@/lib/permissions";
 import { getSeasonAdmin, listConferences } from "@/lib/services/seasons";
+import { getFantasyLeague } from "@/lib/services/fantasy";
 import { NoAccess } from "@/components/NoAccess";
 import { FormSelect } from "@/components/FormSelect";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -41,6 +42,7 @@ export default async function SeasonAdmin({ params }: { params: Promise<{ name: 
   const enc = encodeURIComponent(season.name);
   const stageIdx = STATES.indexOf(season.state);
   const conferences = to ? await listConferences(season.name) : [];
+  const fantasy = to ? await getFantasyLeague(season.name).catch(() => null) : null;
   const structureLocked = !!season.draft; // once the draft exists, structure is baked in
 
   // `show` gates each tile by capability/captaincy (TO sees all). Structural stages are TO-only.
@@ -52,6 +54,7 @@ export default async function SeasonAdmin({ params }: { params: Promise<{ name: 
     { key: "roster", label: "Roster ops", icon: UserCog, href: `/admin/seasons/${enc}/roster`, count: "subs · drops · DQs", ready: true, show: cap("ROSTERS") || isCaptain },
     { key: "playoffs", label: "Playoffs", icon: Trophy, href: `/admin/seasons/${enc}/playoffs`, count: season.state === "PLAYOFFS" || season.state === "DONE" ? `bracket · ${season.state}` : `field of ${season.playoffTeams}`, ready: true, show: to },
     { key: "end", label: "Season end", icon: Flag, href: `/admin/seasons/${enc}/end`, count: season.state === "DONE" ? "crowned · awards" : "crown + awards", ready: true, show: to },
+    { key: "fantasy", label: "Fantasy", icon: Gamepad2, href: `/admin/seasons/${enc}/fantasy`, count: fantasy ? `${fantasy.teams.length} managers · ${fantasy.scope === "PLAYOFFS" ? "playoffs" : "season"}` : "not opened", ready: true, show: to },
     { key: "discord", label: "Discord roles", icon: Hash, href: `/admin/seasons/${enc}/discord`, count: season.playerRoleId ? "synced" : "preview", ready: true, show: to },
     { key: "news", label: "News Network", icon: Newspaper, href: `/admin/seasons/${enc}/news`, count: "previews · recaps", ready: true, show: cap("NEWS") },
     { key: "rankings", label: "Power rankings", icon: ListOrdered, href: `/admin/seasons/${enc}/rankings`, count: "teams · players", ready: true, show: cap("RANKINGS") },

@@ -54,6 +54,7 @@ export default async function SeasonPage({ params }: { params: Promise<{ name: s
           { href: `/seasons/${encodeURIComponent(seasonName)}/news`, label: "News" },
           { href: `/seasons/${encodeURIComponent(seasonName)}/rankings`, label: "Power rankings" },
           { href: `/seasons/${encodeURIComponent(seasonName)}/pickem`, label: "Pick'em" },
+          { href: `/seasons/${encodeURIComponent(seasonName)}/fantasy`, label: "Fantasy" },
         ].map((t) => (
           <Link key={t.href} href={t.href} className="pill hover:no-underline" style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text)" }}>
             {t.label}

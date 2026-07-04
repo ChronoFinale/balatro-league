@@ -11,6 +11,7 @@ import { buildDraft } from "@balatro/tour-core";
 import { getAllTimePlayers } from "../stats";
 import { notifyLive } from "../notify";
 import { enqueueRoleReconcile, enqueueDraftPick } from "../queue";
+import { deleteFantasyForSeason } from "./fantasy";
 
 export async function getDraftSetup(seasonName: string) {
   const season = await prisma.tourSeason.findUnique({
@@ -408,6 +409,9 @@ export async function resetDraft(seasonName: string) {
   await prisma.draft.deleteMany({ where: { seasonId: season.id } }); // cascades DraftPick
   await prisma.teamSeason.deleteMany({ where: { seasonId: season.id } }); // cascades Roster
   await prisma.conference.deleteMany({ where: { seasonId: season.id } });
+  // A fantasy league is built on this draft's player pool — resetting the draft leaves it
+  // dead (no pool, dangling picks), so wipe it too so setup can be re-run cleanly.
+  await deleteFantasyForSeason(season.id);
   await prisma.tourSeason.update({ where: { id: season.id }, data: { state: "SIGNUPS" } });
   await notifyLive(`draft:${season.id}`);
 }
