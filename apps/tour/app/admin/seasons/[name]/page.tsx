@@ -6,6 +6,7 @@ import { getSeasonAdmin, listConferences } from "@/lib/services/seasons";
 import { getFantasyLeague } from "@/lib/services/fantasy";
 import { NoAccess } from "@/components/NoAccess";
 import { FormSelect } from "@/components/FormSelect";
+import { SetsToWinField } from "@/components/SetsToWinField";
 import { SubmitButton } from "@/components/SubmitButton";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { ActionFlashForm } from "@/components/ActionFlashForm";
@@ -136,14 +137,7 @@ export default async function SeasonAdmin({ params }: { params: Promise<{ name: 
                 <span className="muted">Format</span>
                 <FormSelect name="format" defaultValue={season.format} options={[{ value: "CONFERENCES", label: "Conferences" }, { value: "SWISS", label: "Swiss" }]} />
               </label>
-              <label className="grid gap-1 text-sm">
-                <span className="muted">Team size</span>
-                <input type="number" name="teamSize" min={1} max={30} defaultValue={season.teamSize} className={inputCls} style={{ width: 80 }} />
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span className="muted">Sets to win</span>
-                <input type="number" name="setsToWin" min={1} max={30} defaultValue={season.setsToWin} className={inputCls} style={{ width: 80 }} />
-              </label>
+              <SetsToWinField teamSize={season.teamSize} setsToWin={season.setsToWin} />
               <label className="grid gap-1 text-sm">
                 <span className="muted">Playoff teams</span>
                 <input type="number" name="playoffTeams" min={2} max={32} defaultValue={season.playoffTeams} className={inputCls} style={{ width: 80 }} />

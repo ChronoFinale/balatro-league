@@ -152,14 +152,19 @@ export interface UpdateSeasonInput {
 }
 
 export async function updateSeason(name: string, patch: UpdateSeasonInput) {
-  const season = await prisma.tourSeason.findUnique({ where: { name }, select: { id: true } });
+  const season = await prisma.tourSeason.findUnique({ where: { name }, select: { id: true, teamSize: true } });
   if (!season) throw new Error(`No season "${name}"`);
+  const teamSize = patch.teamSize != null ? Number(patch.teamSize) : undefined;
+  // Guard the invariant the % input enforces client-side: sets-to-win is at least 1 and never
+  // exceeds the team size (against the resulting team size, whether it's changing this update or not).
+  let setsToWin = patch.setsToWin != null ? Number(patch.setsToWin) : undefined;
+  if (setsToWin != null) setsToWin = Math.max(1, Math.min(setsToWin, teamSize ?? season.teamSize));
   return prisma.tourSeason.update({
     where: { id: season.id },
     data: {
       ...(patch.format ? { format: patch.format } : {}),
-      ...(patch.teamSize != null ? { teamSize: Number(patch.teamSize) } : {}),
-      ...(patch.setsToWin != null ? { setsToWin: Number(patch.setsToWin) } : {}),
+      ...(teamSize != null ? { teamSize } : {}),
+      ...(setsToWin != null ? { setsToWin } : {}),
       ...(patch.conferenceCount != null ? { conferenceCount: Number(patch.conferenceCount) } : {}),
       ...(patch.playoffTeams != null ? { playoffTeams: Number(patch.playoffTeams) } : {}),
       ...(patch.state ? { state: patch.state } : {}),
