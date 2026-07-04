@@ -9,6 +9,7 @@ import { NextResponse } from "next/server";
 import { isApiAdmin } from "@/lib/auth";
 import { resolveSeasonName, botStandings, botSchedule, botBracket, botMyMatch, botFantasy } from "@/lib/services/bot-read";
 import { getSeasonPickem } from "@/lib/services/pickem";
+import { getBootstrapManifest } from "@/lib/services/server-bootstrap";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,10 @@ export async function GET(req: Request) {
     const discordId = url.searchParams.get("discordId") ?? "";
     if (!discordId) return NextResponse.json({ error: "discordId required" }, { status: 400 });
     return NextResponse.json(await botMyMatch(discordId));
+  }
+  if (kind === "bootstrap") {
+    // Guild-static desired layout (not season-scoped) — for the bot's /ppt-admin bootstrap.
+    return NextResponse.json(await getBootstrapManifest());
   }
   if (!season) return NextResponse.json({ error: "no season" }, { status: 404 });
 

@@ -8,7 +8,7 @@ import { env } from "./env";
 import { startHealthCheck } from "./healthcheck";
 import { startQueue } from "./queue";
 import { ensureCommandsRegistered } from "./commands/register";
-import { handlePptCommand, handlePickemButton } from "./commands/handlers";
+import { handlePptCommand, handlePptAdminCommand, handlePickemButton } from "./commands/handlers";
 
 // Intent ladder: try with GuildMembers (needed to enumerate role holders for full
 // reconciliation); if the portal doesn't grant it, fall back to Guilds-only and keep
@@ -74,6 +74,10 @@ async function main() {
     }
     if (interaction.isChatInputCommand() && interaction.commandName === "ppt") {
       await handlePptCommand(interaction);
+      return;
+    }
+    if (interaction.isChatInputCommand() && interaction.commandName === "ppt-admin") {
+      await handlePptAdminCommand(interaction);
       return;
     }
     if (interaction.isButton() && interaction.customId.startsWith("pickem:")) {

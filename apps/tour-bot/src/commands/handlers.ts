@@ -11,6 +11,7 @@ import {
 } from "discord.js";
 import { env } from "./../env";
 import { apiGet, apiPost } from "./../api";
+import { runBootstrap } from "./bootstrap";
 
 const url = (path: string) => `${env.TOUR_WEB_URL}${path}`;
 const GOLD = 0xf1c40f;
@@ -28,6 +29,19 @@ export async function handlePptCommand(interaction: ChatInputCommandInteraction)
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Something went wrong.";
     await interaction.editReply({ content: `Couldn't do that: ${msg}` }).catch(() => {});
+  }
+}
+
+// /ppt-admin — server-setup tools (ManageGuild-gated). Each subhandler defers itself.
+export async function handlePptAdminCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  const sub = interaction.options.getSubcommand();
+  try {
+    if (sub === "bootstrap") await runBootstrap(interaction);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Something went wrong.";
+    const payload = { content: `Couldn't do that: ${msg}` };
+    if (interaction.deferred || interaction.replied) await interaction.editReply(payload).catch(() => {});
+    else await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 }
 

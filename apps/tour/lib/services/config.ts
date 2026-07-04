@@ -3,6 +3,8 @@
 //   channel.results        — Discord channel id for result announcements
 //   channel.draft          — Discord channel id for live draft pick posts + on-clock pings
 //   channel.announcements  — Discord channel id for season milestones
+//   channel.schedule       — Discord channel id for weekly matchups / post times (bootstrap-pinned)
+//   channel.standings      — Discord channel id for standings snapshots (bootstrap-pinned)
 //   bot.commandHash        — slash-command registration hash (bot-managed)
 import { prisma } from "../db";
 
@@ -10,6 +12,8 @@ export const KNOWN_KEYS: { key: string; hint: string }[] = [
   { key: "channel.results", hint: "channel id for result announcements" },
   { key: "channel.draft", hint: "channel id for live draft posts + on-clock pings" },
   { key: "channel.announcements", hint: "channel id for season milestones" },
+  { key: "channel.schedule", hint: "channel id for weekly matchups / post times" },
+  { key: "channel.standings", hint: "channel id for standings snapshots" },
 ];
 
 export async function getConfig(key: string): Promise<string | null> {

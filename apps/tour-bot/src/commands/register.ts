@@ -26,5 +26,5 @@ export async function ensureCommandsRegistered(client: Client): Promise<void> {
   }
   await client.rest.put(Routes.applicationGuildCommands(appId, env.TOUR_GUILD_ID), { body });
   await apiPost("/api/bot/config", { key: "bot.commandHash", value: hash }).catch(() => {});
-  console.log(`[commands] registered /ppt (hash ${hash})`);
+  console.log(`[commands] registered /ppt + /ppt-admin (hash ${hash})`);
 }
