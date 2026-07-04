@@ -12,6 +12,7 @@ import {
 import { env } from "./../env";
 import { apiGet, apiPost } from "./../api";
 import { runBootstrap } from "./bootstrap";
+import { runPermissionsCheck } from "./permissions";
 
 const url = (path: string) => `${env.TOUR_WEB_URL}${path}`;
 const GOLD = 0xf1c40f;
@@ -37,6 +38,7 @@ export async function handlePptAdminCommand(interaction: ChatInputCommandInterac
   const sub = interaction.options.getSubcommand();
   try {
     if (sub === "bootstrap") await runBootstrap(interaction);
+    else if (sub === "permissions") await runPermissionsCheck(interaction);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Something went wrong.";
     const payload = { content: `Couldn't do that: ${msg}` };

@@ -46,6 +46,9 @@ export function commandDefinitions() {
         .setName("bootstrap")
         .setDescription("Create the tour's category, channels, and staff roles (idempotent)")
         .addBooleanOption((o) => o.setName("dry-run").setDescription("Preview the changes without touching the server")),
+    )
+    .addSubcommand((s) =>
+      s.setName("permissions").setDescription("Check the bot's permissions + get the correct re-invite link"),
     );
 
   return [ppt.toJSON(), pptAdmin.toJSON()];
