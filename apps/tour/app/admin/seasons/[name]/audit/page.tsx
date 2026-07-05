@@ -9,6 +9,9 @@ import { getSeasonAudit, type PendingCategory } from "@/lib/services/audit";
 import { Callout } from "@/components/Callout";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { SetReportControls } from "@/components/SetReportControls";
+import { ActionFlashForm } from "@/components/ActionFlashForm";
+import { SubmitButton } from "@/components/SubmitButton";
+import { rebuildImportedMatchupsAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +58,7 @@ export default async function AuditPage({ params }: { params: Promise<{ name: st
     );
   }
 
-  const { totals, weeks, pending, teams, hasSeries, pendingSeries } = audit;
+  const { totals, weeks, pending, teams, hasSeries, pendingSeries, importedSetCount } = audit;
   const pct = totals.matchups ? Math.round((totals.decided / totals.matchups) * 100) : 0;
   const byCategory = new Map<PendingCategory, typeof pending>();
   for (const p of pending) {
@@ -76,7 +79,19 @@ export default async function AuditPage({ params }: { params: Promise<{ name: st
         {hasSeries && <> {"·"} {pendingSeries.length} playoff series undecided</>}
       </p>
 
-      {totals.matchups === 0 ? (
+      {totals.matchups === 0 && importedSetCount > 0 ? (
+        <Callout type="admin">
+          <div style={{ marginBottom: "0.5rem" }}>
+            This season was <strong>imported</strong> {"—"} {importedSetCount} played games are in the data, but they
+            aren&apos;t grouped into matchups yet, so the audit (and overlays) can&apos;t see them. Rebuild the
+            matchups from those results:
+          </div>
+          <ActionFlashForm action={rebuildImportedMatchupsAction}>
+            <input type="hidden" name="season" value={seasonName} />
+            <SubmitButton pendingText="Rebuilding…"><ClipboardList /> Rebuild matchups from imported results</SubmitButton>
+          </ActionFlashForm>
+        </Callout>
+      ) : totals.matchups === 0 ? (
         <Callout type="admin">No schedule yet {"—"} generate the schedule first.</Callout>
       ) : totals.pending === 0 && !pendingSeries.length ? (
         <Callout type="success">Everything is settled {"—"} every matchup{hasSeries ? " and playoff series" : ""} has a result.</Callout>

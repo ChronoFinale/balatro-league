@@ -46,6 +46,12 @@ export async function getSeasonAudit(seasonName: string) {
   });
   if (!season) return null;
 
+  // Loose imported sets (REGULAR, week-tagged) that could be rebuilt into matchups --
+  // nonzero here with zero weeks means "imported season, not yet reconstructed".
+  const importedSetCount = await prisma.tourSet.count({
+    where: { seasonId: season.id, bracket: "REGULAR", week: { not: null } },
+  });
+
   const [weeks, teamSeasons, series] = await Promise.all([
     prisma.week.findMany({
       where: { seasonId: season.id },
@@ -174,5 +180,6 @@ export async function getSeasonAudit(seasonName: string) {
     teams,
     hasSeries: series.length > 0,
     pendingSeries,
+    importedSetCount, // >0 with matchups==0 => imported season awaiting reconstruction
   };
 }
