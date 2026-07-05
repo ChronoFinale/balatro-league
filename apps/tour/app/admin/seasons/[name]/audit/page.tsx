@@ -9,9 +9,6 @@ import { getSeasonAudit, type PendingCategory } from "@/lib/services/audit";
 import { Callout } from "@/components/Callout";
 import { LiveRefresh } from "@/components/LiveRefresh";
 import { SetReportControls } from "@/components/SetReportControls";
-import { ActionFlashForm } from "@/components/ActionFlashForm";
-import { SubmitButton } from "@/components/SubmitButton";
-import { rebuildImportedMatchupsAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -83,13 +80,12 @@ export default async function AuditPage({ params }: { params: Promise<{ name: st
         <Callout type="admin">
           <div style={{ marginBottom: "0.5rem" }}>
             This season was <strong>imported</strong> {"—"} {importedSetCount} played games are in the data, but they
-            aren&apos;t grouped into matchups yet, so the audit (and overlays) can&apos;t see them. Rebuild the
-            matchups from those results:
+            aren&apos;t grouped into matchups yet, so the audit (and overlays) can&apos;t see them. Preview rebuilding
+            the matchups from those results (nothing is written until you confirm):
           </div>
-          <ActionFlashForm action={rebuildImportedMatchupsAction}>
-            <input type="hidden" name="season" value={seasonName} />
-            <SubmitButton pendingText="Rebuilding…"><ClipboardList /> Rebuild matchups from imported results</SubmitButton>
-          </ActionFlashForm>
+          <Link href={`/admin/seasons/${enc}/audit/rebuild`} className="inline-flex items-center gap-1">
+            <ClipboardList className="size-4" /> Preview matchup rebuild {"→"}
+          </Link>
         </Callout>
       ) : totals.matchups === 0 ? (
         <Callout type="admin">No schedule yet {"—"} generate the schedule first.</Callout>
