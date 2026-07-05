@@ -91,7 +91,12 @@ export async function setSeasonRemindersAction(formData: FormData) {
   const discordId = await currentDiscordId();
   if (!discordId) return;
   const next = String(formData.get("next") ?? "") === "1";
-  const player = await prisma.player.findUnique({ where: { discordId }, select: { id: true } });
+  const player = await prisma.player.findUnique({ where: { discordId }, select: { id: true, bannedAt: true } });
+  // Banned players can't opt IN to reminders (but can always opt out).
+  if (next && player?.bannedAt) {
+    revalidatePath("/me");
+    return;
+  }
   if (next) {
     await prisma.seasonInterest.upsert({ where: { discordId }, create: { discordId }, update: {} });
     if (player) await prisma.player.update({ where: { id: player.id }, data: { signupReminderOptOut: false } });

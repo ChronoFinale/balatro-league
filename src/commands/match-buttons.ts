@@ -43,6 +43,7 @@ import { renderComboBuilder, renderMatch } from "../match-render.js";
 import { summonHelpers } from "./helper.js";
 import { recomputeDivisionStandings } from "../standings-cache.js";
 import { writeMatchGames } from "../match-write.js";
+import { bannedPlayerIds, BANNED_MESSAGE } from "../bans.js";
 import { backfillMatchId, postModerationNotice } from "../mod-log.js";
 import { postTranscriptSummary } from "../transcript-channel.js";
 import {
@@ -722,6 +723,21 @@ async function handleAccept(interaction: ButtonInteraction, session: MatchSessio
   }
   if (interaction.user.id !== playerB.discordId) {
     return reply(interaction, "Only the challenged player can accept this match.");
+  }
+
+  // A player banned SINCE the invite was created can't accept it (nor be pulled
+  // in as the opponent). createLeagueMatchInvite blocks banned players at
+  // creation, but a ban can land while an invite is still WAITING_ACCEPT — so
+  // re-check here and cancel the stale invite.
+  const bannedNow = await bannedPlayerIds([playerA.id, playerB.id]);
+  if (bannedNow.size > 0) {
+    const cancelled = await updateSession(session, { state: MatchSessionState.CANCELLED });
+    await reply(
+      interaction,
+      bannedNow.has(playerB.id) ? BANNED_MESSAGE : `${playerA.displayName} is banned from the league, so this match can't start.`,
+    );
+    if (cancelled) closeMatchChannel(interaction, cancelled.id, cancelled.threadId).catch(() => {});
+    return;
   }
 
   // League /start-match → division's preset (uses the season-default

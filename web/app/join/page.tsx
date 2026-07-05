@@ -58,7 +58,13 @@ export default async function JoinPage({
         )}
         {err && (
           <Callout type="danger">
-            {err}
+            {err === "banned"
+              ? "You're banned from the league, so you can't sign up right now. If you think this is a mistake, reach out to a league moderator."
+              : err === "signups-closed"
+              ? "Sign-ups for this round are closed."
+              : err === "round-not-found" || err === "missing-round"
+              ? "That sign-up round couldn't be found — it may have closed."
+              : err}
           </Callout>
         )}
 

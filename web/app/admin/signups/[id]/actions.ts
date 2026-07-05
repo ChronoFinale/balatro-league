@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 import { enqueueMmrSnapshot } from "@/lib/queue";
 import { resolveDiscordIdToDisplayName } from "@/lib/add-player";
+import { isDiscordIdBanned } from "@/lib/bans";
 
 // Add a sign-up to a round straight from the round page — by Discord ID, or an
 // existing player picked by name. Either way it creates a Signup row (so they're
@@ -18,6 +19,7 @@ export async function addSignupToRound(formData: FormData) {
   const discordIdRaw = String(formData.get("discordId") ?? "").trim();
   const displayNameOverride = String(formData.get("displayName") ?? "").trim();
 
+  const bannedErr = `/admin/signups/${roundId}?err=${encodeURIComponent("That player is banned — unban them at /admin/bans first.")}`;
   const upsert = (discordId: string, displayName: string) =>
     prisma.signup.upsert({
       where: { roundId_discordId: { roundId, discordId } },
@@ -26,8 +28,9 @@ export async function addSignupToRound(formData: FormData) {
     });
 
   if (playerId) {
-    const player = await prisma.player.findUnique({ where: { id: playerId }, select: { discordId: true, displayName: true } });
+    const player = await prisma.player.findUnique({ where: { id: playerId }, select: { discordId: true, displayName: true, bannedAt: true } });
     if (!player) redirect(`/admin/signups/${roundId}?err=${encodeURIComponent("Player not found")}`);
+    if (player!.bannedAt) redirect(bannedErr);
     await upsert(player!.discordId, player!.displayName);
     revalidatePath(`/admin/signups/${roundId}`);
     return;
@@ -44,6 +47,7 @@ export async function addSignupToRound(formData: FormData) {
       if (!displayName) displayName = resolved.displayName;
     }
     if (!displayName) displayName = discordId;
+    if (await isDiscordIdBanned(discordId)) redirect(bannedErr);
     await upsert(discordId, displayName);
     revalidatePath(`/admin/signups/${roundId}`);
     return;

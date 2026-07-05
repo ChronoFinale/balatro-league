@@ -54,7 +54,7 @@ export async function buildSeasonFromRound(input: BuildSeasonInput): Promise<Bui
   });
   if (!round) return null;
 
-  const players = await Promise.all(
+  const upserted = await Promise.all(
     round.signups.map((s) =>
       prisma.player.upsert({
         where: { discordId: s.discordId },
@@ -63,6 +63,9 @@ export async function buildSeasonFromRound(input: BuildSeasonInput): Promise<Bui
       }),
     ),
   );
+  // Banned players are dropped from the build entirely — they don't get planned
+  // or placed, even if a stale signup exists (newly-upserted players can't be banned).
+  const players = upserted.filter((p) => p.bannedAt == null);
   const playerByDiscordId = new Map(players.map((p) => [p.discordId, p]));
 
   let targetSeasonId: string;

@@ -104,7 +104,7 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
   const discordIds = round.signups.map((s) => s.discordId);
   const players = await prisma.player.findMany({
     where: { discordId: { in: discordIds } },
-    select: { id: true, discordId: true, hiddenMmr: true },
+    select: { id: true, discordId: true, hiddenMmr: true, bannedAt: true },
   });
   const playerByDiscord = new Map(players.map((p) => [p.discordId, p]));
   // ALL snapshots (every BMP season), not just the latest — peak is per-season,
@@ -142,6 +142,7 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
   const rookies: RookieInput[] = [];
   for (const s of round.signups) {
     const p = playerByDiscord.get(s.discordId);
+    if (p?.bannedAt) continue; // banned players are never projected / placed
     const activeIndex = p ? divIndexByPlayer.get(p.id) : undefined;
     if (p && activeIndex != null) {
       const standing = standingByPlayer.get(p.id) ?? null;

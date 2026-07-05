@@ -34,6 +34,14 @@ export async function placePlayerInDivision(
     select: { id: true, seasonId: true, discordRoleId: true, season: { select: { leaguePlayerRoleId: true } } },
   });
   if (!division) throw new Error(`Division ${divisionId} not found`);
+
+  // Ultimate backstop: a banned player must never end up in a division. Build /
+  // placement paths filter banned players out earlier (so this won't fire during
+  // a normal build); this catches any stray direct call (admin drag, replace).
+  const banCheck = await prisma.player.findUnique({ where: { id: playerId }, select: { bannedAt: true } });
+  if (banCheck?.bannedAt) {
+    throw new Error("That player is banned from the league — unban them (/admin/bans) before placing them.");
+  }
   const guildId = process.env.DISCORD_GUILD_ID;
 
   // Find any OTHER division in the same season the player already belongs to

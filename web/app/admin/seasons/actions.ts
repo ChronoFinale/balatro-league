@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
 import { actorFromAdminUser, recordAudit } from "@/lib/audit";
+import { isDiscordIdBanned } from "@/lib/bans";
 import { performSeasonActivation } from "@/lib/season-activation";
 import { resyncSeasonSchedules } from "@/lib/schedule-sync";
 import { lockDivisionSchedules, lockOneDivision } from "@/lib/lock-schedule";
@@ -1130,6 +1131,12 @@ export async function addLatePlayerToDivision(formData: FormData) {
     redirect(`/admin/seasons?err=${encodeURIComponent("Division not found")}`);
   }
 
+  // Block banned players up front (before the upsert side-effect), not just at
+  // the placePlayerInDivision backstop.
+  if (await isDiscordIdBanned(discordIdRaw)) {
+    redirect(`/seasons/${division!.seasonId}?err=${encodeURIComponent("That player is banned — unban them at /admin/bans first.")}`);
+  }
+
   const guildId = process.env.DISCORD_GUILD_ID;
   let displayName = discordIdRaw;
   if (guildId) {
@@ -1174,9 +1181,12 @@ export async function addExistingPlayerToDivision(formData: FormData) {
   if (!division) redirect(`/admin/seasons?err=${encodeURIComponent("Division not found")}`);
   const player = await prisma.player.findUnique({
     where: { id: playerId },
-    select: { id: true, displayName: true },
+    select: { id: true, displayName: true, bannedAt: true },
   });
   if (!player) redirect(`/seasons/${division!.seasonId}?err=${encodeURIComponent("Player not found")}`);
+  if (player!.bannedAt) {
+    redirect(`/seasons/${division!.seasonId}?err=${encodeURIComponent("That player is banned — unban them at /admin/bans first.")}`);
+  }
 
   const { placePlayerInDivision } = await import("@/lib/division-membership");
   await placePlayerInDivision(division!.id, player!.id);

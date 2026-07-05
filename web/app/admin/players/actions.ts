@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
+import { isPlayerIdBanned } from "@/lib/bans";
 import { enqueueMmrSnapshot, enqueueWelcomeRefresh, enqueueStandingsRefresh } from "@/lib/queue";
 import { placePlayerInDivision } from "@/lib/division-membership";
 import { resyncSeasonSchedules } from "@/lib/schedule-sync";
@@ -202,6 +203,10 @@ export async function reinstatePlayer(formData: FormData) {
   const season = await prisma.season.findFirst({ where: { isActive: true } });
   if (!season || !playerId) return;
 
+  // A banned player can't be reinstated into a division — unban them first.
+  if (await isPlayerIdBanned(playerId)) {
+    redirect(`/admin/players?err=${encodeURIComponent("That player is banned — unban them at /admin/bans before reinstating.")}`);
+  }
   const membership = await prisma.divisionMember.findFirst({
     where: { playerId, division: { seasonId: season.id }, status: "DROPPED" },
   });

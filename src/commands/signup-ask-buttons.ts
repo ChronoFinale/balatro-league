@@ -8,6 +8,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type ButtonInteraction } from "discord.js";
 import { prisma } from "../db.js";
 import { markSignedUp, refreshChannelSignupPost } from "../signup/signup-reminders.js";
+import { isDiscordIdBanned, BANNED_MESSAGE } from "../bans.js";
 import type { ButtonHandler } from "./types.js";
 
 function stillAccepting(round: { status: string; closedAt: Date | null; closesAt: Date | null }): boolean {
@@ -61,6 +62,12 @@ export const signupAskButtonHandler: ButtonHandler = {
     }
 
     if (action === "yes") {
+      // Banned players can't sign up (they shouldn't get the DM either, but a
+      // stale ask could still be live — refuse it here).
+      if (await isDiscordIdBanned(discordId)) {
+        await interaction.update({ content: BANNED_MESSAGE, components: [] });
+        return;
+      }
       // Create the signup (or un-withdraw a previous drop), same as the channel
       // Sign Up button. They clicked from a DM, but they're a past player.
       const globalName = interaction.user.globalName ?? null;

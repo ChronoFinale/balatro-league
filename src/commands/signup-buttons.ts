@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { signupButtons, signupEmbed, DEFAULT_SEASON_LENGTH_DAYS } from "../signup/signup.js";
 import { markSignedUp } from "../signup/signup-reminders.js";
 import { getConfig, LeagueConfigKey } from "../league-config.js";
+import { isDiscordIdBanned, BANNED_MESSAGE } from "../bans.js";
 import type { ButtonHandler } from "./types.js";
 
 // Configured play-window length (days), defaulting to two weeks.
@@ -91,6 +92,11 @@ export const signupHandlers: ButtonHandler = {
           content: "Bot accounts can't join the league.",
           flags: MessageFlags.Ephemeral,
         });
+        return;
+      }
+      // Banned players can't sign up.
+      if (await isDiscordIdBanned(interaction.user.id)) {
+        await interaction.reply({ content: BANNED_MESSAGE, flags: MessageFlags.Ephemeral });
         return;
       }
       const existing = await prisma.signup.findUnique({

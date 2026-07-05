@@ -23,6 +23,7 @@ import { prisma } from "../db.js";
 import { tryGetDiscordClient } from "../discord.js";
 import { deleteChannelMessage, isUndeliverableDm } from "../discord-helpers.js";
 import { getConfig, LeagueConfigKey } from "../league-config.js";
+import { isDiscordIdBanned, bannedDiscordIds } from "../bans.js";
 import { DEFAULT_SEASON_LENGTH_DAYS, playWindow, seasonWindowValue, signupEmbed, signupButtons } from "./signup.js";
 
 // How long before close the "last call" reminder fires. 36h sits in the middle
@@ -93,7 +94,10 @@ async function audienceDiscordIds(roundId: string): Promise<string[]> {
   for (const p of players) set.add(p.discordId);
   for (const i of interest) set.add(i.discordId);
   for (const s of signed) set.delete(s.discordId);
-  return [...set];
+  // Banned players never get "are you in?" reminders.
+  const ids = [...set];
+  const banned = await bannedDiscordIds(ids);
+  return ids.filter((id) => !banned.has(id));
 }
 
 // Called by the kickoff worker when signups open. Creates a PENDING ask row per
@@ -124,6 +128,7 @@ export async function sendOrRefreshAsk(roundId: string, discordId: string): Prom
   if (!round || !acceptingAsks(round)) return;
   const ask = await prisma.signupAsk.findUnique({ where: { roundId_discordId: { roundId, discordId } } });
   if (!ask || ask.status === "ACCEPTED" || ask.status === "DECLINED") return; // already answered
+  if (await isDiscordIdBanned(discordId)) return; // banned since the round opened — no reminder
 
   // Decide the tone from where we are in the round's window.
   let variant: AskVariant = "initial";

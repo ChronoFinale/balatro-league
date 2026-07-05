@@ -12,6 +12,7 @@ import {
   remainingMatchCount,
   type QueueStatus,
 } from "../league-queue.js";
+import { isDiscordIdBanned, BANNED_MESSAGE } from "../bans.js";
 import type { ButtonHandler } from "./types.js";
 
 const names = (ps: { displayName: string }[]) => ps.map((p) => p.displayName).join(", ");
@@ -74,6 +75,12 @@ export const queueButtons: ButtonHandler = {
     }
 
     if (action === "join") {
+      // Banned players can't queue (createLeagueMatchInvite would refuse anyway —
+      // this just rejects them up front instead of parking them in the queue).
+      if (await isDiscordIdBanned(interaction.user.id)) {
+        await interaction.editReply(BANNED_MESSAGE);
+        return;
+      }
       // League players only.
       if (!(await isInActiveDivision(me.id, season.id))) {
         await interaction.editReply("The queue is for league players — you're not in a division this season.");

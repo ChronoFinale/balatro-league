@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { refreshSignupPost } from "@/lib/signup-discord";
+import { isDiscordIdBanned } from "@/lib/bans";
 
 async function currentDiscordIdOrRedirect(): Promise<string> {
   const session = await auth();
@@ -18,6 +19,7 @@ async function currentDiscordIdOrRedirect(): Promise<string> {
 // create dupes.
 export async function subscribeFromJoinAction() {
   const discordId = await currentDiscordIdOrRedirect();
+  if (await isDiscordIdBanned(discordId)) redirect("/join?err=banned");
   await prisma.seasonInterest.upsert({
     where: { discordId },
     create: { discordId },
@@ -38,6 +40,7 @@ export async function unsubscribeFromJoinAction() {
 // can override later from the build page.
 export async function signupFromJoinAction(formData: FormData) {
   const discordId = await currentDiscordIdOrRedirect();
+  if (await isDiscordIdBanned(discordId)) redirect("/join?err=banned");
   const roundId = String(formData.get("roundId") ?? "").trim();
   if (!roundId) redirect("/join?err=missing-round");
 

@@ -80,7 +80,18 @@ model Player {
   // autoSignup auto-enroll flag — we ASK now instead of enrolling silently.
   signupReminderOptOut Boolean        @default(false)
 
+  // League ban: when set, the player CANNOT sign up for a season, be added to a
+  // signup round, opt into reminders, be placed into a division, or start/queue a
+  // match (league OR casual). Null bannedAt = not banned. Set/cleared by an admin
+  // via /admin/bans; bannedBy is the acting admin's Discord id, bannedReason is
+  // an admin-only note. A ban does NOT auto-remove them from a live season — use
+  // the division DQ/void tools for that; it stops future signup + new matches.
+  bannedAt             DateTime?
+  bannedReason         String?
+  bannedBy             String?
+
   @@index([rating])
+  @@index([bannedAt])
 }
 
 // A snapshot of EVERY current member of the Discord guild (not just registered

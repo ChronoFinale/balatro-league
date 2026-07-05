@@ -79,7 +79,7 @@ export async function absorbSignupsIntoDraft(
   if (missing.length === 0) return { added: 0, removed };
 
   // Ensure Player rows + figure out where each newcomer lands (continuity).
-  const players = await Promise.all(
+  const upserted = await Promise.all(
     missing.map((s) =>
       prisma.player.upsert({
         where: { discordId: s.discordId },
@@ -88,6 +88,8 @@ export async function absorbSignupsIntoDraft(
       }),
     ),
   );
+  // Banned newcomers are never absorbed into the draft.
+  const players = upserted.filter((p) => p.bannedAt == null);
   const playerByDiscord = new Map(players.map((p) => [p.discordId, p]));
 
   const cont = await loadContinuityPlacement(roundId);
@@ -125,8 +127,9 @@ export async function buildSeasonFromContinuity(
   });
   if (!round) return null;
 
-  // Upsert a Player for every signup.
-  const players = await Promise.all(
+  // Upsert a Player for every signup, then drop banned players — they're never
+  // placed. loadContinuityPlacement already excludes them from the projection.
+  const upserted = await Promise.all(
     round.signups.map((s) =>
       prisma.player.upsert({
         where: { discordId: s.discordId },
@@ -135,6 +138,7 @@ export async function buildSeasonFromContinuity(
       }),
     ),
   );
+  const players = upserted.filter((p) => p.bannedAt == null);
   const playerByDiscordId = new Map(players.map((p) => [p.discordId, p]));
 
   const divs = placement.divisions; // ordered top-down (0 = Legendary)

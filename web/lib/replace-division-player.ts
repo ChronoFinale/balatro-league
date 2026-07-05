@@ -91,6 +91,9 @@ export async function replaceDivisionPlayer(departedPlayerId: string, newDiscord
     create: { discordId: newDiscordId, displayName: newName },
     update: {},
   });
+  if (newPlayer.bannedAt) {
+    throw new ReplaceError("That replacement is banned from the league — unban them (/admin/bans) first, or pick someone else.");
+  }
 
   // Repoint each match from departed → new, keeping the canonical a<b ordering.
   // The new player has no existing match in this division, so no unique collision.

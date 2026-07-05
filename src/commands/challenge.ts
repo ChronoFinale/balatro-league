@@ -17,6 +17,7 @@ import { getLeagueSettings } from "../league-settings.js";
 import { renderMatch } from "../match-render.js";
 import { postModerationNotice } from "../mod-log.js";
 import { getOrCreatePlayer, guildDisplayName } from "../players.js";
+import { bannedPlayerIds, BANNED_MESSAGE } from "../bans.js";
 import type { SlashCommand } from "./types.js";
 
 const BO_CHOICES = [
@@ -64,6 +65,17 @@ export const challenge: SlashCommand = {
 
     const me = await getOrCreatePlayer(interaction.user, guildDisplayName(interaction));
     const opp = await getOrCreatePlayer(opponentUser);
+
+    // Banned players can't play — even casual challenges.
+    const banned = await bannedPlayerIds([me.id, opp.id]);
+    if (banned.has(me.id)) {
+      await interaction.editReply(BANNED_MESSAGE);
+      return;
+    }
+    if (banned.has(opp.id)) {
+      await interaction.editReply(`${opp.displayName} is banned from the league right now, so you can't challenge them.`);
+      return;
+    }
 
     // Refuse if there's an in-flight session between them (league OR casual)
     const inFlight = await prisma.matchSession.findFirst({

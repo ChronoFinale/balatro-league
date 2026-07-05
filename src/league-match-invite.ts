@@ -11,6 +11,7 @@ import { renderMatch } from "./match-render.js";
 import { postModerationNotice } from "./mod-log.js";
 import { ensureLeagueMatchesChannel } from "./league-matches-channel.js";
 import { recordAudit } from "./audit.js";
+import { bannedPlayerIds, BANNED_MESSAGE } from "./bans.js";
 import type { Player } from "@prisma/client";
 
 export interface CreateLeagueMatchInviteResult {
@@ -65,6 +66,12 @@ export async function createLeagueMatchInvite(opts: {
   type Created = Awaited<ReturnType<typeof prisma.matchSession.create>>;
   const claim = await withCreationLock(
     async (): Promise<{ error: string } | { session: Created; expiryMinutes: number }> => {
+      // Banned players can't start OR be pulled into any match (league or shootout).
+      const banned = await bannedPlayerIds([me.id, opp.id]);
+      if (banned.has(me.id)) return { error: BANNED_MESSAGE };
+      if (banned.has(opp.id)) {
+        return { error: `${opp.displayName} is banned from the league right now, so you can't start a match with them.` };
+      }
       const [playerAId, playerBId] = me.id < opp.id ? [me.id, opp.id] : [opp.id, me.id];
       const existing = await prisma.match.findUnique({
         where: {

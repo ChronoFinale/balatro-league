@@ -11,6 +11,7 @@ import "server-only";
 // has any non-(0-0 PENDING) match.
 
 import { prisma } from "@/lib/prisma";
+import { bannedPlayerIdSet } from "@/lib/bans";
 import { addGuildMemberRole, removeGuildMemberRole } from "@/lib/discord";
 import { refreshStandingsCacheIfWarm } from "@/lib/standings-cache";
 import { enqueueStandingsRefresh } from "@/lib/queue";
@@ -55,6 +56,10 @@ export async function swapDivisionPlayers(playerAId: string, playerBId: string):
   }
   if (memA.divisionId === memB.divisionId) {
     throw new SwapError("Those players are already in the same division — a swap moves players between two different divisions.");
+  }
+  const swapBanned = await bannedPlayerIdSet([playerAId, playerBId]);
+  if (swapBanned.size > 0) {
+    throw new SwapError("One of those players is banned from the league — unban them (/admin/bans) or DQ them from the division instead of swapping.");
   }
 
   // Each player's own matchups (in their own division).
