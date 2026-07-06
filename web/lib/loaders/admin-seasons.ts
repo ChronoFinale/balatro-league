@@ -9,6 +9,7 @@
 //     computeStandings
 
 import { prisma } from "@/lib/prisma";
+import { bannedDiscordIdSet } from "@/lib/bans";
 import { byBestBmpSnapshot } from "@/lib/bmp-snapshots";
 import { computeStandings } from "@/lib/standings";
 import { computeRatingDeltas, type DivisionForRating } from "@/lib/end-season";
@@ -426,6 +427,11 @@ export interface SignupMmrRow {
   // Which BMP season the shown numbers are from. Compare to the overview's
   // bmpCurrentSeason to flag a fallback ("hasn't played this season").
   bmpSeason: string | null;
+  // League ban (active) + how many league sets they've actually played in the
+  // CURRENT active season — so an admin reviewing signups can spot banned players
+  // and no-shows before building.
+  banned: boolean;
+  setsPlayedThisSeason: number;
 }
 export interface SignupMmrTier {
   tier: string;
@@ -489,6 +495,33 @@ export async function loadSignupMmrOverview(roundId: string): Promise<SignupMmrO
     best.set(did, arr[0]!);
   }
 
+  // Ban status + this-season sets played, keyed by discordId.
+  const players = discordIds.length
+    ? await prisma.player.findMany({ where: { discordId: { in: discordIds } }, select: { id: true, discordId: true } })
+    : [];
+  const discordByPlayerId = new Map(players.map((p) => [p.id, p.discordId]));
+  const bannedSet = await bannedDiscordIdSet(discordIds);
+  const setsByDiscord = new Map<string, number>();
+  const activeSeason = players.length ? await prisma.season.findFirst({ where: { isActive: true }, select: { id: true } }) : null;
+  if (activeSeason) {
+    const playerIds = players.map((p) => p.id);
+    const confirmed = await prisma.match.findMany({
+      where: {
+        format: "LEAGUE_BO2",
+        status: "CONFIRMED",
+        division: { seasonId: activeSeason.id },
+        OR: [{ playerAId: { in: playerIds } }, { playerBId: { in: playerIds } }],
+      },
+      select: { playerAId: true, playerBId: true },
+    });
+    for (const m of confirmed) {
+      for (const pid of [m.playerAId, m.playerBId]) {
+        const did = discordByPlayerId.get(pid);
+        if (did) setsByDiscord.set(did, (setsByDiscord.get(did) ?? 0) + 1);
+      }
+    }
+  }
+
   const rows: SignupMmrRow[] = round.signups
     .map((s) => {
       const b = best.get(s.discordId);
@@ -503,6 +536,8 @@ export async function loadSignupMmrOverview(roundId: string): Promise<SignupMmrO
         totalGames: b?.totalGames ?? null,
         winRatePct: b?.winRatePct ?? null,
         bmpSeason: b?.bmpSeason ?? null,
+        banned: bannedSet.has(s.discordId),
+        setsPlayedThisSeason: setsByDiscord.get(s.discordId) ?? 0,
       };
     })
     .sort((a, b) => {

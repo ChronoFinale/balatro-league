@@ -98,12 +98,13 @@ export function SignupMmrTable({
             {th("season", "Season", "BMP season these numbers are from")}
             {th("games", "Games")}
             {th("winrate", "Win%")}
+            <th title="League sets (matches) played in the CURRENT season">Sets</th>
             {canRemove && <th></th>}
           </tr>
         </thead>
         <tbody>
           {sorted.length === 0 ? (
-            <tr><td colSpan={canRemove ? 9 : 8} className="muted">No signups.</td></tr>
+            <tr><td colSpan={canRemove ? 10 : 9} className="muted">No signups.</td></tr>
           ) : (
             sorted.map((r, i) => {
               const isPrev = r.bmpSeason != null && bmpCurrentSeason != null && r.bmpSeason !== bmpCurrentSeason;
@@ -113,6 +114,9 @@ export function SignupMmrTable({
                   <td>
                     <strong>{r.globalName ?? `@${r.username}`}</strong>
                     {r.globalName && <span className="muted"> @{r.username}</span>}
+                    {r.banned && (
+                      <span className="pill" style={{ fontSize: 10, marginLeft: 6, background: "rgba(231,76,60,0.2)", color: "var(--danger)" }}>banned</span>
+                    )}
                     <div className="muted" style={{ fontSize: 11 }}>
                       <span style={{ fontFamily: "ui-monospace, monospace" }}>{r.discordId}</span>
                       {" · "}
@@ -136,6 +140,13 @@ export function SignupMmrTable({
                   </td>
                   <td>{r.totalGames ?? <span className="muted">—</span>}</td>
                   <td>{r.winRatePct != null ? `${r.winRatePct}%` : <span className="muted">—</span>}</td>
+                  <td style={{ fontVariantNumeric: "tabular-nums" }} title="League sets played this season">
+                    {r.setsPlayedThisSeason > 0 ? (
+                      <strong>{r.setsPlayedThisSeason}</strong>
+                    ) : (
+                      <span style={{ color: "var(--accent)" }} title="Hasn't played any sets this season">0</span>
+                    )}
+                  </td>
                   {canRemove && (
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                       <form action={removeAction} style={{ display: "inline" }}>
