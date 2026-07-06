@@ -39,8 +39,16 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
   });
   if (!round) return "NO_ROUND";
 
+  // Base continuity on the CURRENT season — or, when none is active (e.g. right
+  // after ending a season, before the next is activated), the MOST RECENTLY
+  // ENDED season. That's still "the season players are returning from", so
+  // returners keep their finish instead of every draft member showing as NEW.
+  // `isActive` desc prefers a live season; `number` desc then picks the latest
+  // ended one. A built-but-unactivated DRAFT (isActive:false, endedAt:null) is
+  // NOT a valid base, so the OR requires it to be either active or ended.
   const activeSeason = await prisma.season.findFirst({
-    where: { isActive: true },
+    where: { OR: [{ isActive: true }, { endedAt: { not: null } }] },
+    orderBy: [{ isActive: "desc" }, { number: "desc" }],
     include: {
       divisions: {
         orderBy: [{ tier: { position: "asc" } }, { groupNumber: "asc" }],
@@ -167,7 +175,7 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
   if (gapIds.length) {
     // Their memberships across ENDED seasons, newest season first.
     const priorMemberships = await prisma.divisionMember.findMany({
-      where: { playerId: { in: gapIds }, division: { season: { isActive: false } } },
+      where: { playerId: { in: gapIds }, division: { season: { isActive: false, NOT: { id: activeSeason.id } } } },
       select: {
         playerId: true,
         division: { select: { id: true, groupNumber: true, tier: { select: { name: true } }, season: { select: { number: true } } } },
