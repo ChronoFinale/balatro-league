@@ -38,15 +38,21 @@ function Cell({ cell, self }: { cell: GridCell | null; self: boolean }) {
     );
   }
   if (cell.state === "scheduled") {
-    return <td style={{ textAlign: "center", color: "var(--muted)" }} title="Fixture exists, not played yet">{"○"}</td>;
+    const dash = <span title="Fixture exists, not played yet">{"○"}</span>;
+    return (
+      <td style={{ textAlign: "center", color: "var(--muted)" }}>
+        {cell.matchupId ? <Link href={`/admin/matchups/${cell.matchupId}`} title="Open the matchup console -- pair players / report each set">{dash}</Link> : dash}
+      </td>
+    );
   }
   const won = cell.setsFor > cell.setsAgainst;
   const lost = cell.setsFor < cell.setsAgainst;
   const color = won ? "var(--accent-2)" : lost ? "var(--danger, #e5484d)" : undefined;
-  const games = `${cell.gamesFor}–${cell.gamesAgainst} games` + (cell.meetings > 1 ? ` · ${cell.meetings} meetings` : "");
+  const games = `${cell.gamesFor}–${cell.gamesAgainst} games` + (cell.meetings > 1 ? ` · ${cell.meetings} meetings` : "") + (cell.matchupId ? " · click to edit sets" : "");
+  const score = <>{cell.setsFor}{"–"}{cell.setsAgainst}</>;
   return (
     <td style={{ textAlign: "center", color, fontWeight: 600, whiteSpace: "nowrap" }} title={games}>
-      {cell.setsFor}{"–"}{cell.setsAgainst}
+      {cell.matchupId ? <Link href={`/admin/matchups/${cell.matchupId}`} style={{ color: "inherit" }}>{score}</Link> : score}
     </td>
   );
 }
@@ -173,10 +179,12 @@ export default async function GridPage({ params }: { params: Promise<{ name: str
       </p>
 
       <Callout type="admin" style={{ marginBottom: "0.75rem" }}>
-        Each cell is <strong>row team vs column team</strong> (the row team&apos;s set score). A tinted
-        blank ({"·"}) means they <strong>never played</strong> {"—"} a hole. A dark {"×"} is a designed bye
-        (never scheduled). A {"○"} is an unplayed fixture. Resolve each hole below the matrix: record the
-        result if the game happened, or mark it a bye. Hover a score for games / repeat meetings.
+        Each cell is <strong>row team vs column team</strong> (the row team&apos;s set score).
+        <strong> Click a score</strong> to open its matchup console and edit the individual sets behind it
+        (who played whom + each set&apos;s game score). A tinted blank ({"·"}) means they{" "}
+        <strong>never played</strong> {"—"} a hole. A dark {"×"} is a designed bye (never scheduled).
+        A {"○"} is an unplayed fixture. Resolve each hole below the matrix: record the team result if the
+        game happened, or mark it a bye.
       </Callout>
 
       {needsReconcile && (

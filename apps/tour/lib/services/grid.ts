@@ -23,6 +23,7 @@ interface Meeting {
   gamesLo: number;
   gamesHi: number;
   hasResult: boolean; // at least one set confirmed (vs a bare fixture with no play yet)
+  matchupId?: string; // the Matchup row (when this meeting is matchup-backed) -> console drill-in
 }
 
 export interface GridCell {
@@ -34,6 +35,7 @@ export interface GridCell {
   // played = has a result; scheduled = fixture exists, no play yet; excluded = a designed
   // non-matchup the TO marked (these two never play), so it isn't counted as a hole.
   state: "played" | "scheduled" | "excluded";
+  matchupId?: string; // set when the pair maps to exactly one Matchup -> link to the per-set console
 }
 
 export interface GridTeam {
@@ -86,7 +88,7 @@ async function loadMeetings(seasonId: string, setsToWin: number): Promise<Meetin
   // is stored directly; a matchup with a null result is a fixture that isn't played yet.
   const matchups = await prisma.matchup.findMany({
     where: { week: { seasonId } },
-    select: { teamSeasonAId: true, teamSeasonBId: true, setsWonA: true, setsWonB: true, gamesWonA: true, gamesWonB: true },
+    select: { id: true, teamSeasonAId: true, teamSeasonBId: true, setsWonA: true, setsWonB: true, gamesWonA: true, gamesWonB: true },
   });
   for (const m of matchups) {
     const aIsLo = m.teamSeasonAId < m.teamSeasonBId;
@@ -99,6 +101,7 @@ async function loadMeetings(seasonId: string, setsToWin: number): Promise<Meetin
       setsLo: aIsLo ? sA : sB, setsHi: aIsLo ? sB : sA,
       gamesLo: aIsLo ? gA : gB, gamesHi: aIsLo ? gB : gA,
       hasResult,
+      matchupId: m.id,
     });
   }
 
@@ -185,7 +188,7 @@ export async function getSeasonGrid(seasonName: string): Promise<SeasonGrid | nu
   }
 
   // Index meetings by unordered pair, summing across repeat encounters (double RR).
-  interface PairAgg { meetings: number; setsLo: number; setsHi: number; gamesLo: number; gamesHi: number; played: boolean }
+  interface PairAgg { meetings: number; setsLo: number; setsHi: number; gamesLo: number; gamesHi: number; played: boolean; matchupIds: string[] }
   const pairs = new Map<string, PairAgg>();
   const crossConf: CrossMeeting[] = [];
   let playedMeetings = 0;
@@ -201,11 +204,12 @@ export async function getSeasonGrid(seasonName: string): Promise<SeasonGrid | nu
       continue;
     }
     const key = `${mt.loId}|${mt.hiId}`;
-    const agg = pairs.get(key) ?? { meetings: 0, setsLo: 0, setsHi: 0, gamesLo: 0, gamesHi: 0, played: false };
+    const agg = pairs.get(key) ?? { meetings: 0, setsLo: 0, setsHi: 0, gamesLo: 0, gamesHi: 0, played: false, matchupIds: [] };
     agg.meetings++;
     agg.setsLo += mt.setsLo; agg.setsHi += mt.setsHi;
     agg.gamesLo += mt.gamesLo; agg.gamesHi += mt.gamesHi;
     if (mt.hasResult) agg.played = true;
+    if (mt.matchupId) agg.matchupIds.push(mt.matchupId);
     pairs.set(key, agg);
   }
 
@@ -228,6 +232,8 @@ export async function getSeasonGrid(seasonName: string): Promise<SeasonGrid | nu
       gamesFor: aIsLo ? agg.gamesLo : agg.gamesHi,
       gamesAgainst: aIsLo ? agg.gamesHi : agg.gamesLo,
       state: agg.played ? "played" : "scheduled",
+      // Link the cell to its console only when the pair is exactly one matchup (unambiguous).
+      matchupId: agg.matchupIds.length === 1 ? agg.matchupIds[0] : undefined,
     };
   };
 
