@@ -31,7 +31,9 @@ export interface GridCell {
   setsAgainst: number;
   gamesFor: number;
   gamesAgainst: number;
-  state: "played" | "scheduled"; // played = has a result; scheduled = fixture exists, no play yet
+  // played = has a result; scheduled = fixture exists, no play yet; excluded = a designed
+  // non-matchup the TO marked (these two never play), so it isn't counted as a hole.
+  state: "played" | "scheduled" | "excluded";
 }
 
 export interface GridTeam {
@@ -40,8 +42,9 @@ export interface GridTeam {
   seed: number;
   opponentsPlayed: number; // distinct in-conference opponents met (with a result)
   opponentsScheduled: number; // in-conf fixtures that exist but haven't been played
-  missing: number; // in-conf opponents never met -- the blank cells (candidate missing games)
-  possibleOpponents: number; // teams in the conference minus one (single round-robin target)
+  excluded: number; // in-conf opponents the TO marked as a designed non-matchup (bye)
+  missing: number; // in-conf opponents never met AND not excluded -- the real holes to fill
+  possibleOpponents: number; // opponents this team is expected to play (N-1 minus its byes)
   totalMeetings: number; // all played meetings incl. cross-conference (sanity-check vs the record)
 }
 
@@ -69,7 +72,10 @@ export interface SeasonGrid {
   format: string;
   conferences: ConferenceGrid[];
   crossConf: CrossMeeting[];
-  totals: { teams: number; playedMeetings: number; missingPairs: number };
+  weekNumbers: number[]; // existing week numbers, for the "record a hole" week picker
+  editable: boolean; // matchup rows exist -> the TO can fill holes here
+  needsReconcile: boolean; // imported flat sets with no matchups yet -> reconcile first
+  totals: { teams: number; playedMeetings: number; missingPairs: number; excludedPairs: number };
 }
 
 // Fold every meeting from Matchup rows AND flat imported TourSets into one canonical list.
@@ -164,7 +170,19 @@ export async function getSeasonGrid(seasonName: string): Promise<SeasonGrid | nu
     }
   }
 
-  const meetings = await loadMeetings(season.id, season.setsToWin);
+  const [meetings, exclusionRows, weekRows, matchupCount, flatCount] = await Promise.all([
+    loadMeetings(season.id, season.setsToWin),
+    prisma.scheduleExclusion.findMany({ where: { seasonId: season.id }, select: { teamSeasonAId: true, teamSeasonBId: true } }),
+    prisma.week.findMany({ where: { seasonId: season.id }, select: { number: true }, orderBy: { number: "asc" } }),
+    prisma.matchup.count({ where: { week: { seasonId: season.id } } }),
+    prisma.tourSet.count({ where: { seasonId: season.id, matchupId: null, week: { not: null }, bracket: "REGULAR" } }),
+  ]);
+  // Excluded pairs, canonical (lo|hi) keyed for order-independent lookup.
+  const excluded = new Set<string>();
+  for (const e of exclusionRows) {
+    const [lo, hi] = e.teamSeasonAId < e.teamSeasonBId ? [e.teamSeasonAId, e.teamSeasonBId] : [e.teamSeasonBId, e.teamSeasonAId];
+    excluded.add(`${lo}|${hi}`);
+  }
 
   // Index meetings by unordered pair, summing across repeat encounters (double RR).
   interface PairAgg { meetings: number; setsLo: number; setsHi: number; gamesLo: number; gamesHi: number; played: boolean }
@@ -195,7 +213,14 @@ export async function getSeasonGrid(seasonName: string): Promise<SeasonGrid | nu
     const aIsLo = rowId < colId;
     const key = aIsLo ? `${rowId}|${colId}` : `${colId}|${rowId}`;
     const agg = pairs.get(key);
-    if (!agg) return null;
+    if (!agg) {
+      // No games between them. A marked designed non-matchup renders as a bye (not a hole);
+      // an unmarked blank stays null (a candidate missing match).
+      if (excluded.has(key)) {
+        return { meetings: 0, setsFor: 0, setsAgainst: 0, gamesFor: 0, gamesAgainst: 0, state: "excluded" };
+      }
+      return null;
+    }
     return {
       meetings: agg.meetings,
       setsFor: aIsLo ? agg.setsLo : agg.setsHi,
@@ -216,6 +241,7 @@ export async function getSeasonGrid(seasonName: string): Promise<SeasonGrid | nu
   }
 
   let missingPairs = 0;
+  let excludedPairs = 0;
   const confGrids: ConferenceGrid[] = conferences
     .filter((c) => c.teamSeasons.length > 0)
     .map((c) => {
@@ -226,36 +252,44 @@ export async function getSeasonGrid(seasonName: string): Promise<SeasonGrid | nu
         cells: teamIds.map((colId) => (colId === t.id ? null : cellFor(t.id, colId))),
       }));
       const teams: GridTeam[] = ordered.map((t, i) => {
-        let played = 0, scheduled = 0;
-        for (const cell of rows[i].cells) {
-          if (!cell) continue;
-          if (cell.state === "played") played++; else scheduled++;
-        }
-        const possible = ordered.length - 1;
-        const missing = Math.max(0, possible - played - scheduled);
+        let played = 0, scheduled = 0, excludedN = 0, missing = 0;
+        rows[i].cells.forEach((cell, j) => {
+          if (i === j) return; // the diagonal (self) is not an opponent
+          if (!cell) { missing++; return; } // blank, unmarked -> a real hole
+          if (cell.state === "played") played++;
+          else if (cell.state === "scheduled") scheduled++;
+          else excludedN++; // designed bye -> not a hole, not expected
+        });
         missingPairs += missing;
+        excludedPairs += excludedN;
         return {
           teamSeasonId: t.id, name: t.team.name, seed: t.seed,
-          opponentsPlayed: played, opponentsScheduled: scheduled, missing, possibleOpponents: possible,
+          opponentsPlayed: played, opponentsScheduled: scheduled, excluded: excludedN, missing,
+          possibleOpponents: ordered.length - 1 - excludedN,
           totalMeetings: totalPlayedByTeam.get(t.id) ?? 0,
         };
       });
       return { conferenceId: c.id, conferenceName: c.name, teams, rows };
     });
 
-  // Each blank cell is counted once per row above (both (X,Y) and (Y,X) are blank), so the
-  // number of distinct missing PAIRS is half the summed per-team missing counts.
+  // Each blank/excluded cell is counted once per row above (both (X,Y) and (Y,X)), so the
+  // number of distinct PAIRS is half the summed per-team counts.
   missingPairs = Math.round(missingPairs / 2);
+  excludedPairs = Math.round(excludedPairs / 2);
 
   return {
     seasonName: season.name,
     format: season.format,
     conferences: confGrids,
     crossConf,
+    weekNumbers: weekRows.map((w) => w.number),
+    editable: matchupCount > 0,
+    needsReconcile: matchupCount === 0 && flatCount > 0,
     totals: {
       teams: confOf.size,
       playedMeetings,
       missingPairs,
+      excludedPairs,
     },
   };
 }

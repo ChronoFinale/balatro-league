@@ -150,6 +150,25 @@ model TourSeason {
   weeks       Week[]
   draft       Draft?
   signups     Signup[]
+  scheduleExclusions ScheduleExclusion[]
+}
+
+// An intentional non-matchup: two teams a season's schedule deliberately never pairs
+// (e.g. TT4 ran a near-round-robin where one pair per conference didn't play). Lets the
+// coverage grid tell a DESIGNED gap from a real hole -- excluded pairs render as a bye and
+// don't count toward "missing", while every other blank is a game the TO still owes.
+// Teams by plain id (decoupling rule); stored canonically (A id < B id) so the pair is
+// order-independent and uniquely keyed.
+model ScheduleExclusion {
+  id            String   @id @default(cuid())
+  seasonId      String
+  teamSeasonAId String
+  teamSeasonBId String
+  createdAt     DateTime @default(now())
+
+  season TourSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, teamSeasonAId, teamSeasonBId])
 }
 
 model Conference {
