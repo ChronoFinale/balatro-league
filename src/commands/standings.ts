@@ -233,8 +233,50 @@ async function renderAllDivisions(
     isFirst = false;
   }
 
-  // Discord allows up to 10 embeds per message and 6000 total chars.
-  // One embed per tier is well under both limits for the default 4-tier pyramid.
-  await interaction.editReply({ embeds });
+  // Discord caps a message at 6000 total embed chars + 10 embeds. A big season
+  // (many divisions/players) blows past 6000 in one message, which 400s the whole
+  // reply — so split across as few ephemeral messages as fit.
+  await sendEmbedsChunked(interaction, embeds);
+}
+
+// Sum of an embed's text toward Discord's 6000-char-per-message budget.
+function embedLength(e: EmbedBuilder): number {
+  const d = e.data;
+  let n =
+    (d.title?.length ?? 0) +
+    (d.description?.length ?? 0) +
+    (d.author?.name?.length ?? 0) +
+    (d.footer?.text?.length ?? 0);
+  for (const f of d.fields ?? []) n += f.name.length + f.value.length;
+  return n;
+}
+
+// Send embeds in the fewest ephemeral messages that stay under Discord's limits
+// (6000 total chars + 10 embeds per message): editReply the first batch, followUp
+// the rest. A single tier embed is always well under one message's budget.
+async function sendEmbedsChunked(
+  interaction: ChatInputCommandInteraction,
+  embeds: EmbedBuilder[],
+): Promise<void> {
+  const MAX_CHARS = 5500; // margin under Discord's 6000
+  const MAX_EMBEDS = 10;
+  const batches: EmbedBuilder[][] = [];
+  let cur: EmbedBuilder[] = [];
+  let curChars = 0;
+  for (const e of embeds) {
+    const len = embedLength(e);
+    if (cur.length > 0 && (curChars + len > MAX_CHARS || cur.length >= MAX_EMBEDS)) {
+      batches.push(cur);
+      cur = [];
+      curChars = 0;
+    }
+    cur.push(e);
+    curChars += len;
+  }
+  if (cur.length) batches.push(cur);
+  for (let i = 0; i < batches.length; i++) {
+    if (i === 0) await interaction.editReply({ embeds: batches[i] });
+    else await interaction.followUp({ embeds: batches[i], flags: MessageFlags.Ephemeral });
+  }
 }
 
