@@ -1121,8 +1121,10 @@ async function handleWinner(interaction: ButtonInteraction, session: MatchSessio
   // advance once the winner picks. DC forfeits (no attrition result) and
   // casual /challenge games (don't count for standings) skip straight to the
   // advance.
-  // Admin override skips the (optional) lives capture and finalizes now.
-  if (!asAdmin && !session.isCasual && !newGame.dcByPlayerId && newGame.winnerLives == null) {
+  // Still capture the winner's lives — even on an admin override (an admin can
+  // enter them too via handleLives). "Auto-accept" only skips the opponent's
+  // agreement, not the lives step.
+  if (!session.isCasual && !newGame.dcByPlayerId && newGame.winnerLives == null) {
     const updated = await updateSession(session, {
       [gameField]: JSON.stringify(newGame),
     } as Prisma.MatchSessionUpdateManyMutationInput);
