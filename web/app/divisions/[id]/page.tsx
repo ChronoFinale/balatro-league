@@ -790,11 +790,16 @@ function TieHelper({ groups }: { groups: TieGroup[] }) {
                       {g.members.map((m) => (
                         <th key={m.playerId} style={{ textAlign: "center", fontSize: 11 }}>{m.displayName}</th>
                       ))}
+                      <th style={{ textAlign: "right", fontSize: 11 }} title="Net lives against the OTHER tied players only (lives in wins − opponents' lives in losses)">Net ♥ (h2h)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {g.members.map((m) => {
                       const vs = new Map(m.h2h.map((h) => [h.oppId, h]));
+                      const h2hNet = m.h2h.reduce(
+                        (sum, h) => sum + h.games.reduce((s, gm) => s + (gm.won ? gm.lives ?? 0 : -(gm.lives ?? 0)), 0),
+                        0,
+                      );
                       return (
                         <tr key={m.playerId}>
                           <td style={{ fontWeight: 500, whiteSpace: "nowrap" }}>{m.displayName}</td>
@@ -822,6 +827,9 @@ function TieHelper({ groups }: { groups: TieGroup[] }) {
                               </td>
                             );
                           })}
+                          <td style={{ textAlign: "right", fontWeight: 700, verticalAlign: "top", fontVariantNumeric: "tabular-nums", color: h2hNet > 0 ? "var(--success)" : h2hNet < 0 ? "var(--danger)" : "var(--muted)" }}>
+                            {h2hNet > 0 ? `+${h2hNet}` : h2hNet}
+                          </td>
                         </tr>
                       );
                     })}
