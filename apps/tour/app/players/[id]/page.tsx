@@ -149,7 +149,9 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
               <tr key={s.seasonName}>
                 <td><Link href={`/seasons/${encodeURIComponent(s.seasonName)}`}>{s.seasonName}</Link></td>
                 <td>{s.teamSeasonId ? <Link href={`/teams/${s.teamSeasonId}`}>{s.teamName}</Link> : s.teamName}</td>
-                <td className="num muted">{s.seed ?? "—"}</td>
+                <td className="num muted">
+                  {s.isSub ? <span className="badge" title="Temporary sub that season — held no seed">sub</span> : s.seed ?? "—"}
+                </td>
                 <td className="num">
                   {d ? (d.isCaptain ? <span className="text-[var(--accent)]" title="Captain">C</span> : `R${d.round}`) : "—"}
                 </td>

@@ -560,14 +560,19 @@ export async function importPlayoffsFromXlsx(dir = sheetsDir()) {
 // from the FINAL PlayoffSeries (winner + the two finalists); playoffsMade from PLAYOFF
 // TourSets; everCaptain from roster/captain; rookieSeason from the earliest season.
 export async function deriveCareerStats() {
-  const [entries, rosters, teamSeasons, seasons, finals, playoffSets] = await Promise.all([
+  const [entries, rosters, teamSeasons, seasons, finals, playoffSets, membershipMoves] = await Promise.all([
     prisma.rosterEntry.findMany({ select: { rosterId: true, playerId: true, seed: true, isCaptain: true } }),
     prisma.roster.findMany({ select: { id: true, teamSeasonId: true } }),
     prisma.teamSeason.findMany({ select: { id: true, seasonId: true, captainPlayerId: true } }),
     prisma.tourSeason.findMany({ select: { id: true, name: true } }),
     prisma.playoffSeries.findMany({ where: { round: "FINAL" as never }, select: { teamSeasonAId: true, teamSeasonBId: true, winnerTeamSeasonId: true } }),
     prisma.tourSet.findMany({ where: { bracket: "PLAYOFF" }, select: { playerAId: true, playerBId: true, seasonId: true } }),
+    prisma.rosterMove.findMany({ where: { kind: { in: ["DRAFTED", "ADDED", "SUB"] } }, select: { teamSeasonId: true, playerId: true, kind: true } }),
   ]);
+  // Sub-only memberships (SUB stints, no permanent arrival): their RosterEntry seed is an
+  // import artifact -- excluded from avgSeed (they never held a seed).
+  const arrivalTsPlayer = new Set(membershipMoves.filter((m) => m.kind !== "SUB").map((m) => `${m.teamSeasonId}|${m.playerId}`));
+  const subTsPlayer = new Set(membershipMoves.filter((m) => m.kind === "SUB").map((m) => `${m.teamSeasonId}|${m.playerId}`));
   const rosterTs = new Map(rosters.map((r) => [r.id, r.teamSeasonId]));
   const tsSeason = new Map(teamSeasons.map((t) => [t.id, t.seasonId]));
   const seasonNum = new Map(seasons.map((s) => [s.id, Number(s.name.replace(/\D/g, ""))]));
@@ -587,7 +592,8 @@ export async function deriveCareerStats() {
     const tsId = rosterTs.get(e.rosterId);
     if (!tsId) continue;
     const a = byPlayer.get(e.playerId) ?? { seeds: [], tsIds: new Set<string>(), seasonNums: new Set<number>(), captain: false };
-    a.seeds.push(e.seed);
+    const key = `${tsId}|${e.playerId}`;
+    if (!(subTsPlayer.has(key) && !arrivalTsPlayer.has(key))) a.seeds.push(e.seed); // skip sub-only stints
     a.tsIds.add(tsId);
     const sid = tsSeason.get(tsId);
     const n = sid ? seasonNum.get(sid) : undefined;

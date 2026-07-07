@@ -115,6 +115,9 @@ export async function seedAtWeekResolver(teamSeasonIds: string[]): Promise<(team
   const capByTs = new Map(capRows.map((c) => [c.id, c.captainPlayerId]));
   const staticSeed = new Map<string, number>();
   for (const e of entries) staticSeed.set(`${e.roster.teamSeasonId}|${e.playerId}`, e.seed);
+  // The static RosterEntry fallback is only truthful for PERMANENT members (subs keep an
+  // entry for stat attribution, but its seed is an import artifact, not a seed they held).
+  const hasArrival = new Set(moveRows.filter((m) => m.kind === "DRAFTED" || m.kind === "ADDED").map((m) => `${m.teamSeasonId}|${m.playerId}`));
   const cache = new Map<string, Map<string, number>>();
   return (teamSeasonId, week, playerId) => {
     if (!teamSeasonId) return null;
@@ -126,7 +129,8 @@ export async function seedAtWeekResolver(teamSeasonIds: string[]): Promise<(team
       lm = new Map(lineup.map((l) => [l.playerId, l.seed]));
       cache.set(k, lm);
     }
-    return lm.get(playerId) ?? staticSeed.get(`${teamSeasonId}|${playerId}`) ?? null;
+    const key = `${teamSeasonId}|${playerId}`;
+    return lm.get(playerId) ?? (hasArrival.has(key) ? staticSeed.get(key) ?? null : null);
   };
 }
 

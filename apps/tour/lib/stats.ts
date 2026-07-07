@@ -122,7 +122,8 @@ export interface PlayerSeasonLine {
   seasonName: string;
   teamName: string;
   teamSeasonId: string;
-  seed: number | null;   // their intra-team seed that season
+  seed: number | null;   // their intra-team seed that season; null for sub stints (subs hold no seed)
+  isSub: boolean;        // temporary fill-in that season (SUB stints only, no permanent arrival)
   delta: number | null;  // set% minus the expected for that seed (>0 = overperformed)
   setW: number;
   setL: number;
@@ -267,6 +268,15 @@ export async function getPlayer(playerId: string): Promise<PlayerDetail | null> 
     teamSeasonForSeason.set(e.roster.teamSeason.season.id, e.roster.teamSeason.id);
     seedForSeason.set(e.roster.teamSeason.season.id, e.seed);
   }
+
+  // Sub-only seasons: the player has SUB stints but no permanent arrival (DRAFTED/ADDED)
+  // that season. Their RosterEntry seed is an import artifact -- they held no seed.
+  const myMoves = await prisma.rosterMove.findMany({
+    where: { playerId, kind: { in: ["DRAFTED", "ADDED", "SUB"] } },
+    select: { seasonId: true, kind: true },
+  });
+  const arrivalSeasons = new Set(myMoves.filter((m) => m.kind !== "SUB").map((m) => m.seasonId));
+  const subOnlySeason = new Set(myMoves.filter((m) => m.kind === "SUB" && !arrivalSeasons.has(m.seasonId)).map((m) => m.seasonId));
   const expSeed = await expectedByRound(); // expected set% by seed slot — for the per-season heat
 
   const career = newAcc();
@@ -364,8 +374,10 @@ export async function getPlayer(playerId: string): Promise<PlayerDetail | null> 
       seasonName: seasonName.get(sid) ?? sid,
       teamName: teamForSeason.get(sid) ?? "—",
       teamSeasonId: teamSeasonForSeason.get(sid) ?? "",
-      seed: seedForSeason.get(sid) ?? null,
+      seed: subOnlySeason.has(sid) ? null : seedForSeason.get(sid) ?? null,
+      isSub: subOnlySeason.has(sid),
       delta: (() => {
+        if (subOnlySeason.has(sid)) return null; // no seed -> no expected-by-seed baseline
         const seed = seedForSeason.get(sid);
         const exp = seed != null ? expSeed.get(seed) : undefined;
         const total = a.setW + a.setL;
