@@ -4,14 +4,16 @@
 // action is a form that posts to the shared roster-ops server actions; the caller has
 // already gated access (TO / ROSTERS mod / this team's captain).
 import Link from "next/link";
-import { Crown, RefreshCw, UserMinus, UserPlus, ArrowUpDown, AlertTriangle } from "lucide-react";
+import { Crown, RefreshCw, UserMinus, UserPlus, ArrowUpDown, AlertTriangle, Check, X } from "lucide-react";
 import { ActionFlashForm } from "@/components/ActionFlashForm";
 import { FormSelect } from "@/components/FormSelect";
 import { SubmitButton } from "@/components/SubmitButton";
 import {
   substituteAction, departureAction, replaceAction, changeCaptainAction, reseedAction,
   swapSeedsAction, setCoCaptainAction, convertToSubAction, makePermanentAction,
+  approveRequestAction, rejectRequestAction, cancelRequestAction,
 } from "@/app/admin/seasons/[name]/roster/actions";
+import type { RosterRequestView } from "@/lib/services/roster-requests";
 
 const inputCls = "rounded border border-[var(--border)] bg-[var(--surface-2)] px-2 py-0.5";
 const opt = (items: { value: string; label: string; disabled?: boolean }[]) => [{ value: "", label: "— select —" }, ...items];
@@ -41,6 +43,8 @@ export function TeamManagePanel({
   weekSelOpt,
   defWeek,
   linkName = true,
+  mode = "apply",
+  pending = [],
 }: {
   seasonName: string;
   team: ManageTeam;
@@ -51,8 +55,11 @@ export function TeamManagePanel({
   weekSelOpt: SelOpt[];
   defWeek: string;
   linkName?: boolean; // link the team name to its page (roster-ops) vs plain text (team page)
+  mode?: "apply" | "request"; // captain -> "request" (ops queue for a mod); mod/TO -> "apply" (immediate)
+  pending?: RosterRequestView[]; // this team's pending requests, shown inline at the top
 }) {
   const t = team;
+  const req = mode === "request";
   const lineupOpts = t.lineup.map((p) => ({ value: p.playerId, label: `#${p.seed} ${p.name}` }));
   return (
     <div className="card" style={{ marginBottom: 0 }}>
@@ -62,6 +69,55 @@ export function TeamManagePanel({
         </span>
         <span className="badge">W{selectedWeek} · {t.lineup.length} active</span>
       </div>
+
+      {req && (
+        <p className="sub" style={{ margin: "4px 0 0" }}>
+          You&apos;re a captain here -- changes you submit are sent to a mod for approval, not applied right away.
+        </p>
+      )}
+
+      {/* Pending requests for this team -- mods approve/reject; the captain can withdraw. */}
+      {pending.length > 0 && (
+        <div className="mt-2 rounded border border-[var(--accent-2)] p-2" style={{ background: "var(--surface-2)" }}>
+          <div className="bracket-title" style={{ padding: 0 }}>
+            Pending requests <span className="badge" style={{ color: "var(--accent-2)" }}>{pending.length}</span>
+          </div>
+          <ul className="mt-1 list-none p-0" style={{ margin: 0 }}>
+            {pending.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-2 py-1">
+                <span className="badge">{r.kindLabel}</span>
+                <span>{r.summary}</span>
+                <span className="sub">by {r.requestedName ?? r.requestedBy}</span>
+                {req ? (
+                  <ActionFlashForm action={cancelRequestAction}>
+                    <input type="hidden" name="season" value={seasonName} />
+                    <input type="hidden" name="id" value={r.id} />
+                    <input type="hidden" name="teamSeasonId" value={t.teamSeasonId} />
+                    <SubmitButton size="sm" variant="secondary" pendingText="…">Withdraw</SubmitButton>
+                  </ActionFlashForm>
+                ) : (
+                  <>
+                    <ActionFlashForm action={approveRequestAction}>
+                      <input type="hidden" name="season" value={seasonName} />
+                      <input type="hidden" name="id" value={r.id} />
+                      <SubmitButton size="sm" pendingText="…"><Check className="size-3.5" /> Approve</SubmitButton>
+                    </ActionFlashForm>
+                    <ActionFlashForm action={rejectRequestAction}>
+                      <input type="hidden" name="season" value={seasonName} />
+                      <input type="hidden" name="id" value={r.id} />
+                      <span className="inline-flex items-center gap-1">
+                        <input name="note" placeholder="note (optional)" className={`${inputCls} w-28`} />
+                        <SubmitButton size="sm" variant="secondary" pendingText="…"><X className="size-3.5" /> Reject</SubmitButton>
+                      </span>
+                    </ActionFlashForm>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* The WHOLE season membership -- everyone who was ever on the team. The week
           selector only decides who's highlighted as active (dimmed = not playing the
           selected week: sub window elsewhere, quit/banned, or joined later). */}
@@ -103,7 +159,7 @@ export function TeamManagePanel({
           <label className="block"><span className="sub">New captain</span><FormSelect name="newCaptainPlayerId" options={opt(lineupOpts)} /></label>
           <label className="block"><span className="sub">From week</span><FormSelect name="effectiveWeek" options={weekSel} defaultValue={defWeek} /></label>
           <input name="reason" placeholder="reason (optional)" className={`${inputCls} w-36`} />
-          <SubmitButton size="sm" variant="secondary" pendingText="…"><Crown className="size-3.5" /> Set captain</SubmitButton>
+          <SubmitButton size="sm" variant="secondary" pendingText="…"><Crown className="size-3.5" /> {req ? "Request captain" : "Set captain"}</SubmitButton>
         </div>
       </ActionFlashForm>
 
@@ -114,8 +170,8 @@ export function TeamManagePanel({
         <input type="hidden" name="teamSeasonId" value={t.teamSeasonId} />
         <div className="flex flex-wrap items-end gap-2">
           <label className="block"><span className="sub">Player</span><FormSelect name="playerId" options={opt(lineupOpts)} /></label>
-          <SubmitButton size="sm" variant="secondary" name="isCoCaptain" value="true" pendingText="…">Make co-captain</SubmitButton>
-          <SubmitButton size="sm" variant="secondary" name="isCoCaptain" value="false" pendingText="…">Remove</SubmitButton>
+          <SubmitButton size="sm" variant="secondary" name="isCoCaptain" value="true" pendingText="…">{req ? "Request co-captain" : "Make co-captain"}</SubmitButton>
+          <SubmitButton size="sm" variant="secondary" name="isCoCaptain" value="false" pendingText="…">{req ? "Request remove" : "Remove"}</SubmitButton>
         </div>
       </ActionFlashForm>
 
@@ -129,7 +185,7 @@ export function TeamManagePanel({
           <label className="block"><span className="sub">New seed</span><input type="number" name="newSeed" min={1} className={`${inputCls} w-16`} /></label>
           <label className="block"><span className="sub">From week</span><FormSelect name="effectiveWeek" options={weekSel} defaultValue={defWeek} /></label>
           <input name="reason" placeholder="reason (optional)" className={`${inputCls} w-32`} />
-          <SubmitButton size="sm" variant="secondary" pendingText="…"><ArrowUpDown className="size-3.5" /> Re-seed</SubmitButton>
+          <SubmitButton size="sm" variant="secondary" pendingText="…"><ArrowUpDown className="size-3.5" /> {req ? "Request re-seed" : "Re-seed"}</SubmitButton>
         </div>
       </ActionFlashForm>
 
@@ -143,7 +199,7 @@ export function TeamManagePanel({
           <label className="block"><span className="sub">Player B</span><FormSelect name="playerBId" options={opt(lineupOpts)} /></label>
           <label className="block"><span className="sub">From week</span><FormSelect name="effectiveWeek" options={weekSel} defaultValue={defWeek} /></label>
           <input name="reason" placeholder="reason (optional)" className={`${inputCls} w-32`} />
-          <SubmitButton size="sm" variant="secondary" pendingText="…"><ArrowUpDown className="size-3.5" /> Swap</SubmitButton>
+          <SubmitButton size="sm" variant="secondary" pendingText="…"><ArrowUpDown className="size-3.5" /> {req ? "Request swap" : "Swap"}</SubmitButton>
         </div>
       </ActionFlashForm>
 
@@ -166,12 +222,15 @@ export function TeamManagePanel({
           <label className="block"><span className="sub">Week</span><FormSelect name="effectiveWeek" options={weekSel} defaultValue={defWeek} /></label>
           <label className="block"><span className="sub">Until</span><FormSelect name="untilWeek" options={weekSelOpt} placeholder="— one week —" /></label>
           <input name="reason" placeholder="reason (optional)" className={`${inputCls} w-36`} />
-          <SubmitButton size="sm" variant="secondary" pendingText="…"><RefreshCw className="size-3.5" /> Sub</SubmitButton>
+          <SubmitButton size="sm" variant="secondary" pendingText="…"><RefreshCw className="size-3.5" /> {req ? "Request sub" : "Sub"}</SubmitButton>
         </div>
       </ActionFlashForm>
 
-      {/* Membership fix — imports sometimes record a temporary sub as a permanent
-          seed-holder (or vice versa). Converts between the two, keeping stats. */}
+      {!req && (
+      <>
+      {/* Membership fix (import corrections) -- mod-only surgery. Imports sometimes record a
+          temporary sub as a permanent seed-holder (or vice versa); this converts between them.
+          Hidden from captains -- it's timeline repair, not a roster op they request. */}
       <div className="bracket-title mt-3">Fix membership (import corrections)</div>
       <ActionFlashForm action={convertToSubAction}>
         <input type="hidden" name="season" value={seasonName} />
@@ -202,6 +261,8 @@ export function TeamManagePanel({
           </div>
         </ActionFlashForm>
       )}
+      </>
+      )}
 
       {/* Quit / Ban (permanent) */}
       <div className="bracket-title mt-3">Quit / Ban (permanent)</div>
@@ -213,7 +274,7 @@ export function TeamManagePanel({
           <label className="block"><span className="sub">Type</span><FormSelect name="kind" options={[{ value: "QUIT", label: "Quit" }, { value: "BANNED", label: "Banned" }]} defaultValue="QUIT" /></label>
           <label className="block"><span className="sub">From week</span><FormSelect name="effectiveWeek" options={weekSel} defaultValue={defWeek} /></label>
           <input name="reason" placeholder="reason (optional)" className={`${inputCls} w-36`} />
-          <SubmitButton size="sm" variant="secondary" pendingText="…"><UserMinus className="size-3.5" /> Record</SubmitButton>
+          <SubmitButton size="sm" variant="secondary" pendingText="…"><UserMinus className="size-3.5" /> {req ? "Request" : "Record"}</SubmitButton>
         </div>
       </ActionFlashForm>
 
@@ -231,7 +292,7 @@ export function TeamManagePanel({
           <label className="block"><span className="sub">Replaces</span><FormSelect name="replacesPlayerId" options={opt(lineupOpts)} placeholder="— slot —" /></label>
           <label className="block"><span className="sub">From week</span><FormSelect name="effectiveWeek" options={weekSel} defaultValue={defWeek} /></label>
           <input name="reason" placeholder="reason (optional)" className={`${inputCls} w-36`} />
-          <SubmitButton size="sm" variant="secondary" pendingText="…"><UserPlus className="size-3.5" /> Add</SubmitButton>
+          <SubmitButton size="sm" variant="secondary" pendingText="…"><UserPlus className="size-3.5" /> {req ? "Request replace" : "Add"}</SubmitButton>
         </div>
       </ActionFlashForm>
     </div>

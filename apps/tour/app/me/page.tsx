@@ -5,6 +5,8 @@ import { getPlayerHome } from "@/lib/player-home";
 import { getPlayerStrikes } from "@/lib/services/strikes";
 import { getCaptainMatchups } from "@/lib/services/pairing";
 import { weekDeadlinesByName } from "@/lib/services/deadlines";
+import { getMyFantasy } from "@/lib/services/fantasy";
+import { getMyPickem } from "@/lib/services/pickem";
 import { Callout } from "@/components/Callout";
 import { DeadlineChip } from "@/components/DeadlineChip";
 import { ActionFlashForm } from "@/components/ActionFlashForm";
@@ -57,8 +59,12 @@ export default async function MyTour() {
 
   const [home, strikes] = await Promise.all([getPlayerHome(viewer.playerId), getPlayerStrikes(viewer.playerId)]);
   const focusTeam = home.teams.find((t) => t.seasonName === home.focusSeason);
+  const enc = focusTeam ? encodeURIComponent(focusTeam.seasonName) : "";
   const captainMatchups = focusTeam?.isCaptain && home.focusSeason ? await getCaptainMatchups(home.focusSeason, viewer.playerId) : [];
   const deadlines = focusTeam ? await weekDeadlinesByName(focusTeam.seasonName) : new Map<number, Date | null>();
+  const [myFantasy, myPickem] = focusTeam
+    ? await Promise.all([getMyFantasy(focusTeam.seasonName, viewer.discordId), getMyPickem(focusTeam.seasonName, viewer.discordId)])
+    : [null, null];
 
   // "On your clock" -- what needs action right now, hoisted above the reference tables.
   const setsToReport = home.sets.filter((s) => s.canReport);
@@ -107,12 +113,53 @@ export default async function MyTour() {
             <p className="sub" style={{ margin: "6px 0 0" }}>Sort these out below -- report and confirm your sets, and pair any weeks you captain.</p>
           </div>
         ) : (
-          <Callout type="success">
-            You&apos;re all caught up here -- the bot keeps the week moving. Jump into{" "}
-            <Link href={`/seasons/${encodeURIComponent(focusTeam.seasonName)}/pickem`}>pick&apos;em</Link> or{" "}
-            <Link href={`/seasons/${encodeURIComponent(focusTeam.seasonName)}/fantasy`}>fantasy</Link> for {focusTeam.seasonName}.
-          </Callout>
+          <Callout type="success">You&apos;re all caught up here -- the bot keeps the week moving.</Callout>
         )
+      )}
+
+      {/* Pick'em & Fantasy -- the plain player's reason to open the site; the bot runs their
+          actual match ops. Hoisted above the captain/roster tables so it's front and center. */}
+      {focusTeam && (myPickem || myFantasy) && (
+        <>
+          <h2 className="mt-6 mb-1 text-[1.1rem]">Pick&apos;em &amp; Fantasy</h2>
+          <div className="card flex flex-col gap-2">
+            {myPickem && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span style={{ color: myPickem.unmade > 0 ? "var(--accent-2)" : "var(--muted)" }}>
+                  {myPickem.unmade > 0 ? `${myPickem.unmade} pick${myPickem.unmade === 1 ? "" : "s"} to make` : "all picks in"}
+                </span>
+                {myPickem.nextLock && <DeadlineChip deadline={myPickem.nextLock} prefix="locks" />}
+                {myPickem.decided > 0 && <span className="sub num">{myPickem.correct}/{myPickem.decided}</span>}
+                <Link href={`/seasons/${enc}/pickem`}>Make picks -&gt;</Link>
+              </div>
+            )}
+            {myFantasy && (
+              <div className="flex flex-wrap items-center gap-2">
+                {myFantasy.state === "OPEN" && !myFantasy.joined ? (
+                  <>
+                    <span>Fantasy draft is open</span>
+                    <Link href={`/seasons/${enc}/fantasy`}>Join -&gt;</Link>
+                  </>
+                ) : myFantasy.state === "DRAFTING" && myFantasy.myTurn ? (
+                  <>
+                    <span style={{ color: "var(--accent)" }}>You&apos;re on the clock in the fantasy draft</span>
+                    <Link href={`/seasons/${enc}/fantasy`}>Draft -&gt;</Link>
+                  </>
+                ) : myFantasy.joined && myFantasy.rank != null ? (
+                  <>
+                    <span>Fantasy: {myFantasy.rank} of {myFantasy.of} ({myFantasy.points} pts)</span>
+                    <Link href={`/seasons/${enc}/fantasy`}>View -&gt;</Link>
+                  </>
+                ) : (
+                  <>
+                    <span>Fantasy</span>
+                    <Link href={`/seasons/${enc}/fantasy`}>View -&gt;</Link>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {captainMatchups.length > 0 && (

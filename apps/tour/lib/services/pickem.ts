@@ -3,6 +3,7 @@
 // is derived on read (pickedPlayerId == the set's winner). Leaderboards (season + all-time)
 // rank predictors by correct picks, then accuracy. Centralized service; page/actions call in.
 import { prisma } from "../db";
+import { weekDeadlinesByName } from "@/lib/services/deadlines";
 
 export interface PickSet {
   setId: string;
@@ -119,6 +120,34 @@ export async function makePick(discordId: string, name: string | null, setId: st
     create: { seasonId: set.seasonId ?? "", setId, predictorDiscordId: discordId, predictorName: name, pickedPlayerId },
     update: { pickedPlayerId, predictorName: name },
   });
+}
+
+export interface MyPickem {
+  unmade: number;
+  picked: number;
+  correct: number;
+  decided: number;
+  pct: number;
+  nextLock: Date | null;
+}
+
+// /me summary: this viewer's pick'em status for a season — how many open sets still need
+// a pick, their record so far, and the next lock (earliest deadline among weeks that still
+// have an open, undecided, unlocked set). Null when there's no pick'em for this season.
+export async function getMyPickem(seasonName: string, discordId: string | null): Promise<MyPickem | null> {
+  const season = await getSeasonPickem(seasonName, discordId);
+  if (!season) return null;
+  const openSets = season.weeks.flatMap((w) => w.sets).filter((s) => !s.locked && !s.decided);
+  const unmade = openSets.filter((s) => s.myPick == null).length;
+  const picked = openSets.filter((s) => s.myPick != null).length;
+
+  const openWeeks = new Set(openSets.map((s) => s.week).filter((w): w is number => w != null));
+  const deadlines = openWeeks.size ? await weekDeadlinesByName(seasonName) : new Map<number, Date | null>();
+  const candidates = [...openWeeks].map((w) => deadlines.get(w) ?? null).filter((d): d is Date => d != null);
+  const nextLock = candidates.length ? candidates.reduce((a, b) => (a < b ? a : b)) : null;
+
+  const row = discordId ? (await pickemLeaderboard(seasonName)).find((r) => r.discordId === discordId) : undefined;
+  return { unmade, picked, correct: row?.correct ?? 0, decided: row?.decided ?? 0, pct: row?.pct ?? 0, nextLock };
 }
 
 export interface PickemLeaderRow {

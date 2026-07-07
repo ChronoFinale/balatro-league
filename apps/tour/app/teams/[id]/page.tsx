@@ -4,6 +4,7 @@ import { getTeamSeason, getTeamPlacement, getTeamWeeks, getTeamMoves } from "@/l
 import { getViewer, isAdmin } from "@/lib/auth";
 import { capabilitiesFor, captainTeamsFor, seasonIdByName } from "@/lib/permissions";
 import { getRosterOps } from "@/lib/services/roster-ops";
+import { pendingRequestsForTeam } from "@/lib/services/roster-requests";
 import { PlayerName } from "@/components/PlayerName";
 import { TeamManagePanel } from "@/components/TeamManagePanel";
 
@@ -39,17 +40,22 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
   // co-captain, so roster ops happen where you look at the team. Same TeamManagePanel the
   // season-wide roster-ops page uses (one component, identical everywhere). Public viewers
   // short-circuit before any permission/roster queries -- zero cost on the public page.
-  let canManage = await isAdmin();
-  if (!canManage) {
+  // A mod (TO / ROSTERS grant) applies ops directly; this team's captain/co-captain can
+  // only REQUEST them (a mod approves). Both can see the panel; the mode decides behavior.
+  let isMod = await isAdmin();
+  let canManage = isMod;
+  if (!isMod) {
     const viewer = await getViewer();
     if (viewer?.playerId) {
       const seasonId = await seasonIdByName(t.seasonName);
-      canManage = (await capabilitiesFor(viewer, seasonId)).has("ROSTERS") || (await captainTeamsFor(viewer, seasonId)).has(id);
+      isMod = (await capabilitiesFor(viewer, seasonId)).has("ROSTERS");
+      canManage = isMod || (await captainTeamsFor(viewer, seasonId)).has(id);
     }
   }
   const ro = canManage ? await getRosterOps(t.seasonName) : null;
   const manageTeam = ro?.teams.find((x) => x.teamSeasonId === id) ?? null;
   const weekSel = ro ? ro.weekOptions.map((w) => ({ value: String(w.value), label: w.label })) : [];
+  const pendingReqs = manageTeam ? await pendingRequestsForTeam(id) : [];
 
   return (
     <main>
@@ -76,6 +82,8 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
             weekSelOpt={[{ value: "", label: "— one week —" }, ...weekSel]}
             defWeek={String(ro.selectedWeek)}
             linkName={false}
+            mode={isMod ? "apply" : "request"}
+            pending={pendingReqs}
           />
         </details>
       )}

@@ -486,6 +486,39 @@ export async function getFantasyStandings(seasonName: string) {
   return { scope: league.scope, rosterSize: league.rosterSize, standings, setsCounted: slotted.length };
 }
 
+export interface MyFantasy {
+  state: "OPEN" | "DRAFTING" | "DONE";
+  joined: boolean;
+  myTurn: boolean;
+  rank: number | null;
+  of: number;
+  points: number | null;
+  sets: number | null;
+}
+
+// /me summary: this viewer's fantasy status for a season, derived from the draft board +
+// standings (mirrors the viewer-matching in app/seasons/[name]/fantasy/page.tsx). Null
+// means fantasy isn't enabled this season (no league exists — there's no separate flag).
+export async function getMyFantasy(seasonName: string, discordId: string | null): Promise<MyFantasy | null> {
+  const league = await getFantasyLeague(seasonName);
+  if (!league) return null;
+  const [board, standings] = await Promise.all([getFantasyDraftBoard(seasonName), getFantasyStandings(seasonName)]);
+  if (!board || !standings) return null; // same league found above — structurally shouldn't miss, stay null-safe
+  const joined = !!discordId && board.teams.some((t) => t.managerDiscordId === discordId);
+  const myTurn = board.state === "DRAFTING" && !!discordId && board.current?.managerDiscordId === discordId;
+  const idx = discordId ? standings.standings.findIndex((s) => s.managerDiscordId === discordId) : -1;
+  const mine = idx >= 0 ? standings.standings[idx] : null;
+  return {
+    state: board.state,
+    joined,
+    myTurn,
+    rank: idx >= 0 ? idx + 1 : null,
+    of: standings.standings.length,
+    points: mine?.points ?? null,
+    sets: mine?.sets ?? null,
+  };
+}
+
 // ── Trades + weekly lock ─────────────────────────────────────────────────────
 // A trade re-attributes ownership from an effective week forward (standings fold it via the
 // resolver above); it never mutates FantasyPick. Managers propose/accept; AUTO applies on

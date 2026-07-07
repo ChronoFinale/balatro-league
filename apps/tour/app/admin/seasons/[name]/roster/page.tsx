@@ -3,6 +3,7 @@ import { ArrowLeft, X, Undo2, ShieldAlert } from "lucide-react";
 import { getViewer, isAdmin } from "@/lib/auth";
 import { capabilitiesFor, captainTeamsFor, seasonIdByName } from "@/lib/permissions";
 import { getRosterOps } from "@/lib/services/roster-ops";
+import { listPendingRequests, type RosterRequestView } from "@/lib/services/roster-requests";
 import { STRIKE_KINDS, STRIKE_LABEL } from "@/lib/services/strikes";
 import { NoAccess } from "@/components/NoAccess";
 import { ActionFlashForm } from "@/components/ActionFlashForm";
@@ -57,6 +58,14 @@ export default async function RosterOpsAdmin({
   const weekSelOpt = [{ value: "", label: "— one week —" }, ...weekSel]; // optional 'Until' / strike week
   const defWeek = String(data.selectedWeek);
 
+  // Pending captain requests, grouped per team for the inline panel blocks.
+  const pendingByTeam = new Map<string, RosterRequestView[]>();
+  for (const r of await listPendingRequests(seasonName)) {
+    const arr = pendingByTeam.get(r.teamSeasonId) ?? [];
+    arr.push(r);
+    pendingByTeam.set(r.teamSeasonId, arr);
+  }
+
   return (
     <main>
       <p>
@@ -105,11 +114,14 @@ export default async function RosterOpsAdmin({
             weekSel={weekSel}
             weekSelOpt={weekSelOpt}
             defWeek={defWeek}
+            mode={isMod ? "apply" : "request"}
+            pending={pendingByTeam.get(t.teamSeasonId) ?? []}
           />
         ))}
       </div>
 
       {/* Strikes (TO aid — informational) */}
+      {isMod && (<>
       <h2 className="mt-6 mb-1 text-[1.1rem] inline-flex items-center gap-1.5"><ShieldAlert className="size-4" /> Strikes</h2>
       <p className="sub">Reliability / conduct notes to help the TO — they don&apos;t auto-penalize. ⚑ on a player = season count; ⚠ = at risk (career ≥ 3).</p>
       <div className="card">
@@ -146,6 +158,7 @@ export default async function RosterOpsAdmin({
           </table>
         )}
       </div>
+      </>)}
 
       {/* Timeline */}
       <h2 className="mt-6 mb-1 text-[1.1rem]">Timeline ({data.timeline.length})</h2>
@@ -173,6 +186,7 @@ export default async function RosterOpsAdmin({
                   </td>
                   <td className="sub">{m.reason}</td>
                   <td style={{ textAlign: "right" }}>
+                    {isMod && (
                     <div className="inline-flex items-center gap-1">
                       {(m.kind === "QUIT" || m.kind === "BANNED") && (
                         <form action={reinstateAction}>
@@ -190,6 +204,7 @@ export default async function RosterOpsAdmin({
                         <SubmitButton size="sm" variant="secondary" pendingText="…"><X className="size-3.5" /></SubmitButton>
                       </form>
                     </div>
+                    )}
                   </td>
                 </tr>
               ))}

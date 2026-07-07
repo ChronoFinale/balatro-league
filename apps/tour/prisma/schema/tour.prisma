@@ -599,6 +599,57 @@ model RosterMove {
   @@index([teamSeasonId])
 }
 
+// ── Roster change requests — captain-initiated ops awaiting mod approval ────
+// Captains don't mutate the roster directly: their ops land here as PENDING
+// requests. A mod (TO or ROSTERS grant) approves -> the matching roster-ops
+// service fn runs (appending the real RosterMove), or rejects. Mods themselves
+// skip this and apply directly. Payload is a superset of the roster-ops args;
+// only the fields a given `kind` needs are set. Players/teams by id (decoupling).
+enum RosterRequestKind {
+  SUB
+  QUIT
+  BANNED
+  REPLACE
+  RESEED
+  SWAP
+  CAPTAIN_CHANGE
+  CO_CAPTAIN
+  REINSTATE
+}
+
+enum RosterRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model RosterChangeRequest {
+  id               String              @id @default(cuid())
+  seasonId         String
+  teamSeasonId     String
+  kind             RosterRequestKind
+  playerId         String // primary subject (SUB/REPLACE in-player, RESEED/SWAP A, departing, new captain, reinstated, co-captain target)
+  outPlayerId      String? // SUB: who comes out
+  replacesPlayerId String? // REPLACE: the departed slot being filled
+  playerBId        String? // SWAP: the second player
+  effectiveWeek    Int
+  untilWeek        Int? // SUB: last covered week
+  seed             Int? // RESEED: the new seed
+  isCoCaptain      Boolean? // CO_CAPTAIN: grant (true) or revoke (false)
+  reason           String?
+  status           RosterRequestStatus @default(PENDING)
+  requestedBy      String // captain discord id / name
+  requestedName    String?
+  decidedBy        String? // approving/rejecting mod
+  decidedAt        DateTime?
+  decisionNote     String?
+  createdAt        DateTime            @default(now())
+
+  @@index([seasonId, status])
+  @@index([teamSeasonId, status])
+}
+
 // Name -> Discord id reference (from the uploaded league CSV), for LINKING Tour
 // players to a real Discord id when the live league DB isn't connected. Holds multiple
 // name rows per person (display name + @username). The live league DB and the Tour

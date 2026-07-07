@@ -45,23 +45,6 @@ export default async function SeasonPage({ params }: { params: Promise<{ name: s
       </p>
       <h1>{data.seasonName}</h1>
       <p className="sub">Standings derived from {data.setCount} sets · §5 tiebreakers.</p>
-      <div className="flex flex-wrap gap-2 mb-4">
-        {[
-          { href: `/seasons/${encodeURIComponent(seasonName)}/weeks`, label: "Week by week" },
-          { href: `/seasons/${encodeURIComponent(seasonName)}/draft`, label: "Draft board" },
-          { href: `/seasons/${encodeURIComponent(seasonName)}/timeline`, label: "Timeline" },
-          { href: `/seasons/${encodeURIComponent(seasonName)}/bracket`, label: "Playoff bracket" },
-          { href: `/stats/draft-heatmap?season=${encodeURIComponent(seasonName)}`, label: "Draft heatmap" },
-          { href: `/seasons/${encodeURIComponent(seasonName)}/news`, label: "News" },
-          { href: `/seasons/${encodeURIComponent(seasonName)}/rankings`, label: "Power rankings" },
-          { href: `/seasons/${encodeURIComponent(seasonName)}/pickem`, label: "Pick'em" },
-          { href: `/seasons/${encodeURIComponent(seasonName)}/fantasy`, label: "Fantasy" },
-        ].map((t) => (
-          <Link key={t.href} href={t.href} className="pill hover:no-underline" style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text)" }}>
-            {t.label}
-          </Link>
-        ))}
-      </div>
       {mvpR && mvpR.player && (
         <p className="flex items-center gap-1.5">
           <Award className="size-4 text-[var(--accent)]" />

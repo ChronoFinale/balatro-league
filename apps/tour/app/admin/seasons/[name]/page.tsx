@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { ArrowLeft, Users, Shield, Shuffle, CalendarDays, UserCog, Trophy, Flag, Hash, ExternalLink, Newspaper, ListOrdered, Trash2, Gamepad2, ClipboardList } from "lucide-react";
+import { ArrowLeft, Users, Shield, Shuffle, CalendarDays, UserCog, Trophy, Flag, Hash, ExternalLink, Newspaper, ListOrdered, Trash2, Gamepad2, ClipboardList, Inbox } from "lucide-react";
 import { getViewer, isAdmin } from "@/lib/auth";
 import { capabilitiesFor, captainTeamsFor, seasonIdByName } from "@/lib/permissions";
 import { getSeasonAdmin, listConferences } from "@/lib/services/seasons";
 import { getFantasyLeague } from "@/lib/services/fantasy";
+import { pendingRequestCount } from "@/lib/services/roster-requests";
 import { NoAccess } from "@/components/NoAccess";
 import { FormSelect } from "@/components/FormSelect";
 import { SetsToWinField } from "@/components/SetsToWinField";
@@ -45,6 +46,8 @@ export default async function SeasonAdmin({ params }: { params: Promise<{ name: 
   const conferences = to ? await listConferences(season.name) : [];
   const fantasy = to ? await getFantasyLeague(season.name).catch(() => null) : null;
   const structureLocked = !!season.draft; // once the draft exists, structure is baked in
+  // Pending captain roster requests awaiting a mod (only the inbox owners need the count).
+  const pendingReqCount = cap("ROSTERS") ? await pendingRequestCount((await seasonIdByName(season.name)) ?? "") : 0;
 
   // `show` gates each tile by capability/captaincy (TO sees all). Structural stages are TO-only.
   const stages = [
@@ -54,6 +57,7 @@ export default async function SeasonAdmin({ params }: { params: Promise<{ name: 
     { key: "schedule", label: "Schedule", icon: CalendarDays, href: `/admin/seasons/${enc}/schedule`, count: `${season._count.weeks} weeks`, ready: true, show: to },
     { key: "audit", label: "Reporting audit", icon: ClipboardList, href: `/admin/seasons/${enc}/audit`, count: "unsettled matchups · who's behind", ready: true, show: to },
     { key: "roster", label: "Roster ops", icon: UserCog, href: `/admin/seasons/${enc}/roster`, count: "subs · drops · DQs", ready: true, show: cap("ROSTERS") || isCaptain },
+    { key: "roster-requests", label: "Roster requests", icon: Inbox, href: `/admin/seasons/${enc}/roster/requests`, count: pendingReqCount > 0 ? `${pendingReqCount} pending` : "none pending", ready: true, show: cap("ROSTERS") },
     { key: "playoffs", label: "Playoffs", icon: Trophy, href: `/admin/seasons/${enc}/playoffs`, count: season.state === "PLAYOFFS" || season.state === "DONE" ? `bracket · ${season.state}` : `field of ${season.playoffTeams}`, ready: true, show: to },
     { key: "end", label: "Season end", icon: Flag, href: `/admin/seasons/${enc}/end`, count: season.state === "DONE" ? "crowned · awards" : "crown + awards", ready: true, show: to },
     { key: "fantasy", label: "Fantasy", icon: Gamepad2, href: `/admin/seasons/${enc}/fantasy`, count: fantasy ? `${fantasy.teams.length} managers · ${fantasy.scope === "PLAYOFFS" ? "playoffs" : "season"}` : "not opened", ready: true, show: to },
