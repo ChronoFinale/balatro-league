@@ -22,7 +22,7 @@ const STATIC_INTRO = [
   "",
   "**Scoring:** `2-0` = 3 pts · `1-1` = 1 pt each · `0-2` = 0.",
   "",
-  "**Lives & net lives:** the winner of each game records how many lives they had left (0-4) - more lives left means a more dominant win. Your **net lives** = the leftover lives across your wins minus the lives your opponents had left when they beat you, so it rewards winning big and losing close.",
+  "**Lives & net lives:** the winner of each game records how many lives they had left (0-4). Your **net lives** = the leftover lives across your wins minus the lives your opponents had left when they beat you. (It's a rough, imperfect signal - not a true measure of skill - but it's the fairest quick tiebreaker we've found for when three or more players finish level.)",
   "",
   "**How ties are broken** (for the promotion/relegation spots):",
   "- **Two players tied:** head-to-head decides it - whoever won when you played each other. If you split head-to-head (`1-1`), or you haven't played each other yet, it's settled by a **single shootout game** between the two of you.",
@@ -56,7 +56,7 @@ async function composeDynamicBlock(): Promise<string> {
     }),
     prisma.season.findFirst({
       where: { isActive: true },
-      select: { id: true, number: true, subtitle: true, startedAt: true },
+      select: { id: true, number: true, subtitle: true, startedAt: true, scheduledEndAt: true },
     }),
   ]);
 
@@ -65,11 +65,12 @@ async function composeDynamicBlock(): Promise<string> {
   if (activeSeason) {
     const label = formatSeasonLabel(activeSeason);
     const since = activeSeason.startedAt.toISOString().slice(0, 10);
+    const endsOn = activeSeason.scheduledEndAt ? activeSeason.scheduledEndAt.toISOString().slice(0, 10) : null;
     blocks.push(
       [
         "─────────────────────",
         `## 🏆 ${label} is live!`,
-        `Active since ${since}.`,
+        `Active since ${since}${endsOn ? ` - scheduled to end ${endsOn}` : ""}.`,
         `**Standings:** <${webUrl("standings")}>`,
         "Use `/start-match @opponent` in your division channel to play.",
       ].join("\n"),
