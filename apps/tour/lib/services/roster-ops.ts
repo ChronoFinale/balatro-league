@@ -435,11 +435,55 @@ export async function getRosterOps(seasonName: string, week?: number) {
   const teams = teamSeasons.map((t) => {
     const coCaptains = new Set(t.rosters.flatMap((r) => r.entries.filter((e) => e.isCoCaptain).map((e) => e.playerId)));
     const tMoves = movesByTeam.get(t.id) ?? [];
+    const captainNow = captainAtWeek(tMoves, selectedWeek, t.captainPlayerId);
+    const lineup = deriveLineup(tMoves, selectedWeek, captainNow);
+    const activeIds = new Set(lineup.map((p) => p.playerId));
+
+    // FULL season membership -- the team is a SEASON-long thing; the week selector only
+    // decides who's highlighted as active. Fold the move log per player: permanent
+    // arrival (+ latest seed), departure state, and any sub stints.
+    interface Mem { playerId: string; seed: number | null; joinedWeek: number | null; stints: string[]; activeStint: boolean; departed: { kind: string; week: number } | null }
+    const mem = new Map<string, Mem>();
+    const getM = (pid: string): Mem => {
+      let m = mem.get(pid);
+      if (!m) { m = { playerId: pid, seed: null, joinedWeek: null, stints: [], activeStint: false, departed: null }; mem.set(pid, m); }
+      return m;
+    };
+    const ordered = [...tMoves].sort((a, b) => a.effectiveWeek - b.effectiveWeek || +a.createdAt - +b.createdAt);
+    for (const m of ordered) {
+      const r = getM(m.playerId);
+      if (m.kind === "DRAFTED" || m.kind === "ADDED") {
+        if (r.joinedWeek == null || m.effectiveWeek < r.joinedWeek) { r.joinedWeek = m.effectiveWeek; r.seed = r.seed ?? m.seed ?? null; }
+      } else if (m.kind === "RESEED" && m.seed != null) r.seed = m.seed;
+      else if (m.kind === "QUIT" || m.kind === "BANNED") r.departed = { kind: m.kind, week: m.effectiveWeek };
+      else if (m.kind === "REINSTATED") r.departed = null;
+      else if (m.kind === "SUB") {
+        r.stints.push(m.untilWeek != null && m.untilWeek !== m.effectiveWeek ? `W${m.effectiveWeek}-${m.untilWeek}` : `W${m.effectiveWeek}`);
+        if (m.effectiveWeek <= selectedWeek && selectedWeek <= (m.untilWeek ?? m.effectiveWeek)) r.activeStint = true;
+      }
+    }
+    const membership = [...mem.values()]
+      .map((r) => ({
+        playerId: r.playerId,
+        name: nameOf.get(r.playerId) ?? r.playerId,
+        seed: r.joinedWeek != null ? r.seed : null, // subs never hold a seed
+        isMember: r.joinedWeek != null,
+        joinedWeek: r.joinedWeek,
+        stints: r.stints,
+        departed: r.departed,
+        isCaptain: r.playerId === captainNow,
+        isCoCaptain: coCaptains.has(r.playerId),
+        activeNow: activeIds.has(r.playerId),
+      }))
+      // Members by seed, subs after, departed where they fall (dimmed by the UI).
+      .sort((a, b) => Number(!a.isMember) - Number(!b.isMember) || (a.seed ?? 99) - (b.seed ?? 99) || a.name.localeCompare(b.name));
+
     return {
       teamSeasonId: t.id,
       name: t.team.name,
-      captainPlayerId: captainAtWeek(tMoves, selectedWeek, t.captainPlayerId),
-      lineup: deriveLineup(tMoves, selectedWeek, captainAtWeek(tMoves, selectedWeek, t.captainPlayerId)).map((p) => ({
+      captainPlayerId: captainNow,
+      membership,
+      lineup: lineup.map((p) => ({
         playerId: p.playerId,
         name: nameOf.get(p.playerId) ?? p.playerId,
         seed: p.seed,
@@ -447,8 +491,7 @@ export async function getRosterOps(seasonName: string, week?: number) {
         isCoCaptain: coCaptains.has(p.playerId),
         viaSub: p.viaSub,
       })),
-      // Every sub stint, ALWAYS visible regardless of the selected week -- a sub whose
-      // window is elsewhere would otherwise vanish from this page entirely.
+      // Sub stints (kept for the Fix-membership selects).
       subStints: tMoves
         .filter((m) => m.kind === "SUB")
         .map((m) => ({
@@ -460,8 +503,9 @@ export async function getRosterOps(seasonName: string, week?: number) {
     };
   });
 
-  // Strikes (TO aid): per-rostered-player season + career counts + the season log.
-  const lineupIds = [...new Set(teams.flatMap((t) => t.lineup.map((p) => p.playerId)))];
+  // Strikes (TO aid): per-player season + career counts + the season log -- across the
+  // whole membership (dimmed rows included), not just the selected week's lineups.
+  const lineupIds = [...new Set(teams.flatMap((t) => t.membership.map((p) => p.playerId)))];
   const [seasonStrikes, careerStrikes, strikeLog] = await Promise.all([
     getSeasonStrikeCounts(season.id),
     getCareerStrikeCounts(lineupIds),

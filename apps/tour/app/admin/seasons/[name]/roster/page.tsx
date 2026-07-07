@@ -59,14 +59,15 @@ export default async function RosterOpsAdmin({
       </p>
       <h1>Roster ops</h1>
       <p className="sub">
-        Lineups are <strong>derived per week</strong> from an append-only move log — subs, quits, bans and replacements
-        are recorded, never overwritten, so the full history is preserved. Free-agent pool: {data.freeAgents.length}.
+        Each card shows the team&apos;s <strong>whole season</strong> — members, subs and departures. The week
+        selector highlights who&apos;s <strong>active that week</strong> (dimmed = not playing it); actions default
+        to it. Everything is an append-only move log, so history is never overwritten. Free-agent pool: {data.freeAgents.length}.
       </p>
 
       {/* Week selector */}
       <div className="card">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="sub">Lineup as of week:</span>
+          <span className="sub">Active week (highlight + action default):</span>
           {weekTabs.map((n) => (
             <Link
               key={n}
@@ -95,16 +96,27 @@ export default async function RosterOpsAdmin({
                 <span className="font-semibold"><Link href={`/teams/${t.teamSeasonId}`} style={{ color: "inherit" }}>{t.name}</Link></span>
                 <span className="badge">W{data.selectedWeek} · {t.lineup.length} active</span>
               </div>
+              {/* The WHOLE season membership -- everyone who was ever on the team. The week
+                  selector only decides who's highlighted as active (dimmed = not playing the
+                  selected week: sub window elsewhere, quit/banned, or joined later). */}
               <ol className="mt-2 list-none p-0" style={{ margin: 0 }}>
-                {t.lineup.map((p) => {
+                {t.membership.map((p) => {
                   const st = data.strikeOf[p.playerId];
+                  const note = !p.isMember
+                    ? `sub ${p.stints.join(", ")}`
+                    : p.departed
+                      ? `${p.departed.kind === "BANNED" ? "banned" : "left"} W${p.departed.week}`
+                      : p.joinedWeek != null && p.joinedWeek > 1
+                        ? `joined W${p.joinedWeek}`
+                        : null;
                   return (
-                    <li key={p.playerId} className="flex items-baseline gap-2 py-0.5">
-                      <span className="rank" style={{ width: "1.4rem" }}>{p.seed}</span>
+                    <li key={p.playerId} className="flex items-baseline gap-2 py-0.5" style={{ opacity: p.activeNow ? 1 : 0.55 }}>
+                      <span className="rank" style={{ width: "1.6rem" }}>{p.isMember ? p.seed : <span className="badge">sub</span>}</span>
                       {p.isCaptain && <Crown className="size-3.5 shrink-0 text-[var(--accent)]" />}
                       <span><Link href={`/players/${p.playerId}`} style={{ color: "inherit" }}>{p.name}</Link></span>
                       {p.isCoCaptain && <span className="badge" title="Co-captain — same team powers as the captain">CC</span>}
-                      {p.viaSub && <span className="badge">sub</span>}
+                      {note && <span className="sub">{note}</span>}
+                      {!p.activeNow && !p.departed && <span className="sub" title="not in the selected week's lineup">· not W{data.selectedWeek}</span>}
                       {st && st.season > 0 && (
                         <span className="badge inline-flex items-center gap-1" style={{ color: st.atRisk ? "var(--danger)" : "var(--accent-2)" }} title={`${st.season} this season · ${st.career} career${st.atRisk ? " · at risk" : ""}`}>
                           {st.atRisk && <AlertTriangle className="size-3" />}{st.season}⚑
@@ -113,25 +125,8 @@ export default async function RosterOpsAdmin({
                     </li>
                   );
                 })}
-                {t.lineup.length === 0 && <li className="sub">No active players this week.</li>}
+                {t.membership.length === 0 && <li className="sub">Nobody on this team yet.</li>}
               </ol>
-
-              {/* Sub stints are ALWAYS listed (the lineup above only shows the selected week,
-                  so a sub whose window is elsewhere would otherwise be invisible here). */}
-              {t.subStints.length > 0 && (
-                <p className="sub" style={{ marginTop: "0.35rem" }}>
-                  Subs:{" "}
-                  {t.subStints.map((s, i) => (
-                    <span key={`${s.playerId}-${i}`}>
-                      {i > 0 && ", "}
-                      <Link href={`/players/${s.playerId}`} style={{ color: "inherit" }}>{s.name}</Link>{" "}
-                      <span title={s.activeNow ? "active in the selected week" : "window outside the selected week"}>
-                        ({s.window}{s.activeNow ? "" : " · not this week"})
-                      </span>
-                    </span>
-                  ))}
-                </p>
-              )}
 
               {/* Change captain */}
               <div className="bracket-title mt-3">Captain</div>
