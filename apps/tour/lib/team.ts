@@ -2,7 +2,7 @@
 // that season, with team totals. Derived from the imported sets.
 import { prisma } from "./db";
 import { getSeasonStandings } from "./standings";
-import { seedAtWeekResolver, subOnlyKeySet } from "./services/roster-ops";
+import { seedAtWeekResolver, subOnlyKeySet, deriveLineup, captainAtWeek } from "./services/roster-ops";
 
 export interface TeamPlacement {
   placement: number; // 1-based rank within its conference group
@@ -53,6 +53,7 @@ export interface TeamPlayerLine {
   seedChain: number[]; // full seed path over the season, e.g. [5, 3, 7] (draft → re-seeds)
   isSub: boolean; // temporary fill-in (SUB stints only, no permanent arrival) -- not a seed-holder
   subWeeks: string | null; // human window(s) of their stints, e.g. "W3" or "W2-4, W7"
+  departed: boolean; // a permanent member who left / was permanently subbed out by lastWeek (keeps stats, not an active seat)
   isCaptain: boolean;
   isCoCaptain: boolean;
   setW: number;
@@ -244,23 +245,45 @@ export async function getTeamSeason(id: string): Promise<TeamSeasonView | null> 
     chainOf.set(m.playerId, arr);
   }
 
+  // Who has left / been permanently subbed out by the last week? Reuse the lineup fold (which
+  // now drops a player replaced by a permanent sub): any permanent member (has an arrival, not
+  // a temp sub) who isn't in the active lineup at lastWeek is departed. Keep their stats, but
+  // don't render them as an active seat -- that collision is what put a replaced player back
+  // on the roster next to their replacement on the same seed.
+  const allMoves = await prisma.rosterMove.findMany({
+    where: { teamSeasonId: id },
+    orderBy: [{ effectiveWeek: "asc" }, { createdAt: "asc" }],
+  });
+  const activeIds = new Set(
+    deriveLineup(allMoves, lastWeek, captainAtWeek(allMoves, lastWeek, ts.captainPlayerId ?? "")).map((l) => l.playerId),
+  );
+  const departedSet = new Set([...hasArrival].filter((pid) => !activeIds.has(pid) && !stintsOf.has(pid)));
+
   const playerLines: TeamPlayerLine[] = playerIds
     .map((pid) => {
       const e = entryByPlayer.get(pid)!;
       const a = acc.get(pid) ?? { setW: 0, setL: 0, gameW: 0, gameL: 0 };
       const eff = seedAt(id, lastWeek, pid) ?? e.seed;
-      const chain = (chainOf.get(pid) ?? [e.seed]).slice();
+      // Seed history comes ONLY from real DRAFTED/RESEED moves. A pure replacement (ADDED, no
+      // draft) has none -- its base is the seat it holds now, NOT the stale RosterEntry.seed
+      // (an import artifact ensureMembership doesn't overwrite). That artifact was the phantom
+      // "drafted at 12 -> 11" for a player who was only ever a replacement.
+      const chain = (chainOf.get(pid) ?? [eff]).slice();
       if (chain[chain.length - 1] !== eff) chain.push(eff);
       const stints = stintsOf.get(pid);
       return {
         playerId: pid, name: nameById.get(pid) ?? pid, discordId: didById.get(pid) ?? null,
-        seed: eff, draftSeed: e.seed, reseeded: eff !== e.seed, seedChain: chain,
+        seed: eff, draftSeed: chain[0], reseeded: chain[0] !== eff, seedChain: chain,
         isSub: !!stints, subWeeks: stints ? stints.join(", ") : null,
+        departed: departedSet.has(pid),
         isCaptain: e.isCaptain, isCoCaptain: e.isCoCaptain, ...a,
       };
     })
-    // Members by seed; subs at the bottom (they never held a seed).
-    .sort((x, y) => Number(x.isSub) - Number(y.isSub) || x.seed - y.seed);
+    // Active seat-holders by seed, then temp subs, then departed/subbed-out players last.
+    .sort((x, y) => {
+      const rank = (p: TeamPlayerLine) => (p.departed ? 2 : p.isSub ? 1 : 0);
+      return rank(x) - rank(y) || x.seed - y.seed;
+    });
 
   const tot = playerLines.reduce(
     (t, p) => ({ setW: t.setW + p.setW, setL: t.setL + p.setL, gameW: t.gameW + p.gameW, gameL: t.gameL + p.gameL }),

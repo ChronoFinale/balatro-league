@@ -122,8 +122,8 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
         )}
         <div className="stat">
           <div className="label">Roster</div>
-          <div className="value">{t.players.length}</div>
-          <div className="muted">players</div>
+          <div className="value">{t.players.filter((p) => !p.isSub && !p.departed).length}</div>
+          <div className="muted">on roster</div>
         </div>
       </div>
       <div className="card">
@@ -143,13 +143,15 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
               <tr key={p.playerId}>
                 <td className="rank">
                   {p.isSub ? (
-                    <span className="badge" title={`Temporary sub — played ${p.subWeeks}; never held a seed`}>sub</span>
+                    <span className="badge" title={`Temporary sub -- played ${p.subWeeks}; never held a seed`}>sub</span>
+                  ) : p.departed ? (
+                    <span className="badge" title="Permanently subbed out; stats kept">out</span>
                   ) : (
                     <>
                       {p.seed}
-                      {p.seedChain.length > 1 && (
+                      {p.seedChain.length > 1 && p.seedChain[0] !== p.seed && (
                         <div className="sub" style={{ fontWeight: 400, fontSize: "0.72rem" }} title={`Drafted at seed ${p.seedChain[0]}, now seed ${p.seed}`}>
-                          {p.seedChain.join(" → ")}
+                          from #{p.seedChain[0]}
                         </div>
                       )}
                     </>
@@ -160,6 +162,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
                   {p.isCaptain && <span className="sub"> (C)</span>}
                   {p.isCoCaptain && <span className="sub" title="Co-captain"> (CC)</span>}
                   {p.isSub && <span className="sub" title="weeks they filled in"> ({p.subWeeks})</span>}
+                  {p.departed && <span className="sub" title="No longer on the active roster"> (subbed out)</span>}
                 </td>
                 <td className="num">
                   {p.setW}–{p.setL}
