@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { isAdmin } from "@/lib/auth";
 import { can, seriesScope } from "@/lib/permissions";
-import { startPlayoffs, startPlayoffsManual, startConferencePlayoffs, setSeriesTeams, reportSeries, resetPlayoffs } from "@/lib/services/playoffs";
+import { startPlayoffs, startPlayoffsManual, startChoiceBracket, setSeriesTeams, reportSeries, resetPlayoffs } from "@/lib/services/playoffs";
 import type { ActionResult } from "@/lib/action-result";
 
 function rev(season: string) {
@@ -38,20 +38,20 @@ export async function startPlayoffsManualAction(_prev: ActionResult, formData: F
   }
 }
 
-export async function startConferencePlayoffsAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+export async function startChoiceBracketAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
   const season = String(formData.get("season") ?? "");
-  // One pick per conference: pick_<conferenceId> = the #1 seed's chosen opponent.
-  const confIds = String(formData.get("confIds") ?? "").split(",").filter(Boolean);
-  const picks = confIds
-    .map((id) => ({ conferenceId: id, chosenOpponentTeamSeasonId: String(formData.get(`pick_${id}`) ?? "") }))
+  // One pick per active chooser, in seed order: pick_<chooserTeamSeasonId> = its chosen opponent.
+  const chooserIds = String(formData.get("chooserIds") ?? "").split(",").filter(Boolean);
+  const picks = chooserIds
+    .map((id) => ({ chooserTeamSeasonId: id, chosenOpponentTeamSeasonId: String(formData.get(`pick_${id}`) ?? "") }))
     .filter((p) => p.chosenOpponentTeamSeasonId);
   try {
-    const r = await startConferencePlayoffs(season, picks);
+    const r = await startChoiceBracket(season, picks);
     rev(season);
-    return { ok: true, message: `Conference playoffs started: ${r.conferences} conferences, ${r.series} first-round series.` };
+    return { ok: true, message: `Playoffs started: ${r.field}-team field, ${r.series} first-round series.` };
   } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Could not start conference playoffs." };
+    return { ok: false, message: e instanceof Error ? e.message : "Could not start playoffs." };
   }
 }
 

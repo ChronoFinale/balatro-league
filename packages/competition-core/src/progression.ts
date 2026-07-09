@@ -3,6 +3,7 @@
 // promotion/relegation. Pure; the host persists the outcomes.
 
 import type { StandingRow } from "./types";
+import { bracketSeedOrder } from "./format";
 
 export interface QualifiedParticipant {
   participantId: string;
@@ -105,21 +106,24 @@ export function assembleBracketByChoice(
   return { ok: true, pairs: ordered };
 }
 
-// Place the #1-seed pair in the first half and the #2-seed pair in the second
-// half (they can only meet in the final), keeping the rest in seed order.
+// Place the chooser pairs into standard bracket slots (bracketSeedOrder) so the
+// result is a normal seeded single-elim: #1 and #2 can only meet in the final, and
+// #1 shares its half with the lowest-ranked chooser (n=8 halves = {1,4} and {2,3}).
+// The chooser pairs anchor the "higher seed" slots, which sit at bracketSeedOrder's
+// even indices — exactly the top half of the field.
 function reorderOppositeHalves(
   pairs: readonly [string, string][],
   seededIds: readonly string[],
 ): [string, string][] {
-  if (pairs.length <= 2) return [...pairs];
-  const seedIdx = (id: string) => seededIds.indexOf(id);
-  const sorted = [...pairs].sort((a, b) => seedIdx(a[0]) - seedIdx(b[0]));
-  const top = sorted[0]!; // #1's pair
-  const second = sorted[1]!; // #2's pair
-  const rest = sorted.slice(2);
-  const firstHalf = [top, ...rest.slice(0, rest.length / 2)];
-  const secondHalf = [...rest.slice(rest.length / 2), second];
-  return [...firstHalf, ...secondHalf];
+  const seedIdx = (id: string) => seededIds.indexOf(id); // 0-based seed of the chooser
+  const byChooser = new Map(pairs.map((p) => [seedIdx(p[0]), p] as const));
+  const order = bracketSeedOrder(seededIds.length); // 1-based standard seed order
+  const out: [string, string][] = [];
+  for (let k = 0; k < pairs.length; k++) {
+    const pair = byChooser.get((order[2 * k] ?? 0) - 1);
+    if (pair) out.push([pair[0], pair[1]]);
+  }
+  return out.length === pairs.length ? out : [...pairs];
 }
 
 // ── Promotion / relegation (League) ──────────────────────────────────────────

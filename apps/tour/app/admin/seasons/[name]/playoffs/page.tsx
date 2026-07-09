@@ -8,7 +8,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { FormSelect } from "@/components/FormSelect";
-import { startPlayoffsAction, startPlayoffsManualAction, startConferencePlayoffsAction, setSeriesTeamsAction, reportSeriesAction, resetPlayoffsAction } from "./actions";
+import { startPlayoffsAction, startPlayoffsManualAction, startChoiceBracketAction, setSeriesTeamsAction, reportSeriesAction, resetPlayoffsAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -47,58 +47,61 @@ export default async function PlayoffsAdmin({ params }: { params: Promise<{ name
   // ── Not started → projected field + start ─────────────────────────────────
   if (!data.started) {
     const field = data.projected;
-    const cs = data.conferenceSetup;
-    const confMode = !!(cs && cs.supported && cs.conferences.every((c) => c.enoughTeams));
+    const cs = data.choiceSetup;
+    const choiceMode = !!(cs && cs.supported);
+    const activeChoosers = cs?.choosers.filter((c) => c.picks) ?? [];
     return (
       <main>
         {back}
         <h1>Playoffs setup</h1>
         <p className="sub">
-          {confMode
-            ? "Conference playoffs: each conference's #1 seed picks its first-round opponent; #2 gets the other. Winners meet in the conference final, then the two champions in the final."
+          {choiceMode
+            ? "Choose-your-opponent playoffs: the field is seeded 1..N overall, and the top-half seeds pick their first-round opponent from the bottom half in seed order (the last one plays whoever's left). #1 and #2 land on opposite sides of the bracket."
             : "Auto-seed the top teams from the standings, or build the field by hand below. Single-elim, 2/4/8 teams."}
         </p>
 
-        {confMode && cs && (
+        {choiceMode && cs && (
           <div className="card">
-            <div className="bracket-title">Seed the bracket — pick each #1 seed&apos;s opponent</div>
-            <ActionFlashForm action={startConferencePlayoffsAction}>
-              <input type="hidden" name="season" value={seasonName} />
-              <input type="hidden" name="confIds" value={cs.conferences.map((c) => c.conferenceId).join(",")} />
-              <div className="grid grid-2" style={{ gap: "1rem" }}>
-                {cs.conferences.map((c) => (
-                  <div key={c.conferenceId}>
-                    <div style={{ fontWeight: 600 }}>{c.conferenceName}</div>
-                    <table style={{ margin: "0.25rem 0" }}>
-                      <tbody>
-                        {c.seeds.map((s) => (
-                          <tr key={s.teamSeasonId}>
-                            <td className="rank">#{s.seed}</td>
-                            <td>{s.name}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <label className="flex flex-wrap items-center gap-2">
-                      <span className="sub">#1 {c.chooser?.name} plays</span>
+            <div className="bracket-title">Seed the bracket — each top seed picks its opponent</div>
+            <div className="grid grid-2" style={{ gap: "1rem" }}>
+              <table style={{ margin: "0.25rem 0" }}>
+                <thead><tr><th className="rank">Seed</th><th>Team</th><th className="sub">Conf</th></tr></thead>
+                <tbody>
+                  {cs.seeds.map((s) => (
+                    <tr key={s.teamSeasonId}>
+                      <td className="rank">#{s.seed}</td>
+                      <td>{s.name}</td>
+                      <td className="sub" style={{ fontSize: "0.8em" }}>{s.conference}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <ActionFlashForm action={startChoiceBracketAction}>
+                <input type="hidden" name="season" value={seasonName} />
+                <input type="hidden" name="chooserIds" value={activeChoosers.map((c) => c.teamSeasonId).join(",")} />
+                <div className="flex flex-col gap-2">
+                  {activeChoosers.map((c) => (
+                    <label key={c.teamSeasonId} className="flex flex-wrap items-center gap-2">
+                      <span className="sub">#{c.seed} {c.name} plays</span>
                       <FormSelect
-                        name={`pick_${c.conferenceId}`}
+                        name={`pick_${c.teamSeasonId}`}
                         size="sm"
-                        options={c.pickables.map((p) => ({ value: p.teamSeasonId, label: `#${p.seed} ${p.name}` }))}
+                        options={cs.pickables.map((p) => ({ value: p.teamSeasonId, label: `#${p.seed} ${p.name}` }))}
                         placeholder="-- pick opponent --"
                       />
                     </label>
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginTop: "0.6rem" }}>
-                <SubmitButton pendingText="Starting..."><Trophy /> Start conference playoffs</SubmitButton>
-              </div>
-            </ActionFlashForm>
+                  ))}
+                  <p className="sub" style={{ fontSize: "0.8em", margin: 0 }}>Picks resolve in seed order; the last remaining top seed plays whoever&apos;s left.</p>
+                </div>
+                <div style={{ marginTop: "0.6rem" }}>
+                  <SubmitButton pendingText="Starting..."><Trophy /> Start playoffs</SubmitButton>
+                </div>
+              </ActionFlashForm>
+            </div>
           </div>
         )}
 
-        {!confMode && (!field ? (
+        {!choiceMode && (!field ? (
           <Callout type="admin">No standings yet for auto-seeding — you can still build the field by hand below.</Callout>
         ) : !field.valid ? (
           <Callout type="admin">

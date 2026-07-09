@@ -108,6 +108,9 @@ describe("re-seed by choice", () => {
     const secondHalf = res.pairs.slice(res.pairs.length / 2).flat();
     expect(firstHalf).toContain("s1");
     expect(secondHalf).toContain("s2");
+    // Standard seeding: #1 shares the top half with #4, #2 shares the bottom with #3.
+    expect(firstHalf).toContain("s4");
+    expect(secondHalf).toContain("s3");
   });
 
   it("rejects an ineligible or duplicate pick", () => {

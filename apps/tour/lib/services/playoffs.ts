@@ -23,7 +23,6 @@ const roundOrder = (round: string): number => -(TEAMS_BY_ROUND[round] ?? 0); // 
 
 const pct = (w: number, l: number) => (w + l ? w / (w + l) : 0);
 const isPow2 = (n: number) => n >= 2 && (n & (n - 1)) === 0; // valid bracket field (>= 2)
-const pow2OrOne = (n: number) => n >= 1 && (n & (n - 1)) === 0; // valid conference count (1, 2, 4, ...)
 
 // Qualify + seed the field from the season's standings (same logic as
 // getPlayoffPicture, returning raw ids/seeds for persistence).
@@ -138,95 +137,89 @@ async function createSeriesMatchup(weekId: string, aTsId: string, bTsId: string)
   return mu.id;
 }
 
-export interface ConferencePick {
-  conferenceId: string;
-  chosenOpponentTeamSeasonId: string; // the #1 seed's chosen first-round opponent (a lower seed)
+export interface ChoicePick {
+  chooserTeamSeasonId: string; // a top-half seed
+  chosenOpponentTeamSeasonId: string; // its chosen opponent from the bottom half
 }
 
-export async function startConferencePlayoffs(seasonName: string, picks: ConferencePick[]) {
-  const season = await prisma.tourSeason.findUnique({ where: { name: seasonName }, select: { id: true, format: true, playoffTeams: true } });
+// Choose-your-opponent playoffs on the OVERALL-seeded field (Tour §6.5): seed the whole
+// field 1..N, the top half pick their first-round opponent from the bottom half in seed
+// order, and the last chooser (seed N/2) plays the single leftover. The bracket is laid out
+// by standard seeding (#1 and #2 in opposite halves), and each series plays through a live
+// Matchup so games are entered/reported in the normal console -- so cross-team subs and
+// per-game reporting work exactly like the regular season. Any power-of-2 field 2..64, any
+// format (conference or Swiss): the seeding is always overall, not per-conference.
+export async function startChoiceBracket(seasonName: string, picks: ChoicePick[]) {
+  const season = await prisma.tourSeason.findUnique({ where: { name: seasonName }, select: { id: true } });
   if (!season) throw new Error(`No season "${seasonName}"`);
-  if (season.format !== "CONFERENCES") throw new Error("Conference playoffs need a CONFERENCES-format season.");
   if ((await prisma.playoffEntry.count({ where: { seasonId: season.id } })) > 0) throw new Error("Playoffs already started -- reset first.");
 
-  const standings = await getSeasonStandings(seasonName);
-  if (!standings || standings.groups.length < 1) throw new Error("No standings for this season yet.");
-  const conferences = standings.groups.length;
-  if (!pow2OrOne(conferences)) throw new Error(`Conference playoffs need a power-of-2 number of conferences (this season has ${conferences}).`);
-  const berths = Math.floor(season.playoffTeams / conferences);
-  if (berths < 2 || !isPow2(berths)) throw new Error(`Each conference needs a power-of-2 team count of at least 2 (playoffTeams/conferences = ${berths}).`);
-  const field = conferences * berths;
-  const firstRound = roundForTeams(field);
-  if (!firstRound) throw new Error(`Playoff field of ${field} is out of range (2..64).`);
-  const half = berths / 2;
-  const pickByConf = new Map(picks.map((p) => [p.conferenceId, p.chosenOpponentTeamSeasonId]));
+  const field = await computeSeededField(seasonName);
+  if (!field) throw new Error("No standings for this season yet.");
+  if (!field.valid) throw new Error(`Need a power-of-2 field (2..64) -- standings produced ${field.seeded.length} qualifiers.`);
 
-  const entryRows: { teamSeasonId: string; seed: number }[] = [];
-  const firstPairs: { conferenceId: string; a: string; b: string }[] = [];
+  const seededIds = field.seeded.map((q) => q.teamSeasonId);
+  const n = seededIds.length;
+  const half = n / 2;
+  const firstRound = roundForTeams(n)!;
+  const choosers = seededIds.slice(0, half); // seeds 1..half, in seed order
+  const pickable = new Set(seededIds.slice(half)); // seeds half+1..n
 
-  for (const g of standings.groups) {
-    const top = g.rows.slice(0, berths).map((r) => r.teamSeasonId);
-    if (top.length < berths) throw new Error(`Conference ${g.conferenceName} has ${top.length} teams; need ${berths} for the bracket.`);
-    top.forEach((id, i) => entryRows.push({ teamSeasonId: id, seed: i + 1 })); // per-conference seed 1..berths
-
-    const choosers = top.slice(0, half); // #1..#half
-    const pickable = top.slice(half); // lower half = the eligible first-round opponents
-    const chosen = pickByConf.get(g.conferenceId);
-    if (!chosen) throw new Error(`No first-round opponent picked for conference ${g.conferenceName}.`);
-    if (!pickable.includes(chosen)) throw new Error(`${g.conferenceName}: the #1 seed must pick a lower seed as its opponent.`);
-    // #1 gets its pick; the remaining choosers take the leftover pickables in order.
-    const picksMap: Record<string, string> = { [choosers[0]!]: chosen };
-    const leftovers = pickable.filter((id) => id !== chosen);
-    for (let i = 1; i < choosers.length; i++) picksMap[choosers[i]!] = leftovers[i - 1]!;
-
-    const res = assembleBracketByChoice(top, picksMap);
-    if (!res.ok) throw new Error(`${g.conferenceName}: ${res.reason}`);
-    for (const [a, b] of res.pairs) firstPairs.push({ conferenceId: g.conferenceId, a, b });
+  // Build the pick map in seed order; the last chooser auto-takes the single leftover.
+  const wanted = new Map(picks.map((p) => [p.chooserTeamSeasonId, p.chosenOpponentTeamSeasonId]));
+  const picksMap: Record<string, string> = {};
+  const used = new Set<string>();
+  for (let i = 0; i < choosers.length; i++) {
+    const chooser = choosers[i]!;
+    if (i === choosers.length - 1) {
+      const leftover = seededIds.slice(half).find((id) => !used.has(id));
+      if (!leftover) throw new Error("No opponent left for the last seed.");
+      picksMap[chooser] = leftover;
+      used.add(leftover);
+    } else {
+      const pick = wanted.get(chooser);
+      if (!pick) throw new Error(`Seed ${i + 1} hasn't picked an opponent yet.`);
+      if (!pickable.has(pick)) throw new Error(`Seed ${i + 1} must pick a lower-half seed as its opponent.`);
+      if (used.has(pick)) throw new Error("That opponent was already picked by a higher seed.");
+      picksMap[chooser] = pick;
+      used.add(pick);
+    }
   }
 
-  await prisma.playoffEntry.createMany({ data: entryRows.map((e) => ({ seasonId: season.id, teamSeasonId: e.teamSeasonId, seed: e.seed, viaWildcard: false })) });
+  const res = assembleBracketByChoice(seededIds, picksMap);
+  if (!res.ok) throw new Error(res.reason ?? "Could not assemble the bracket.");
 
-  // First-round series laid out conference-contiguous, so the consecutive-winner advance keeps
-  // each conference self-contained until its sub-bracket merges into the cross-conference stage.
-  const seedOf = new Map(entryRows.map((e) => [e.teamSeasonId, e.seed]));
+  await prisma.playoffEntry.createMany({ data: field.seeded.map((q) => ({ seasonId: season.id, teamSeasonId: q.teamSeasonId, seed: q.seed, viaWildcard: q.viaWildcard })) });
+
+  const seedOf = new Map(field.seeded.map((q) => [q.teamSeasonId, q.seed]));
   const regularWeeks = (await regularWeekCount(season.id)) || 0;
-  const firstWeekId = await ensurePlayoffWeek(season.id, roundWeekOf(regularWeeks, field, firstRound));
+  const firstWeekId = await ensurePlayoffWeek(season.id, roundWeekOf(regularWeeks, n, firstRound));
   let bi = 0;
-  for (const p of firstPairs) {
-    const [aId, bId] = (seedOf.get(p.a) ?? 99) <= (seedOf.get(p.b) ?? 99) ? [p.a, p.b] : [p.b, p.a];
+  for (const [x, y] of res.pairs) {
+    // Higher seed = team A (proposes first / wins the matchup coinflip).
+    const [aId, bId] = (seedOf.get(x) ?? 99) <= (seedOf.get(y) ?? 99) ? [x, y] : [y, x];
     const matchupId = await createSeriesMatchup(firstWeekId, aId, bId);
-    await prisma.playoffSeries.create({ data: { seasonId: season.id, round: firstRound, bracketIndex: bi++, conferenceId: p.conferenceId, teamSeasonAId: aId, teamSeasonBId: bId, matchupId } });
+    await prisma.playoffSeries.create({ data: { seasonId: season.id, round: firstRound, bracketIndex: bi++, conferenceId: null, teamSeasonAId: aId, teamSeasonBId: bId, matchupId } });
   }
 
   await prisma.tourSeason.update({ where: { id: season.id }, data: { state: "PLAYOFFS" } });
-  return { conferences, berths, field, firstRound, series: firstPairs.length };
+  return { field: n, firstRound, series: res.pairs.length };
 }
 
-// The per-conference setup the admin renders before starting: each conference's
-// top-`berths` standings, its #1 chooser, and the lower seeds it may pick from.
-async function computeConferenceSetup(seasonName: string) {
-  const s = await getSeasonStandings(seasonName);
-  if (!s || s.format !== "CONFERENCES" || s.groups.length < 1) return null;
-  const conferences = s.groups.length;
-  const berths = Math.floor(s.playoffTeams / Math.max(1, conferences));
-  const half = Math.max(1, Math.floor(berths / 2));
+// The setup the admin renders before starting: the overall-seeded field, which seeds are
+// choosers (top half; all but the last actively pick), and the lower-half opponent pool.
+async function computeChoiceSetup(seasonName: string) {
+  const field = await computeSeededField(seasonName);
+  if (!field) return null;
+  const n = field.seeded.length;
+  const half = Math.floor(n / 2);
   return {
-    berths,
-    // Any power-of-2 conferences x power-of-2 berths (field 2..64) is supported.
-    supported: pow2OrOne(conferences) && berths >= 2 && isPow2(berths) && !!roundForTeams(conferences * berths),
-    conferences: s.groups.map((g) => {
-      const top = g.rows.slice(0, berths);
-      const chooser = top[0];
-      const pickables = top.slice(half);
-      return {
-        conferenceId: g.conferenceId,
-        conferenceName: g.conferenceName,
-        enoughTeams: top.length >= berths,
-        seeds: top.map((r, i) => ({ teamSeasonId: r.teamSeasonId, name: r.name, seed: i + 1 })),
-        chooser: chooser ? { teamSeasonId: chooser.teamSeasonId, name: chooser.name } : null,
-        pickables: pickables.map((r, i) => ({ teamSeasonId: r.teamSeasonId, name: r.name, seed: half + i + 1 })),
-      };
-    }),
+    supported: field.valid && n >= 2,
+    field: n,
+    seeds: field.seeded.map((q) => ({ teamSeasonId: q.teamSeasonId, name: q.name, seed: q.seed, conference: q.conference })),
+    // Seeds 1..half-1 actively pick; the last chooser (seed=half) plays the leftover.
+    choosers: field.seeded.slice(0, half).map((q, i) => ({ teamSeasonId: q.teamSeasonId, name: q.name, seed: q.seed, picks: i < half - 1 })),
+    pickables: field.seeded.slice(half).map((q) => ({ teamSeasonId: q.teamSeasonId, name: q.name, seed: q.seed })),
   };
 }
 
@@ -409,8 +402,8 @@ export async function getPlayoffAdmin(seasonName: string) {
             return { a: `#${A.seed} ${A.name}`, b: `#${B.seed} ${B.name}` };
           })
         : [];
-    const conferenceSetup = await computeConferenceSetup(seasonName);
-    return { started: false as const, seasonState: season.state, projected: field, pairings, allTeams, conferenceSetup };
+    const choiceSetup = await computeChoiceSetup(seasonName);
+    return { started: false as const, seasonState: season.state, projected: field, pairings, allTeams, choiceSetup };
   }
 
   const series = await prisma.playoffSeries.findMany({
