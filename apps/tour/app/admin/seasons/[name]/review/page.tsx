@@ -233,7 +233,7 @@ function MatchupCard({
               </select>
             </label>
             <label className="sub">seed<br />
-              <input type="number" name="ourSeed" min={1} className={`${fieldInputSm} w-14 text-center`} />
+              <input type="number" name="ourSeed" min={1} className={`${fieldInputSm} w-16 text-center`} />
             </label>
             <label className="sub">their player<br />
               <select name="theirPlayerId" className={fieldInputSm} defaultValue="">
@@ -242,7 +242,7 @@ function MatchupCard({
               </select>
             </label>
             <label className="sub">seed<br />
-              <input type="number" name="theirSeed" min={1} className={`${fieldInputSm} w-14 text-center`} />
+              <input type="number" name="theirSeed" min={1} className={`${fieldInputSm} w-16 text-center`} />
             </label>
             <SubmitButton size="sm" variant="secondary" pendingText="...">Add</SubmitButton>
           </ActionFlashForm>
@@ -374,7 +374,7 @@ function SeedEdit({ season, setId, slot, seed }: { season: string; setId: string
       <input type="hidden" name="season" value={season} />
       <input type="hidden" name="setId" value={setId} />
       <input type="hidden" name="slot" value={slot} />
-      <input type="number" name="seed" min={1} defaultValue={seed} className={`${fieldInputSm} w-11 text-center`} title="seed -- edit and save" />
+      <input type="number" name="seed" min={1} defaultValue={seed} className={`${fieldInputSm} w-16 text-center`} title="seed -- edit and save" />
       <SubmitButton size="sm" variant="secondary" pendingText="...">seed</SubmitButton>
     </ActionFlashForm>
   );
