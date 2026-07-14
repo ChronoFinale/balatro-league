@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Users, Shield, Shuffle, CalendarDays, UserCog, Trophy, Flag, Hash, ExternalLink, Newspaper, ListOrdered, Trash2, Gamepad2, ClipboardList, Inbox } from "lucide-react";
+import { ArrowLeft, Users, Shield, Shuffle, CalendarDays, UserCog, Trophy, Flag, Hash, ExternalLink, Newspaper, ListOrdered, Trash2, Gamepad2, ClipboardList, ClipboardCheck, Inbox } from "lucide-react";
 import { getViewer, isAdmin } from "@/lib/auth";
 import { capabilitiesFor, captainTeamsFor, seasonIdByName } from "@/lib/permissions";
 import { getSeasonAdmin, listConferences } from "@/lib/services/seasons";
@@ -58,6 +58,7 @@ export default async function SeasonAdmin({ params }: { params: Promise<{ name: 
     { key: "draft", label: "Draft", icon: Shuffle, href: `/admin/seasons/${enc}/draft`, count: season.draft ? season.draft.state : "not started", ready: true, show: cap("DRAFT") || isCaptain },
     { key: "schedule", label: "Schedule", icon: CalendarDays, href: `/admin/seasons/${enc}/schedule`, count: `${season._count.weeks} weeks`, ready: true, show: to },
     { key: "audit", label: "Reporting audit", icon: ClipboardList, href: `/admin/seasons/${enc}/audit`, count: "unsettled matchups · who's behind", ready: true, show: to },
+    { key: "review", label: "Review & correct", icon: ClipboardCheck, href: `/admin/seasons/${enc}/review`, count: "week by week · lineups · results · off-seed", ready: true, show: to },
     { key: "roster", label: "Roster ops", icon: UserCog, href: `/admin/seasons/${enc}/roster`, count: "subs · drops · DQs", ready: true, show: cap("ROSTERS") || isCaptain },
     { key: "roster-requests", label: "Roster requests", icon: Inbox, href: `/admin/seasons/${enc}/roster/requests`, count: pendingReqCount > 0 ? `${pendingReqCount} pending` : "none pending", ready: true, show: cap("ROSTERS") },
     { key: "playoffs", label: "Playoffs", icon: Trophy, href: `/admin/seasons/${enc}/playoffs`, count: season.state === "PLAYOFFS" || season.state === "DONE" ? `bracket · ${season.state}` : `field of ${season.playoffTeams}`, ready: true, show: to },
