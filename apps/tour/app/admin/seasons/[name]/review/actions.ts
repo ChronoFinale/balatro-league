@@ -7,7 +7,7 @@
 import { revalidatePath } from "next/cache";
 import { isAdmin } from "@/lib/auth";
 import { reportSet, unreportSet, dqSet } from "@/lib/services/report";
-import { reviewReassignPlayer, reviewSetSeed } from "@/lib/services/review";
+import { reviewReassignPlayer, reviewSetSeed, reviewRemovePair, reviewAddPair } from "@/lib/services/review";
 import type { ActionResult } from "@/lib/action-result";
 
 function rev(season: string) {
@@ -86,5 +86,36 @@ export async function reassignAction(_prev: ActionResult, formData: FormData): P
     return { ok: true, message: r.changed ? "Player updated." : "No change." };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Reassign failed." };
+  }
+}
+
+export async function removePairAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  if (!(await isAdmin())) return { ok: false, message: "Admins only." };
+  const season = String(formData.get("season") ?? "");
+  const setId = String(formData.get("setId") ?? "");
+  try {
+    await reviewRemovePair(setId);
+    rev(season);
+    return { ok: true, message: "Pairing removed." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Remove failed." };
+  }
+}
+
+export async function addPairAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  if (!(await isAdmin())) return { ok: false, message: "Admins only." };
+  const season = String(formData.get("season") ?? "");
+  const templateSetId = String(formData.get("templateSetId") ?? "");
+  const teamSeasonId = String(formData.get("teamSeasonId") ?? "");
+  const ourPlayerId = String(formData.get("ourPlayerId") ?? "");
+  const theirPlayerId = String(formData.get("theirPlayerId") ?? "");
+  const ourSeed = Number(formData.get("ourSeed"));
+  const theirSeed = Number(formData.get("theirSeed"));
+  try {
+    await reviewAddPair(templateSetId, teamSeasonId, ourPlayerId, theirPlayerId, ourSeed, theirSeed);
+    rev(season);
+    return { ok: true, message: "Pairing added." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Add failed." };
   }
 }

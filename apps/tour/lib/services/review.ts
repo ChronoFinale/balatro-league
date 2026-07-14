@@ -57,8 +57,9 @@ export interface ReviewLineupPlayer {
 }
 
 export interface ReviewWeek {
-  week: number; // real week number, or a synthetic slot for playoffs
+  week: number; // real week number, or a synthetic slot for a playoff round
   label: string;
+  tabLabel: string; // short label for the week stepper
   isPlayoff: boolean;
   lineup: ReviewLineupPlayer[];
   matchups: ReviewMatchup[];
@@ -72,9 +73,21 @@ export interface SeasonReview {
   teamName: string;
   teams: { teamSeasonId: string; name: string; seed: number }[];
   teamPlayers: { id: string; name: string }[]; // candidates for "who played" fixes on this team
+  allPlayers: { id: string; name: string }[]; // season-wide -- opponent-side + add-pairing pickers
   weeks: ReviewWeek[];
   offSeedTotal: number;
   emptyMatchupCount: number; // matchups with no pairings and/or all-0-0
+}
+
+// A short round abbreviation for a playoff bracket label ("Quarterfinal 2" -> "QF2").
+function shortRound(round: string): string {
+  const m = /^(quarter|semi)/i.exec(round);
+  if (m) {
+    const n = (/(\d+)/.exec(round) ?? [])[1] ?? "";
+    return (/quarter/i.test(m[1]) ? "QF" : "SF") + n;
+  }
+  if (/champ|grand|final/i.test(round)) return "Final";
+  return round.length > 10 ? round.slice(0, 10) : round;
 }
 
 const PLAYOFF_WEEK = 100000; // synthetic slot so playoff buckets sort after regular weeks
@@ -119,7 +132,7 @@ export async function getSeasonReview(seasonName: string, teamSeasonId?: string)
     orderBy: { seed: "asc" },
   });
   if (!teamSeasons.length) {
-    return { seasonName: season.name, teamSize: season.teamSize, teamSeasonId: "", teamName: "", teams: [], teamPlayers: [], weeks: [], offSeedTotal: 0, emptyMatchupCount: 0 };
+    return { seasonName: season.name, teamSize: season.teamSize, teamSeasonId: "", teamName: "", teams: [], teamPlayers: [], allPlayers: [], weeks: [], offSeedTotal: 0, emptyMatchupCount: 0 };
   }
   const teams = teamSeasons.map((t) => ({ teamSeasonId: t.id, name: t.team.name, seed: t.seed }));
   const tsId = teamSeasonId && teams.some((t) => t.teamSeasonId === teamSeasonId) ? teamSeasonId : teams[0].teamSeasonId;
@@ -157,7 +170,6 @@ export async function getSeasonReview(seasonName: string, teamSeasonId?: string)
     return { week: playoff ? PLAYOFF_WEEK : w!, isPlayoff: playoff };
   };
   const regularWeeks = [...new Set(rawSets.map((s) => weekOf(s)).filter((w) => !w.isPlayoff).map((w) => w.week))].sort((a, b) => a - b);
-  const hasPlayoff = rawSets.some((s) => weekOf(s).isPlayoff);
   const lineupWeeks = [...regularWeeks];
 
   const lineupByWeek = new Map<number, ReviewLineupPlayer[]>();
@@ -178,8 +190,9 @@ export async function getSeasonReview(seasonName: string, teamSeasonId?: string)
   const matchById = new Map(matches.map((m) => [m.id, m]));
   const teamNameOf = new Map(teams.map((t) => [t.teamSeasonId, t.name]));
 
-  // Group sets into (week, matchup/pair) buckets.
-  interface Bucket { week: number; isPlayoff: boolean; matchupId: string | null; opp: string; setsWonA: number | null; setsWonB: number | null; ourSideA: boolean; sets: RawSet[] }
+  // Group sets into (week, matchup/pair) buckets. Flat playoff sets already split by
+  // opponent pairing (week = PLAYOFF_WEEK); we give each its own round tab below.
+  interface Bucket { week: number; isPlayoff: boolean; bracket: string | null; matchupId: string | null; opp: string; setsWonA: number | null; setsWonB: number | null; ourSideA: boolean; sets: RawSet[] }
   const buckets = new Map<string, Bucket>();
   for (const s of rawSets) {
     const { week, isPlayoff } = weekOf(s);
@@ -191,85 +204,98 @@ export async function getSeasonReview(seasonName: string, teamSeasonId?: string)
     const key = s.matchup?.id ?? `${week}|${[tsA, tsB].sort().join("~")}`;
     let b = buckets.get(key);
     if (!b) {
-      b = { week, isPlayoff, matchupId: s.matchup?.id ?? null, opp, setsWonA: s.matchup?.setsWonA ?? null, setsWonB: s.matchup?.setsWonB ?? null, ourSideA, sets: [] };
+      b = { week, isPlayoff, bracket: s.bracket, matchupId: s.matchup?.id ?? null, opp, setsWonA: s.matchup?.setsWonA ?? null, setsWonB: s.matchup?.setsWonB ?? null, ourSideA, sets: [] };
       buckets.set(key, b);
     }
     b.sets.push(s);
   }
 
-  // Assemble weeks.
-  const weekKeys = [...new Set([...regularWeeks, ...(hasPlayoff ? [PLAYOFF_WEEK] : [])])].sort((a, b) => a - b);
-  const weeks: ReviewWeek[] = weekKeys.map((wk) => {
-    const isPlayoff = wk === PLAYOFF_WEEK;
-    const wkBuckets = [...buckets.values()].filter((b) => b.week === wk).sort((a, b) => (teamNameOf.get(a.opp) ?? "").localeCompare(teamNameOf.get(b.opp) ?? ""));
-    const matchups: ReviewMatchup[] = wkBuckets.map((b) => {
-      const pairs: ReviewPair[] = b.sets
-        .map((s) => {
-          const our = b.ourSideA ? "A" : "B";
-          const ourPlayerId = our === "A" ? s.playerAId : s.playerBId;
-          const theirPlayerId = our === "A" ? s.playerBId : s.playerAId;
-          const ourSeed = our === "A" ? s.seedA : s.seedB;
-          const theirSeed = our === "A" ? s.seedB : s.seedA;
-          const m = s.matchId ? matchById.get(s.matchId) : undefined;
-          // Align the canonical Match's games to the set's team A by player id, then to our side.
-          const teamAGames = m ? (m.playerAId === s.playerAId ? m.gamesWonA : m.gamesWonB) : null;
-          const teamBGames = m ? (m.playerAId === s.playerAId ? m.gamesWonB : m.gamesWonA) : null;
-          const ourGames = teamAGames == null ? null : our === "A" ? teamAGames : teamBGames;
-          const theirGames = teamAGames == null ? null : our === "A" ? teamBGames : teamAGames;
-          const seedGap = Math.abs(ourSeed - theirSeed);
-          return {
-            setId: s.id,
-            ourSlot: our as "A" | "B",
-            ourPlayerId, ourName: nameOf.get(ourPlayerId) ?? ourPlayerId, ourSeed,
-            ourIsSub: subOnly.has(`${tsId}|${ourPlayerId}`),
-            theirPlayerId, theirName: nameOf.get(theirPlayerId) ?? theirPlayerId, theirSeed,
-            ourGames, theirGames, bestOf: s.bestOf, status: s.status,
-            reported: isReported(s.status, s.matchId),
-            seedGap, offSeed: seedGap > 2,
-            reassignedFrom: s.reassignedFromId ? nameOf.get(s.reassignedFromId) ?? null : null,
-          };
-        })
-        .sort((a, b2) => a.ourSeed - b2.ourSeed);
+  const buildMatchup = (b: Bucket): ReviewMatchup => {
+    const pairs: ReviewPair[] = b.sets
+      .map((s) => {
+        const our = b.ourSideA ? "A" : "B";
+        const ourPlayerId = our === "A" ? s.playerAId : s.playerBId;
+        const theirPlayerId = our === "A" ? s.playerBId : s.playerAId;
+        const ourSeed = our === "A" ? s.seedA : s.seedB;
+        const theirSeed = our === "A" ? s.seedB : s.seedA;
+        const m = s.matchId ? matchById.get(s.matchId) : undefined;
+        // Align the canonical Match's games to the set's team A by player id, then to our side.
+        const teamAGames = m ? (m.playerAId === s.playerAId ? m.gamesWonA : m.gamesWonB) : null;
+        const teamBGames = m ? (m.playerAId === s.playerAId ? m.gamesWonB : m.gamesWonA) : null;
+        const ourGames = teamAGames == null ? null : our === "A" ? teamAGames : teamBGames;
+        const theirGames = teamAGames == null ? null : our === "A" ? teamBGames : teamAGames;
+        const seedGap = Math.abs(ourSeed - theirSeed);
+        return {
+          setId: s.id,
+          ourSlot: our as "A" | "B",
+          ourPlayerId, ourName: nameOf.get(ourPlayerId) ?? ourPlayerId, ourSeed,
+          ourIsSub: subOnly.has(`${tsId}|${ourPlayerId}`),
+          theirPlayerId, theirName: nameOf.get(theirPlayerId) ?? theirPlayerId, theirSeed,
+          ourGames, theirGames, bestOf: s.bestOf, status: s.status,
+          reported: isReported(s.status, s.matchId),
+          seedGap, offSeed: seedGap > 2,
+          reassignedFrom: s.reassignedFromId ? nameOf.get(s.reassignedFromId) ?? null : null,
+        };
+      })
+      .sort((a, b2) => a.ourSeed - b2.ourSeed);
 
-      // Rolled-up team result: use the matchup's persisted result when present, else
-      // count confirmed sets from our side.
-      let ourSetsWon: number, theirSetsWon: number, decided: boolean;
-      if (b.matchupId && b.setsWonA != null && b.setsWonB != null) {
-        ourSetsWon = b.ourSideA ? b.setsWonA : b.setsWonB;
-        theirSetsWon = b.ourSideA ? b.setsWonB : b.setsWonA;
-        decided = true;
-      } else {
-        ourSetsWon = pairs.filter((p) => p.reported && p.ourGames != null && p.theirGames != null && p.ourGames > p.theirGames).length;
-        theirSetsWon = pairs.filter((p) => p.reported && p.ourGames != null && p.theirGames != null && p.theirGames > p.ourGames).length;
-        decided = false;
-      }
+    let ourSetsWon: number, theirSetsWon: number, decided: boolean;
+    if (b.matchupId && b.setsWonA != null && b.setsWonB != null) {
+      ourSetsWon = b.ourSideA ? b.setsWonA : b.setsWonB;
+      theirSetsWon = b.ourSideA ? b.setsWonB : b.setsWonA;
+      decided = true;
+    } else {
+      ourSetsWon = pairs.filter((p) => p.reported && p.ourGames != null && p.theirGames != null && p.ourGames > p.theirGames).length;
+      theirSetsWon = pairs.filter((p) => p.reported && p.ourGames != null && p.theirGames != null && p.theirGames > p.ourGames).length;
+      decided = false;
+    }
 
-      const recorded = pairs.filter((p) => p.reported);
-      const offSeedCount = pairs.filter((p) => p.offSeed).length;
-      return {
-        key: b.matchupId ?? `${b.week}|${b.opp}`,
-        matchupId: b.matchupId,
-        opponentTeamSeasonId: b.opp,
-        opponentName: teamNameOf.get(b.opp) ?? "?",
-        ourSetsWon, theirSetsWon, decided,
-        pairs,
-        noPairs: pairs.length === 0,
-        short: pairs.length > 0 && pairs.length < season.teamSize,
-        allZero: recorded.length > 0 && recorded.every((p) => (p.ourGames ?? 0) === 0 && (p.theirGames ?? 0) === 0),
-        offSeedCount,
-      };
-    });
+    const recorded = pairs.filter((p) => p.reported);
+    return {
+      key: b.matchupId ?? `${b.week}|${b.opp}`,
+      matchupId: b.matchupId,
+      opponentTeamSeasonId: b.opp,
+      opponentName: teamNameOf.get(b.opp) ?? "?",
+      ourSetsWon, theirSetsWon, decided,
+      pairs,
+      noPairs: pairs.length === 0,
+      short: pairs.length > 0 && pairs.length < season.teamSize,
+      allZero: recorded.length > 0 && recorded.every((p) => (p.ourGames ?? 0) === 0 && (p.theirGames ?? 0) === 0),
+      offSeedCount: pairs.filter((p) => p.offSeed).length,
+    };
+  };
 
+  const byOpp = (a: Bucket, c: Bucket) => (teamNameOf.get(a.opp) ?? "").localeCompare(teamNameOf.get(c.opp) ?? "");
+  const weeks: ReviewWeek[] = [];
+  // Regular weeks: matchups grouped by week, lineup derived from the roster-move log.
+  for (const wk of regularWeeks) {
+    const matchups = [...buckets.values()].filter((b) => !b.isPlayoff && b.week === wk).sort(byOpp).map(buildMatchup);
     const rawLineup = lineupByWeek.get(wk) ?? [];
     const lineup = rawLineup.map((p) => ({ ...p, name: nameOf.get(p.playerId) ?? p.playerId }));
-    return {
-      week: wk,
-      label: isPlayoff ? "Playoffs" : `Week ${wk}`,
-      isPlayoff,
+    weeks.push({ week: wk, label: `Week ${wk}`, tabLabel: `W${wk}`, isPlayoff: false, lineup, matchups, offSeedCount: matchups.reduce((n, m) => n + m.offSeedCount, 0) });
+  }
+  // Playoffs: one tab per round/opponent (not one lumped bucket). Lineup = who actually
+  // played that round (from the pairs), like the archive's per-round view.
+  const playoffBuckets = [...buckets.values()].filter((b) => b.isPlayoff)
+    .sort((a, c) => (a.bracket ?? "").localeCompare(c.bracket ?? "") || byOpp(a, c));
+  playoffBuckets.forEach((b, i) => {
+    const matchup = buildMatchup(b);
+    const oppName = teamNameOf.get(b.opp) ?? "?";
+    const round = b.bracket && b.bracket !== "PLAYOFF" && b.bracket !== "REGULAR" ? b.bracket : null;
+    const seen = new Set<string>();
+    const lineup: ReviewLineupPlayer[] = matchup.pairs
+      .filter((p) => (seen.has(p.ourPlayerId) ? false : (seen.add(p.ourPlayerId), true)))
+      .map((p) => ({ playerId: p.ourPlayerId, name: p.ourName, seed: p.ourSeed, isCaptain: false, viaSub: p.ourIsSub }))
+      .sort((x, y) => x.seed - y.seed);
+    weeks.push({
+      week: PLAYOFF_WEEK + i,
+      label: round ? `${round} vs ${oppName}` : `Playoffs vs ${oppName}`,
+      tabLabel: round ? shortRound(round) : "PO",
+      isPlayoff: true,
       lineup,
-      matchups,
-      offSeedCount: matchups.reduce((n, m) => n + m.offSeedCount, 0),
-    };
+      matchups: [matchup],
+      offSeedCount: matchup.offSeedCount,
+    });
   });
 
   const offSeedTotal = weeks.reduce((n, w) => n + w.offSeedCount, 0);
@@ -286,7 +312,22 @@ export async function getSeasonReview(seasonName: string, teamSeasonId?: string)
     .map((id) => ({ id, name: nameOf.get(id) ?? id }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  return { seasonName: season.name, teamSize: season.teamSize, teamSeasonId: tsId, teamName, teams, teamPlayers, weeks, offSeedTotal, emptyMatchupCount };
+  // Season-wide roster -- candidates for opponent-side reassign and add-pairing pickers.
+  const seasonEntries = await prisma.rosterEntry.findMany({
+    where: { roster: { teamSeason: { seasonId: season.id } } },
+    select: { playerId: true },
+  });
+  const allIds = [...new Set(seasonEntries.map((e) => e.playerId))];
+  const missing = allIds.filter((id) => !nameOf.has(id));
+  if (missing.length) {
+    const extra = await prisma.player.findMany({ where: { id: { in: missing } }, select: { id: true, displayName: true } });
+    for (const p of extra) nameOf.set(p.id, p.displayName);
+  }
+  const allPlayers = allIds
+    .map((id) => ({ id, name: nameOf.get(id) ?? id }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return { seasonName: season.name, teamSize: season.teamSize, teamSeasonId: tsId, teamName, teams, teamPlayers, allPlayers, weeks, offSeedTotal, emptyMatchupCount };
 }
 
 // Correct who played a set -- works on ANY status (unplayed OR already recorded),
@@ -340,4 +381,114 @@ export async function reviewSetSeed(setId: string, slot: "A" | "B", seed: number
   if (!set) throw new Error("No such set.");
   await prisma.tourSet.update({ where: { id: setId }, data: slot === "A" ? { seedA: seed } : { seedB: seed } });
   return { ok: true };
+}
+
+// Remove a pairing entirely (a spurious/phantom set). Deletes the set and its recorded
+// Match; re-rolls the matchup if it's a live one.
+export async function reviewRemovePair(setId: string) {
+  const set = await prisma.tourSet.findUnique({ where: { id: setId }, select: { matchId: true, matchupId: true } });
+  if (!set) throw new Error("No such set.");
+  if (set.matchId) await prisma.match.delete({ where: { id: set.matchId } });
+  await prisma.tourSet.delete({ where: { id: setId } });
+  if (set.matchupId) await rollupMatchup(set.matchupId);
+  return { ok: true };
+}
+
+// Add a pairing to a matchup by cloning an existing set's context (week / matchup /
+// team sides / bracket / bestOf) -- so orientation and season linkage always match the
+// rest of the matchup -- and setting the two chosen players + seeds. New set is unplayed.
+export async function reviewAddPair(templateSetId: string, ourTeamSeasonId: string, ourPlayerId: string, theirPlayerId: string, ourSeed: number, theirSeed: number) {
+  if (!ourPlayerId || !theirPlayerId) throw new Error("Pick both players.");
+  if (ourPlayerId === theirPlayerId) throw new Error("Pick two different players.");
+  if (!Number.isInteger(ourSeed) || ourSeed < 1 || !Number.isInteger(theirSeed) || theirSeed < 1) throw new Error("Seeds must be whole numbers >= 1.");
+  const t = await prisma.tourSet.findUnique({ where: { id: templateSetId }, include: { matchup: { select: { teamSeasonAId: true } } } });
+  if (!t) throw new Error("No template set to copy the matchup from.");
+  const tsA = t.matchup?.teamSeasonAId ?? t.teamSeasonAId;
+  const ourIsA = tsA != null ? tsA === ourTeamSeasonId : true;
+  const created = await prisma.tourSet.create({
+    data: {
+      matchupId: t.matchupId,
+      seasonId: t.seasonId,
+      week: t.week,
+      bracket: t.bracket,
+      teamSeasonAId: t.teamSeasonAId,
+      teamSeasonBId: t.teamSeasonBId,
+      playerAId: ourIsA ? ourPlayerId : theirPlayerId,
+      playerBId: ourIsA ? theirPlayerId : ourPlayerId,
+      seedA: ourIsA ? ourSeed : theirSeed,
+      seedB: ourIsA ? theirSeed : ourSeed,
+      bestOf: t.bestOf,
+      status: "PROPOSED",
+    },
+  });
+  if (t.matchupId) await rollupMatchup(t.matchupId);
+  return { ok: true, id: created.id };
+}
+
+export interface OffSeedRow {
+  setId: string;
+  week: number | null;
+  label: string;
+  aTeamSeasonId: string | null;
+  bTeamSeasonId: string | null;
+  aTeam: string;
+  bTeam: string;
+  aName: string;
+  bName: string;
+  aSeed: number;
+  bSeed: number;
+  gap: number;
+}
+
+// Season-wide sweep: every pairing whose two seeds are more than 2 apart, across ALL
+// teams -- the "is anything mis-seeded anywhere" report the per-team flags can't give.
+export async function getSeasonOffSeed(seasonName: string): Promise<{ seasonName: string; rows: OffSeedRow[] } | null> {
+  const season = await prisma.tourSeason.findUnique({ where: { name: seasonName }, select: { id: true, name: true } });
+  if (!season) return null;
+  const sets = await prisma.tourSet.findMany({
+    where: { seasonId: season.id },
+    select: {
+      id: true, week: true, bracket: true, seedA: true, seedB: true, playerAId: true, playerBId: true,
+      teamSeasonAId: true, teamSeasonBId: true,
+      matchup: { select: { teamSeasonAId: true, teamSeasonBId: true, week: { select: { number: true } } } },
+    },
+  });
+  const off = sets.filter((s) => Math.abs(s.seedA - s.seedB) > 2);
+  const teamIds = new Set<string>();
+  const playerIds = new Set<string>();
+  for (const s of off) {
+    const a = s.matchup?.teamSeasonAId ?? s.teamSeasonAId;
+    const b = s.matchup?.teamSeasonBId ?? s.teamSeasonBId;
+    if (a) teamIds.add(a);
+    if (b) teamIds.add(b);
+    playerIds.add(s.playerAId); playerIds.add(s.playerBId);
+  }
+  const [teamRows, playerRows] = await Promise.all([
+    teamIds.size ? prisma.teamSeason.findMany({ where: { id: { in: [...teamIds] } }, select: { id: true, team: { select: { name: true } } } }) : Promise.resolve([]),
+    playerIds.size ? prisma.player.findMany({ where: { id: { in: [...playerIds] } }, select: { id: true, displayName: true } }) : Promise.resolve([]),
+  ]);
+  const teamName = new Map(teamRows.map((t) => [t.id, t.team.name]));
+  const nm = new Map(playerRows.map((p) => [p.id, p.displayName]));
+  const rows: OffSeedRow[] = off.map((s) => {
+    const wk = s.week ?? s.matchup?.week?.number ?? null;
+    const isPlayoff = (s.bracket != null && s.bracket !== "REGULAR") || wk == null;
+    const a = s.matchup?.teamSeasonAId ?? s.teamSeasonAId;
+    const b = s.matchup?.teamSeasonBId ?? s.teamSeasonBId;
+    return {
+      setId: s.id,
+      week: isPlayoff ? null : wk,
+      label: isPlayoff ? (s.bracket && s.bracket !== "PLAYOFF" ? s.bracket : "Playoffs") : `W${wk}`,
+      aTeamSeasonId: a ?? null,
+      bTeamSeasonId: b ?? null,
+      aTeam: (a && teamName.get(a)) || "?",
+      bTeam: (b && teamName.get(b)) || "?",
+      aName: nm.get(s.playerAId) ?? s.playerAId,
+      bName: nm.get(s.playerBId) ?? s.playerBId,
+      aSeed: s.seedA,
+      bSeed: s.seedB,
+      gap: Math.abs(s.seedA - s.seedB),
+    };
+  });
+  rows.sort((x, y) => y.gap - x.gap || (x.week ?? 999) - (y.week ?? 999) || x.aTeam.localeCompare(y.aTeam));
+  return { seasonName: season.name, rows };
 }

@@ -4,18 +4,21 @@
 // season and fix what's wrong. Works for imported flat seasons (TT4) and live ones,
 // because getSeasonReview reads TourSet directly. TO-only.
 import Link from "next/link";
-import { ClipboardCheck, TriangleAlert } from "lucide-react";
+import { ClipboardCheck, TriangleAlert, UserCog } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
-import { getSeasonReview, type ReviewMatchup, type ReviewPair } from "@/lib/services/review";
+import { getSeasonReview, getSeasonOffSeed, type ReviewMatchup, type ReviewPair } from "@/lib/services/review";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { Section } from "@/components/admin/Section";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { Callout } from "@/components/Callout";
 import { ActionFlashForm } from "@/components/ActionFlashForm";
 import { SubmitButton } from "@/components/SubmitButton";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { SeedOrSub } from "@/components/SeedOrSub";
 import { fieldInputSm } from "@/components/admin/Field";
-import { reportSetAction, clearSetAction, reassignAction, setSeedAction } from "./actions";
+import { reportSetAction, clearSetAction, dqSetAction, reassignAction, setSeedAction, removePairAction, addPairAction } from "./actions";
+
+type PlayerOpt = { id: string; name: string };
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +52,7 @@ export default async function ReviewPage({
   const sp = await searchParams;
   const seasonName = decodeURIComponent(name);
   const enc = encodeURIComponent(seasonName);
-  const review = await getSeasonReview(seasonName, sp.team);
+  const [review, offseed] = await Promise.all([getSeasonReview(seasonName, sp.team), getSeasonOffSeed(seasonName)]);
   if (!review) {
     return (
       <main>
@@ -58,7 +61,7 @@ export default async function ReviewPage({
     );
   }
 
-  const { teamSeasonId, teamName, teams, teamPlayers, weeks, offSeedTotal, emptyMatchupCount } = review;
+  const { teamSeasonId, teamName, teams, teamPlayers, allPlayers, weeks, offSeedTotal, emptyMatchupCount } = review;
   const selWeek = weeks.find((w) => String(w.week) === sp.week) ?? weeks[0];
   const teamHref = (tsId: string) => `/admin/seasons/${enc}/review?team=${tsId}`;
   const weekHref = (wk: number) => `/admin/seasons/${enc}/review?team=${teamSeasonId}&week=${wk}`;
@@ -70,6 +73,11 @@ export default async function ReviewPage({
         icon={<ClipboardCheck className="size-5" />}
         title="Review & correct"
         sub={<>Season {seasonName} {"-"} step through a team week by week, verify who played, fix results.</>}
+        actions={
+          <Link href={`/admin/seasons/${enc}/roster`} className="badge inline-flex items-center gap-1" title="add/drop/sub players, reseed the roster">
+            <UserCog className="size-3.5" /> Roster ops
+          </Link>
+        }
       />
 
       {(offSeedTotal > 0 || emptyMatchupCount > 0) && (
@@ -98,7 +106,7 @@ export default async function ReviewPage({
           <div className="flex flex-wrap gap-1" style={{ margin: "12px 0" }}>
             {weeks.map((w) => (
               <Link key={w.week} href={weekHref(w.week)} style={navStyle(w.week === selWeek.week)}>
-                {w.isPlayoff ? "Playoffs" : `W${w.week}`}
+                {w.tabLabel}
                 {w.offSeedCount > 0 ? " !" : ""}
               </Link>
             ))}
@@ -128,13 +136,41 @@ export default async function ReviewPage({
                 teamSeasonId={teamSeasonId}
                 teamSize={review.teamSize}
                 teamPlayers={teamPlayers}
-                enc={enc}
+                allPlayers={allPlayers}
               />
             ))
           ) : (
             <EmptyState>No matchup recorded for {teamName} in {selWeek.label}.</EmptyState>
           )}
         </>
+      )}
+
+      {offseed && offseed.rows.length > 0 && (
+        <Section
+          title={`Off-seed report (all teams): ${offseed.rows.length}`}
+          description="Every pairing across the whole season whose two seeds are more than 2 apart. Usually a mis-recorded seed. Jump to the team to fix it."
+          className="mt-4"
+        >
+          <details>
+            <summary className="sub" style={{ cursor: "pointer" }}>show {offseed.rows.length} off-seed pairing{offseed.rows.length === 1 ? "" : "s"}</summary>
+            <div className="flex flex-col gap-1" style={{ marginTop: 8 }}>
+              {offseed.rows.map((r) => (
+                <div key={r.setId} className="flex flex-wrap items-center gap-x-2 gap-y-0.5" style={{ padding: "3px 0", borderBottom: "1px solid var(--border)" }}>
+                  <span className="badge" style={dangerBadge}>gap {r.gap}</span>
+                  <span className="sub" style={{ minWidth: 42 }}>{r.label}</span>
+                  <span>{r.aTeam} <b>{r.aName}</b> #{r.aSeed}</span>
+                  <span className="sub">vs</span>
+                  <span>#{r.bSeed} <b>{r.bName}</b> {r.bTeam}</span>
+                  {r.aTeamSeasonId && (
+                    <Link href={r.week != null ? `/admin/seasons/${enc}/review?team=${r.aTeamSeasonId}&week=${r.week}` : `/admin/seasons/${enc}/review?team=${r.aTeamSeasonId}`} className="sub" style={{ marginLeft: "auto" }}>
+                      review &rarr;
+                    </Link>
+                  )}
+                </div>
+              ))}
+            </div>
+          </details>
+        </Section>
       )}
     </main>
   );
@@ -146,14 +182,14 @@ function MatchupCard({
   teamSeasonId,
   teamSize,
   teamPlayers,
-  enc,
+  allPlayers,
 }: {
   m: ReviewMatchup;
   season: string;
   teamSeasonId: string;
   teamSize: number;
-  teamPlayers: { id: string; name: string }[];
-  enc: string;
+  teamPlayers: PlayerOpt[];
+  allPlayers: PlayerOpt[];
 }) {
   const header = (
     <div className="flex flex-wrap items-center gap-2">
@@ -170,6 +206,7 @@ function MatchupCard({
       )}
     </div>
   );
+  const template = m.pairs[0];
 
   return (
     <Section title={header}>
@@ -178,9 +215,38 @@ function MatchupCard({
       ) : (
         <div className="flex flex-col gap-2">
           {m.pairs.map((p) => (
-            <PairRow key={p.setId} p={p} season={season} teamSeasonId={teamSeasonId} teamPlayers={teamPlayers} />
+            <PairRow key={p.setId} p={p} season={season} teamSeasonId={teamSeasonId} teamPlayers={teamPlayers} allPlayers={allPlayers} />
           ))}
         </div>
+      )}
+      {template && (
+        <details style={{ marginTop: 8 }}>
+          <summary className="sub" style={{ cursor: "pointer" }}>+ add a pairing</summary>
+          <ActionFlashForm action={addPairAction} className="flex flex-wrap items-end gap-2" style={{ marginTop: 6 }}>
+            <input type="hidden" name="season" value={season} />
+            <input type="hidden" name="templateSetId" value={template.setId} />
+            <input type="hidden" name="teamSeasonId" value={teamSeasonId} />
+            <label className="sub">our player<br />
+              <select name="ourPlayerId" className={fieldInputSm} defaultValue="">
+                <option value="" disabled>pick</option>
+                {teamPlayers.map((tp) => <option key={tp.id} value={tp.id}>{tp.name}</option>)}
+              </select>
+            </label>
+            <label className="sub">seed<br />
+              <input type="number" name="ourSeed" min={1} className={`${fieldInputSm} w-14 text-center`} />
+            </label>
+            <label className="sub">their player<br />
+              <select name="theirPlayerId" className={fieldInputSm} defaultValue="">
+                <option value="" disabled>pick</option>
+                {allPlayers.map((tp) => <option key={tp.id} value={tp.id}>{tp.name}</option>)}
+              </select>
+            </label>
+            <label className="sub">seed<br />
+              <input type="number" name="theirSeed" min={1} className={`${fieldInputSm} w-14 text-center`} />
+            </label>
+            <SubmitButton size="sm" variant="secondary" pendingText="...">Add</SubmitButton>
+          </ActionFlashForm>
+        </details>
       )}
     </Section>
   );
@@ -191,11 +257,13 @@ function PairRow({
   season,
   teamSeasonId,
   teamPlayers,
+  allPlayers,
 }: {
   p: ReviewPair;
   season: string;
   teamSeasonId: string;
-  teamPlayers: { id: string; name: string }[];
+  teamPlayers: PlayerOpt[];
+  allPlayers: PlayerOpt[];
 }) {
   const theirSlot = p.ourSlot === "A" ? "B" : "A";
   return (
@@ -211,24 +279,10 @@ function PairRow({
           {p.ourIsSub && <span className="sub">(sub)</span>}
         </div>
         {p.reassignedFrom && <span className="sub">was {p.reassignedFrom}</span>}
-        <details>
-          <summary className="sub" style={{ cursor: "pointer", fontSize: 12 }}>fix player</summary>
-          <ActionFlashForm action={reassignAction} className="flex flex-wrap items-center gap-1" style={{ marginTop: 4 }}>
-            <input type="hidden" name="season" value={season} />
-            <input type="hidden" name="setId" value={p.setId} />
-            <input type="hidden" name="teamSeasonId" value={teamSeasonId} />
-            <input type="hidden" name="side" value="our" />
-            <select name="playerId" defaultValue={p.ourPlayerId} className={fieldInputSm}>
-              {teamPlayers.map((tp) => (
-                <option key={tp.id} value={tp.id}>{tp.name}</option>
-              ))}
-            </select>
-            <SubmitButton size="sm" variant="secondary" pendingText="...">Save</SubmitButton>
-          </ActionFlashForm>
-        </details>
+        <FixPlayer season={season} setId={p.setId} teamSeasonId={teamSeasonId} side="our" current={p.ourPlayerId} options={teamPlayers} />
       </div>
 
-      {/* score */}
+      {/* score + set-level actions */}
       <ActionFlashForm action={reportSetAction} className="flex flex-wrap items-center gap-1">
         <input type="hidden" name="season" value={season} />
         <input type="hidden" name="setId" value={p.setId} />
@@ -245,6 +299,16 @@ function PairRow({
           <SubmitButton size="sm" variant="secondary" pendingText="...">Clear</SubmitButton>
         </ActionFlashForm>
       )}
+      <ActionFlashForm action={dqSetAction}>
+        <input type="hidden" name="season" value={season} />
+        <input type="hidden" name="setId" value={p.setId} />
+        <SubmitButton size="sm" variant="secondary" pendingText="..." title="mark 0-0 -- nobody played">0-0</SubmitButton>
+      </ActionFlashForm>
+      <ActionFlashForm action={removePairAction}>
+        <input type="hidden" name="season" value={season} />
+        <input type="hidden" name="setId" value={p.setId} />
+        <ConfirmButton size="sm" variant="destructive" message={`Remove this pairing (${p.ourName} vs ${p.theirName}) entirely?`}>remove</ConfirmButton>
+      </ActionFlashForm>
 
       {/* seed gap */}
       <span className="sub" style={p.offSeed ? dangerBadge : undefined}>
@@ -252,11 +316,54 @@ function PairRow({
       </span>
 
       {/* their player */}
-      <div className="flex items-center gap-1" style={{ marginLeft: "auto" }}>
-        <b>{p.theirName}</b>
-        <SeedEdit season={season} setId={p.setId} slot={theirSlot} seed={p.theirSeed} />
+      <div style={{ marginLeft: "auto", minWidth: 210, textAlign: "right" }}>
+        <div className="flex items-center gap-1 justify-end">
+          <b>{p.theirName}</b>
+          <SeedEdit season={season} setId={p.setId} slot={theirSlot} seed={p.theirSeed} />
+        </div>
+        <div className="flex justify-end">
+          <FixPlayer season={season} setId={p.setId} teamSeasonId={teamSeasonId} side="their" current={p.theirPlayerId} options={allPlayers} />
+        </div>
       </div>
     </div>
+  );
+}
+
+// Reassign who played one side of a set. `teamSeasonId` is always OUR team's id; the
+// service maps side (our/their) to the set's A/B slot from it.
+function FixPlayer({
+  season,
+  setId,
+  teamSeasonId,
+  side,
+  current,
+  options,
+}: {
+  season: string;
+  setId: string;
+  teamSeasonId: string;
+  side: "our" | "their";
+  current: string;
+  options: PlayerOpt[];
+}) {
+  const hasCurrent = options.some((o) => o.id === current);
+  return (
+    <details>
+      <summary className="sub" style={{ cursor: "pointer", fontSize: 12 }}>fix player</summary>
+      <ActionFlashForm action={reassignAction} className="inline-flex flex-wrap items-center gap-1" style={{ marginTop: 4 }}>
+        <input type="hidden" name="season" value={season} />
+        <input type="hidden" name="setId" value={setId} />
+        <input type="hidden" name="teamSeasonId" value={teamSeasonId} />
+        <input type="hidden" name="side" value={side} />
+        <select name="playerId" defaultValue={hasCurrent ? current : ""} className={fieldInputSm}>
+          {!hasCurrent && <option value="" disabled>pick</option>}
+          {options.map((o) => (
+            <option key={o.id} value={o.id}>{o.name}</option>
+          ))}
+        </select>
+        <SubmitButton size="sm" variant="secondary" pendingText="...">Save</SubmitButton>
+      </ActionFlashForm>
+    </details>
   );
 }
 
