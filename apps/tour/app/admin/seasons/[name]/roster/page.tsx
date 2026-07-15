@@ -107,20 +107,22 @@ export default async function RosterOpsAdmin({
           const teamMemberIds = new Set(t.membership.map((m) => m.playerId));
           const crossTeamOpts = data.allRostered.filter((p) => !teamMemberIds.has(p.id)).map((p) => ({ value: p.id, label: p.name }));
           return (
-            <TeamManagePanel
-              key={t.teamSeasonId}
-              seasonName={seasonName}
-              team={t}
-              selectedWeek={data.selectedWeek}
-              strikeOf={data.strikeOf}
-              faOpts={faOpts}
-              crossTeamOpts={crossTeamOpts}
-              weekSel={weekSel}
-              weekSelOpt={weekSelOpt}
-              defWeek={defWeek}
-              mode={isMod ? "apply" : "request"}
-              pending={pendingByTeam.get(t.teamSeasonId) ?? []}
-            />
+            // Anchor so a deep-link from the review hub (#team-<id>) scrolls to this card.
+            <div key={t.teamSeasonId} id={`team-${t.teamSeasonId}`} style={{ scrollMarginTop: 16 }}>
+              <TeamManagePanel
+                seasonName={seasonName}
+                team={t}
+                selectedWeek={data.selectedWeek}
+                strikeOf={data.strikeOf}
+                faOpts={faOpts}
+                crossTeamOpts={crossTeamOpts}
+                weekSel={weekSel}
+                weekSelOpt={weekSelOpt}
+                defWeek={defWeek}
+                mode={isMod ? "apply" : "request"}
+                pending={pendingByTeam.get(t.teamSeasonId) ?? []}
+              />
+            </div>
           );
         })}
       </div>

@@ -4,7 +4,7 @@
 // season and fix what's wrong. Works for imported flat seasons (TT4) and live ones,
 // because getSeasonReview reads TourSet directly. TO-only.
 import Link from "next/link";
-import { ClipboardCheck, TriangleAlert, UserCog, BellOff, Bell } from "lucide-react";
+import { ClipboardCheck, TriangleAlert, UserCog, UserPlus, BellOff, Bell } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 import { getSeasonReview, getSeasonCorrections, type ReviewMatchup, type ReviewPair, type Correction } from "@/lib/services/review";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -65,6 +65,11 @@ export default async function ReviewPage({
   const selWeek = weeks.find((w) => String(w.week) === sp.week) ?? weeks[0];
   const teamHref = (tsId: string) => `/admin/seasons/${enc}/review?team=${tsId}`;
   const weekHref = (wk: number) => `/admin/seasons/${enc}/review?team=${teamSeasonId}&week=${wk}`;
+  // Deep-link to Roster ops, landing on THIS team's card (anchor) with the viewed week
+  // pre-selected -- subs/adds/reseeds happen there. Playoff tabs use a synthetic week, so
+  // skip the week param for those (the roster page's own week picker takes over).
+  const rosterHref = (w?: { week: number; isPlayoff: boolean }) =>
+    `/admin/seasons/${enc}/roster${w && !w.isPlayoff ? `?week=${w.week}` : ""}#team-${teamSeasonId}`;
 
   return (
     <main>
@@ -74,7 +79,7 @@ export default async function ReviewPage({
         title="Review & correct"
         sub={<>Season {seasonName} {"-"} step through a team week by week, verify who played, fix results.</>}
         actions={
-          <Link href={`/admin/seasons/${enc}/roster`} className="badge inline-flex items-center gap-1" title="add/drop/sub players, reseed the roster">
+          <Link href={rosterHref()} className="badge inline-flex items-center gap-1" title="add/drop/sub players, reseed the roster -- opens on this team">
             <UserCog className="size-3.5" /> Roster ops
           </Link>
         }
@@ -112,7 +117,15 @@ export default async function ReviewPage({
             ))}
           </div>
 
-          <Section title={`${selWeek.label} lineup`} description={`Derived from the roster-move log. ${selWeek.lineup.length} active.`}>
+          <Section
+            title={`${selWeek.label} lineup`}
+            description={`Derived from the roster-move log. ${selWeek.lineup.length} active. Need a sub? "Sub a player in" opens Roster ops on this team${selWeek.isPlayoff ? "" : ` for ${selWeek.label}`} -- choose just this week (temp) or the rest of the season (permanent) there.`}
+            action={
+              <Link href={rosterHref(selWeek)} className="badge inline-flex items-center gap-1" title="add a sub for this team/week in Roster ops">
+                <UserPlus className="size-3.5" /> Sub a player in
+              </Link>
+            }
+          >
             {selWeek.lineup.length ? (
               <div className="flex flex-wrap gap-2">
                 {selWeek.lineup.map((p) => (
