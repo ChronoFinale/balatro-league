@@ -6,6 +6,10 @@ name: deploy
 # files (not the ephemeral Actions checkout). Secrets stay box-local at
 # /srv/balatro/secrets.env. A manual run defaults to build+push ONLY (deploy=false)
 # so you can prove the pipeline without recreating live containers.
+#
+# Only the services whose paths changed are rebuilt (see "Pick images"); unchanged
+# services keep their previously-deployed tag (carried over from versions.env), so a
+# tour-only push builds one image instead of four. A manual dispatch rebuilds all.
 on:
   workflow_dispatch:
     inputs:
@@ -21,6 +25,8 @@ on:
       - "apps/**"
       - "packages/**"
       - "prisma/**"
+      - "package.json"
+      - "package-lock.json"
       - "Dockerfile.league-bot"
       - "web/Dockerfile"
       - "apps/tour/Dockerfile"
@@ -39,6 +45,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need history so we can diff against the previous commit
 
       - name: Resolve names
         id: v
@@ -46,27 +54,58 @@ jobs:
           echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
           echo "tag=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
 
+      # Decide which of the four images to rebuild from the changed paths. Shared inputs
+      # (packages/**, root package*.json) or a manual dispatch force all four.
+      - name: Pick images
+        id: pick
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            FILES="__ALL__"
+          else
+            BEFORE='${{ github.event.before }}'
+            if [ -z "$BEFORE" ] || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+              FILES="__ALL__" # new branch / shallow / force-push -> rebuild everything
+            else
+              FILES="$(git diff --name-only "$BEFORE" '${{ github.sha }}')"
+            fi
+          fi
+          echo "changed files:"; printf '%s\n' "$FILES"
+          ALL=0
+          if [ "$FILES" = "__ALL__" ] || printf '%s\n' "$FILES" | grep -qE '^(packages/|package\.json$|package-lock\.json$)'; then
+            ALL=1
+          fi
+          want() { if [ "$ALL" = 1 ] || printf '%s\n' "$FILES" | grep -qE "$1"; then echo 1; else echo 0; fi; }
+          LB=$(want '^(src/|prisma/|Dockerfile\.league-bot$)')
+          LW=$(want '^(web/|prisma/)')
+          TW=$(want '^apps/tour/')
+          TB=$(want '^apps/tour-bot/')
+          echo "league_bot=$LB" >> "$GITHUB_OUTPUT"
+          echo "league_web=$LW" >> "$GITHUB_OUTPUT"
+          echo "tour_web=$TW"   >> "$GITHUB_OUTPUT"
+          echo "tour_bot=$TB"   >> "$GITHUB_OUTPUT"
+          echo "build -> league-bot=$LB league-web=$LW tour-web=$TW tour-bot=$TB (all=$ALL)"
+
       - name: Log in to GHCR
         run: echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
 
-      - name: Build + push images
+      - name: Build + push changed images
         env:
           OWNER: ${{ steps.v.outputs.owner }}
           TAG: ${{ steps.v.outputs.tag }}
         run: |
           set -euo pipefail
-          declare -A DF=(
-            [balatro-league-bot]=Dockerfile.league-bot
-            [balatro-league-web]=web/Dockerfile
-            [balatro-tour-web]=apps/tour/Dockerfile
-            [balatro-tour-bot]=apps/tour-bot/Dockerfile
-          )
-          for name in "${!DF[@]}"; do
-            img="ghcr.io/$OWNER/$name"
-            docker build -f "${DF[$name]}" -t "$img:$TAG" -t "$img:latest" .
+          build() { # name dockerfile
+            local name="$1" df="$2" img="ghcr.io/$OWNER/$1"
+            echo "== building $name =="
+            docker build -f "$df" -t "$img:$TAG" -t "$img:latest" .
             docker push "$img:$TAG"
             docker push "$img:latest"
-          done
+          }
+          if [ "${{ steps.pick.outputs.league_bot }}" = 1 ]; then build balatro-league-bot Dockerfile.league-bot; else echo "skip league-bot"; fi
+          if [ "${{ steps.pick.outputs.league_web }}" = 1 ]; then build balatro-league-web web/Dockerfile; else echo "skip league-web"; fi
+          if [ "${{ steps.pick.outputs.tour_web }}"  = 1 ]; then build balatro-tour-web apps/tour/Dockerfile; else echo "skip tour-web"; fi
+          if [ "${{ steps.pick.outputs.tour_bot }}"  = 1 ]; then build balatro-tour-bot apps/tour-bot/Dockerfile; else echo "skip tour-bot"; fi
 
       - name: Deploy (roll live stack)
         if: ${{ github.event_name == 'push' || inputs.deploy }}
@@ -78,18 +117,32 @@ jobs:
           # Refresh the stable compose config (bind-mount sources live here).
           mkdir -p /srv/balatro/repo
           cp -a infra /srv/balatro/repo/
+          # Per-service tags: a service we rebuilt this run advances to $TAG; one we skipped
+          # keeps its previously-deployed tag (from the existing versions.env) so compose
+          # leaves its running container untouched. First run / missing prior -> $TAG.
+          PREV=/srv/balatro/versions.env
+          prev() { grep -E "^$1=" "$PREV" 2>/dev/null | tail -1 | cut -d= -f2-; }
+          # Skipped + no recorded prior tag -> fall back to :latest (always exists from a
+          # prior build), never to $TAG which was NOT built for this service this run.
+          pick() { if [ "$2" = 1 ]; then echo "$TAG"; else local p; p="$(prev "$1")"; echo "${p:-latest}"; fi; }
+          LB_TAG=$(pick LEAGUE_BOT_TAG '${{ steps.pick.outputs.league_bot }}')
+          LW_TAG=$(pick LEAGUE_WEB_TAG '${{ steps.pick.outputs.league_web }}')
+          TW_TAG=$(pick TOUR_WEB_TAG  '${{ steps.pick.outputs.tour_web }}')
+          TB_TAG=$(pick TOUR_BOT_TAG  '${{ steps.pick.outputs.tour_bot }}')
           cat > /srv/balatro/versions.env <<EOF
           GHCR_OWNER=$OWNER
-          LEAGUE_BOT_TAG=$TAG
-          LEAGUE_WEB_TAG=$TAG
-          TOUR_WEB_TAG=$TAG
-          TOUR_BOT_TAG=$TAG
+          LEAGUE_BOT_TAG=$LB_TAG
+          LEAGUE_WEB_TAG=$LW_TAG
+          TOUR_WEB_TAG=$TW_TAG
+          TOUR_BOT_TAG=$TB_TAG
           TRAEFIK_TAG=v3.3
           POSTGRES_TAG=18
           EOF
+          echo "deploying tags: league-bot=$LB_TAG league-web=$LW_TAG tour-web=$TW_TAG tour-bot=$TB_TAG"
           cd /srv/balatro/repo/infra/compose
           E="--env-file /srv/balatro/versions.env --env-file /srv/balatro/secrets.env"
-          # Roll only the app containers; Postgres/Traefik are stable infra.
+          # Roll only the app containers; Postgres/Traefik are stable infra. compose leaves a
+          # service whose tag is unchanged running as-is.
           docker compose -p balatro $E pull league-bot league-web tour-web
           docker compose -p balatro $E up -d --remove-orphans league-bot league-web tour-web
           # Dev stack: separate project + env file; tour-web-dev reuses the tour-web image.
