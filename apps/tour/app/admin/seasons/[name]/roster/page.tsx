@@ -6,6 +6,7 @@ import { getRosterOps } from "@/lib/services/roster-ops";
 import { listPendingRequests, type RosterRequestView } from "@/lib/services/roster-requests";
 import { STRIKE_KINDS, STRIKE_LABEL } from "@/lib/services/strikes";
 import { NoAccess } from "@/components/NoAccess";
+import { FlashToast } from "@/components/FlashToast";
 import { ActionFlashForm } from "@/components/ActionFlashForm";
 import { FormSelect } from "@/components/FormSelect";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -74,6 +75,9 @@ export default async function RosterOpsAdmin({
 
   return (
     <main>
+      {/* Surfaces the ?ok=/?err= flash that redirect-style actions (Undo, Reinstate, Delete)
+          send back -- without this they ran silently, which read as "nothing happened". */}
+      <FlashToast />
       <AdminPageHeader
         back={{ href: `/admin/seasons/${enc}`, label: seasonName }}
         title="Roster ops"
