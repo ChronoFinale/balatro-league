@@ -3,19 +3,20 @@
 // Replaces the old dump of seven stacked forms -- same server actions, far less overwhelm.
 "use client";
 import { useState } from "react";
-import { Crown, RefreshCw, UserMinus, UserPlus, ArrowUpDown, ChevronLeft, Settings2 } from "lucide-react";
+import { Crown, RefreshCw, UserMinus, UserPlus, ArrowUpDown, ChevronLeft, Settings2, Trash2 } from "lucide-react";
 import { ActionFlashForm } from "@/components/ActionFlashForm";
 import { FormSelect } from "@/components/FormSelect";
 import { SubmitButton } from "@/components/SubmitButton";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import {
   substituteAction, departureAction, replaceAction, changeCaptainAction, reseedAction,
-  swapSeedsAction, setCoCaptainAction,
+  swapSeedsAction, setCoCaptainAction, purgeMemberAction,
 } from "@/app/admin/seasons/[name]/roster/actions";
 
 const inputCls = "rounded border border-[var(--border)] bg-[var(--surface-2)] px-2 py-0.5";
 
 type SelOpt = { value: string; label: string; disabled?: boolean };
-type Intent = "sub" | "perm" | "reseed" | "swap" | "captain" | "cocaptain" | "depart";
+type Intent = "sub" | "perm" | "reseed" | "swap" | "captain" | "cocaptain" | "depart" | "delete";
 
 export interface PlayerManageProps {
   seasonName: string;
@@ -54,7 +55,8 @@ export function PlayerManage(props: PlayerManageProps) {
     { key: "swap", label: "Swap w/ teammate", icon: ArrowUpDown, show: props.swapOpts.length > 1 },
     { key: "captain", label: "Make captain", icon: Crown, show: !isCaptain },
     { key: "cocaptain", label: isCoCaptain ? "Remove co-captain" : "Make co-captain", icon: Crown, show: true },
-    { key: "depart", label: "Remove from team", icon: UserMinus, show: true },
+    { key: "depart", label: "Remove (records a departure)", icon: UserMinus, show: true },
+    { key: "delete", label: "Delete (no log, no reason)", icon: Trash2, show: !req },
   ];
 
   function close() { setOpen(false); setIntent(null); }
@@ -176,6 +178,20 @@ export function PlayerManage(props: PlayerManageProps) {
                 <SubmitButton size="sm" variant="secondary" pendingText="..."><UserMinus className="size-3.5" /> {verb("Remove", "Request")}</SubmitButton>
               </div>
             </ActionFlashForm>
+          )}
+
+          {intent === "delete" && (
+            // Hard delete -- wipes their roster data + draft entry with NO log entry and no
+            // reason. Redirect action -> toast on the roster page. Mod-only (hidden if req).
+            <form action={purgeMemberAction} className="flex flex-wrap items-center gap-1.5">
+              <input type="hidden" name="season" value={seasonName} />
+              <input type="hidden" name="teamSeasonId" value={teamSeasonId} />
+              <input type="hidden" name="playerId" value={playerId} />
+              <span className="sub" style={{ color: "var(--danger)" }}>Wipes them from this team -- no log, permanent.</span>
+              <ConfirmButton size="sm" variant="destructive" message={`Permanently DELETE ${playerName} from this team? No log entry. For bad/duplicate data -- to record someone leaving, use "Remove (records a departure)".`}>
+                <Trash2 className="size-3.5" /> Delete
+              </ConfirmButton>
+            </form>
           )}
         </div>
       )}
