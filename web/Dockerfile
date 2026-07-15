@@ -14,9 +14,21 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
 # ---- build ----
 FROM base AS build
 ENV NEXT_TELEMETRY_DISABLED=1
+# Cache web's install: copy its manifests + the repo inputs its postinstall
+# (sync-schema, then prisma generate) reads, so a web app-source edit doesn't
+# bust `npm ci`. sync-schema falls back to committed copies for anything absent.
+COPY web/package.json web/package-lock.json ./web/
+COPY web/scripts ./web/scripts
+COPY web/prisma ./web/prisma
+COPY prisma/schema.prisma ./prisma/schema.prisma
+COPY src/data ./src/data
+COPY src/assets/balatro ./src/assets/balatro
+COPY src/elowen.ts src/schedule.ts src/owen-placement.ts ./src/
+RUN --mount=type=cache,target=/root/.npm cd web && npm ci
 COPY . .
-# postinstall: sync-schema (needs /app/prisma + /app/src) then prisma generate.
-RUN cd web && npm ci
+# COPY . . clobbers the deps-layer's synced web/lib copies, so re-sync from the
+# now-complete source (cheap file copies; no second `npm ci`) before building.
+RUN cd web && node scripts/sync-schema.mjs
 RUN cd web && npm run build
 
 # ---- runtime ----

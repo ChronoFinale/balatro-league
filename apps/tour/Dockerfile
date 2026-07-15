@@ -18,8 +18,17 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
 # ── build: full workspace install at root → generate client → next build ──
 FROM base AS build
 ENV NEXT_TELEMETRY_DISABLED=1
+# Cache the install: copy only manifests (+ the prisma schema the root
+# `postinstall: prisma generate` needs) so an app-source edit doesn't bust `npm ci`.
+COPY package.json package-lock.json ./
+COPY packages/competition-core/package.json ./packages/competition-core/
+COPY packages/match-core/package.json ./packages/match-core/
+COPY packages/tour-core/package.json ./packages/tour-core/
+COPY apps/tour/package.json ./apps/tour/
+COPY apps/tour-bot/package.json ./apps/tour-bot/
+COPY prisma ./prisma
+RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
-RUN npm ci
 # `npm run build` triggers prebuild (`prisma generate`, custom client output) then `next build`.
 RUN npm run build -w @balatro/tour
 
