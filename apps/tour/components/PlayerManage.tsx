@@ -8,6 +8,7 @@ import { ActionFlashForm } from "@/components/ActionFlashForm";
 import { FormSelect } from "@/components/FormSelect";
 import { SubmitButton } from "@/components/SubmitButton";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { PlayerPicker } from "@/components/PlayerPicker";
 import {
   substituteAction, departureAction, replaceAction, changeCaptainAction, reseedAction,
   swapSeedsAction, setCoCaptainAction, purgeMemberAction,
@@ -26,9 +27,8 @@ export interface PlayerManageProps {
   isCaptain: boolean;
   isCoCaptain: boolean;
   req: boolean; // captain request-mode vs mod apply-mode
-  subInOpts: SelOpt[];
   swapOpts: SelOpt[];
-  permOpts: SelOpt[];
+  allPlayers: { id: string; name: string }[]; // whole registry -- searchable for sub/replace
   weekSel: SelOpt[];
   weekSelOpt: SelOpt[];
   defWeek: string;
@@ -105,7 +105,7 @@ export function PlayerManage(props: PlayerManageProps) {
               {hidden("outPlayerId")}
               <div className="flex flex-wrap items-end gap-1.5">
                 <span className="sub" style={{ minWidth: "2.5rem" }}>in</span>
-                <FormSelect name="inPlayerId" size="sm" options={props.subInOpts} placeholder="-- in --" />
+                <PlayerPicker name="inPlayerId" players={props.allPlayers} excludeIds={[playerId]} placeholder="search a player" />
                 <FormSelect name="effectiveWeek" size="sm" options={props.weekSel} defaultValue={props.defWeek} />
                 <FormSelect name="untilWeek" size="sm" options={props.weekSelOpt} placeholder="-- until --" />
                 <input name="reason" placeholder="reason" className={`${inputCls} w-24`} />
@@ -119,7 +119,7 @@ export function PlayerManage(props: PlayerManageProps) {
               {hidden("replacesPlayerId")}
               <div className="flex flex-wrap items-end gap-1.5">
                 <span className="sub" style={{ minWidth: "2.5rem" }}>in</span>
-                <FormSelect name="inPlayerId" size="sm" options={props.permOpts} placeholder="-- pool --" />
+                <PlayerPicker name="inPlayerId" players={props.allPlayers} excludeIds={[playerId]} placeholder="search a player" />
                 <FormSelect name="effectiveWeek" size="sm" options={props.weekSel} defaultValue={props.defWeek} />
                 <input name="reason" placeholder="reason" className={`${inputCls} w-24`} />
                 <SubmitButton size="sm" variant="secondary" pendingText="..."><UserPlus className="size-3.5" /> {verb("Replace", "Request")}</SubmitButton>

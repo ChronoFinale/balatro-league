@@ -77,7 +77,7 @@ export default async function TeamPage({ params }: { params: Promise<{ id: strin
             team={manageTeam}
             selectedWeek={ro.selectedWeek}
             strikeOf={ro.strikeOf}
-            faOpts={ro.freeAgents.map((p) => ({ value: p.id, label: p.name }))}
+            allPlayers={ro.allPlayers}
             weekSel={weekSel}
             weekSelOpt={[{ value: "", label: "— one week —" }, ...weekSel]}
             defWeek={String(ro.selectedWeek)}

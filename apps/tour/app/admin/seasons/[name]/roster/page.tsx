@@ -57,7 +57,6 @@ export default async function RosterOpsAdmin({
   // Focus one team (?team=) so "manage a roster" isn't a wall of every team at once.
   const focusTeam = team ? allTeams.find((t) => t.teamSeasonId === team) ?? null : null;
   const teams = focusTeam ? [focusTeam] : allTeams;
-  const faOpts = data.freeAgents.map((p) => ({ value: p.id, label: p.name }));
   const allLineup = teams.flatMap((t) => t.lineup.map((p) => ({ value: p.playerId, label: `${p.name} (${t.name})` })));
   // Real, labelled weeks (incl. Playoffs) for every week picker -- no more freeform numbers.
   const weekTabs = data.weekOptions.length ? data.weekOptions : [{ value: 1, label: "W1" }];
@@ -91,7 +90,7 @@ export default async function RosterOpsAdmin({
           {weekTabs.map((w) => (
             <Link
               key={w.value}
-              href={`?week=${w.value}`}
+              href={`?week=${w.value}${team ? `&team=${team}` : ""}`}
               className="pill hover:no-underline"
               style={{
                 background: w.value === data.selectedWeek ? "var(--accent-2)" : "var(--surface-2)",
@@ -132,10 +131,6 @@ export default async function RosterOpsAdmin({
           appears inline on the team's own page -- one component, identical everywhere. */}
       <div className={focusTeam ? "" : "grid grid-2"}>
         {teams.map((t) => {
-          // Cross-team sub pool: everyone rostered elsewhere this season (this team's own
-          // members already appear under "on this team").
-          const teamMemberIds = new Set(t.membership.map((m) => m.playerId));
-          const crossTeamOpts = data.allRostered.filter((p) => !teamMemberIds.has(p.id)).map((p) => ({ value: p.id, label: p.name }));
           return (
             // Anchor so a deep-link from the review hub (#team-<id>) scrolls to this card.
             <div key={t.teamSeasonId} id={`team-${t.teamSeasonId}`} style={{ scrollMarginTop: 16 }}>
@@ -144,8 +139,7 @@ export default async function RosterOpsAdmin({
                 team={t}
                 selectedWeek={data.selectedWeek}
                 strikeOf={data.strikeOf}
-                faOpts={faOpts}
-                crossTeamOpts={crossTeamOpts}
+                allPlayers={data.allPlayers}
                 weekSel={weekSel}
                 weekSelOpt={weekSelOpt}
                 defWeek={defWeek}

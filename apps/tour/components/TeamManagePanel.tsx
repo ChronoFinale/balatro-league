@@ -51,8 +51,7 @@ export function TeamManagePanel({
   team,
   selectedWeek,
   strikeOf,
-  faOpts,
-  crossTeamOpts = [],
+  allPlayers,
   weekSel,
   weekSelOpt,
   defWeek,
@@ -65,8 +64,7 @@ export function TeamManagePanel({
   team: ManageTeam;
   selectedWeek: number;
   strikeOf: Record<string, { season: number; career: number; atRisk: boolean }>;
-  faOpts: SelOpt[];
-  crossTeamOpts?: SelOpt[]; // players rostered on another team (cross-team / playoff subs)
+  allPlayers: { id: string; name: string }[]; // whole registry -- searchable sub/replace picker
   weekSel: SelOpt[];
   weekSelOpt: SelOpt[];
   defWeek: string;
@@ -99,19 +97,9 @@ export function TeamManagePanel({
     </>
   );
 
-  // Option pools for one member's actions (sub-in / swap / perm), pre-filtered of self.
-  // The forms themselves live in the client <PlayerManage> intent menu.
-  const optionSetFor = (p: Member) => ({
-    subInOpts: opt([
-      ...(lineupOpts.filter((o) => o.value !== p.playerId).length
-        ? [{ value: "__team", label: "on this team", disabled: true }, ...lineupOpts.filter((o) => o.value !== p.playerId)]
-        : []),
-      ...(faOpts.length ? [{ value: "__pool", label: "free agents", disabled: true }, ...faOpts] : []),
-      ...(crossTeamOpts.length ? [{ value: "__other", label: "other teams (cross-team sub)", disabled: true }, ...crossTeamOpts] : []),
-    ]),
-    swapOpts: opt(lineupOpts.filter((o) => o.value !== p.playerId)),
-    permOpts: opt(faOpts),
-  });
+  // Swap targets for one member (their teammates). Sub/replace incoming players are chosen
+  // via the searchable <PlayerPicker> over the whole registry, not a fixed option list.
+  const swapOptsFor = (p: Member) => opt(lineupOpts.filter((o) => o.value !== p.playerId));
 
   // Departed player: reinstating is TO/mod-only surgery (a plain redirect action), so it only
   // shows in apply mode.
@@ -196,7 +184,7 @@ export function TeamManagePanel({
           <tbody>
             {t.membership.map((p) => {
               const st = strikeOf[p.playerId];
-              const opts = p.isMember && !p.departed ? optionSetFor(p) : null;
+              const canManage = p.isMember && !p.departed;
               const note = !p.isMember
                 ? `sub ${p.stints.join(", ")}`
                 : p.departed
@@ -223,7 +211,7 @@ export function TeamManagePanel({
                     </span>
                   </td>
                   <td style={{ textAlign: "right", verticalAlign: "top" }}>
-                    {opts ? (
+                    {canManage ? (
                       <PlayerManage
                         seasonName={seasonName}
                         teamSeasonId={t.teamSeasonId}
@@ -232,9 +220,8 @@ export function TeamManagePanel({
                         isCaptain={p.isCaptain}
                         isCoCaptain={p.isCoCaptain}
                         req={req}
-                        subInOpts={opts.subInOpts}
-                        swapOpts={opts.swapOpts}
-                        permOpts={opts.permOpts}
+                        swapOpts={swapOptsFor(p)}
+                        allPlayers={allPlayers}
                         weekSel={weekSel}
                         weekSelOpt={weekSelOpt}
                         defWeek={defWeek}

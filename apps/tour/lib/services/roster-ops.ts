@@ -590,6 +590,9 @@ export async function getRosterOps(seasonName: string, week?: number) {
   const players = await prisma.player.findMany({ where: { id: { in: [...new Set(allPlayerIds)] } }, select: { id: true, displayName: true } });
   const nameOf = new Map(players.map((p) => [p.id, p.displayName]));
   const teamNameOf = new Map(teamSeasons.map((t) => [t.id, t.team.name]));
+  // The whole player registry -- so a sub can be picked/searched from ANYONE, not just the
+  // (often empty) approved-signup free-agent pool.
+  const registry = await prisma.player.findMany({ select: { id: true, displayName: true }, orderBy: { displayName: "asc" } });
 
   const teams = teamSeasons.map((t) => {
     const coCaptains = new Set(t.rosters.flatMap((r) => r.entries.filter((e) => e.isCoCaptain).map((e) => e.playerId)));
@@ -706,6 +709,7 @@ export async function getRosterOps(seasonName: string, week?: number) {
     // Players rostered on ANOTHER team this season -- lets a cross-team / playoff sub (an
     // eliminated player covering for a different team) be picked, not just free agents.
     allRostered: approvedPlayers.filter((p) => rosteredIds.has(p.id)).map((p) => ({ id: p.id, name: p.displayName })),
+    allPlayers: registry.map((p) => ({ id: p.id, name: p.displayName })),
     timeline,
     strikeOf,
     strikeLog,
