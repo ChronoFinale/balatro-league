@@ -4,6 +4,7 @@
 // matchup's team result is rolled up ONLY once it's decided (a team reaches
 // setsToWin, or every set is in) — so derive-on-read standings count only
 // completed matchups, exactly like the imported team-only seasons.
+import { normalizeSetToBo3 } from "@balatro/tour-core";
 import { prisma } from "../db";
 import { notifyLive } from "../notify";
 import { enqueueAnnounceResult, enqueueAnnounceMatchup } from "../queue";
@@ -26,6 +27,25 @@ export function setOutcomeValue(
   if (teamAGames === 0 && teamBGames === 0) return "void";
   if (forfeit) return teamAGames > teamBGames ? "ff-a" : "ff-b";
   return `${teamAGames}-${teamBGames}`;
+}
+
+// Record a set from its ACTUAL played score, converting to Bo3 terms for scoring
+// (rules doc + design §12.4). The TO enters what really happened (a Bo5 3-2), and
+// this collapses it: winner -> 2, loser -> 1 if competitive else 0. A Bo3 score is
+// unchanged (2-1 stays 2-1). Everything downstream sums these normalized games, so
+// game% compares fairly across mixed set lengths without touching each derivation.
+export async function reportSetFromRawScore(setId: string, rawGamesTeamA: number, rawGamesTeamB: number) {
+  if (!Number.isInteger(rawGamesTeamA) || !Number.isInteger(rawGamesTeamB) || rawGamesTeamA < 0 || rawGamesTeamB < 0) {
+    throw new Error("Scores must be whole numbers >= 0.");
+  }
+  if (rawGamesTeamA === rawGamesTeamB) throw new Error("A set needs a winner.");
+  const set = await prisma.tourSet.findUnique({ where: { id: setId }, select: { bestOf: true } });
+  if (!set) throw new Error("No such set.");
+  const { l } = normalizeSetToBo3(Math.min(rawGamesTeamA, rawGamesTeamB), set.bestOf);
+  const [gamesTeamA, gamesTeamB] = rawGamesTeamA > rawGamesTeamB ? [2, l] : [l, 2];
+  await reportSet(setId, gamesTeamA, gamesTeamB);
+  const converted = gamesTeamA !== rawGamesTeamA || gamesTeamB !== rawGamesTeamB;
+  return { gamesTeamA, gamesTeamB, converted };
 }
 
 export async function reportSet(setId: string, gamesTeamA: number, gamesTeamB: number) {

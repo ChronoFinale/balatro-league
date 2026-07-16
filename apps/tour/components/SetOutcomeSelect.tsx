@@ -4,45 +4,53 @@
 // the TO picks the outcome from a single list and it saves on pick. Labelled by the
 // two players in the set (a set is one player vs one player).
 //
-// Every result is recorded in Bo3 terms (rules doc + design §12.4): winner is 2, the
-// loser is 1 if the set was competitive or 0 for a sweep -- a Bo5/Bo7 is converted to
-// its Bo3 equivalent BY THE TO here (3-2/3-1 -> 2-1, 3-0 -> 2-0). So the options are
-// always 2-0 / 2-1 regardless of the set's best-of. Preselects the recorded result
-// via `current` (see setOutcomeValue).
+// The TO enters the ACTUAL played score -- a Bo3 shows 2-0/2-1, a Bo5 shows
+// 3-0/3-1/3-2, a Bo7 4-0..4-3. The server converts anything longer than Bo3 to Bo3
+// terms for scoring (rules doc + design §12.4: winner 2, loser 1 if competitive else
+// 0), so the TO never does that math. Preselects the recorded result via `current`.
 import { ActionFlashForm } from "@/components/ActionFlashForm";
 import { FormSelect, type FormSelectOption } from "@/components/FormSelect";
 import { setOutcomeAction } from "@/app/admin/matchups/[matchupId]/actions";
 
+// "gamesA-gamesB" -> "<winner> A-B" for display (e.g. a recorded/converted score).
+function scoreLabel(v: string, a: string, b: string): string {
+  const m = v.match(/^(\d+)-(\d+)$/);
+  if (!m) return v;
+  const ga = Number(m[1]);
+  const gb = Number(m[2]);
+  return ga > gb ? `${a} ${ga}-${gb}` : gb > ga ? `${b} ${gb}-${ga}` : v;
+}
+
 export function SetOutcomeSelect({
   matchupId,
   setId,
+  bestOf,
   aName,
   bName,
   current,
 }: {
   matchupId: string;
   setId: string;
+  bestOf: number;
   aName: string; // team A's player in this set
   bName: string; // team B's player in this set
   current: string;
 }) {
+  const win = Math.max(1, Math.ceil(bestOf / 2)); // games needed to win the set
   const a = aName.slice(0, 16);
   const b = bName.slice(0, 16);
-  // Bo3 terms only: winner 2, loser 1 (competitive) or 0 (sweep). Value is "gamesA-gamesB".
-  const options: FormSelectOption[] = [
-    { value: "2-1", label: `${a} 2-1` },
-    { value: "2-0", label: `${a} 2-0 (sweep)` },
-    { value: "1-2", label: `${b} 2-1` },
-    { value: "0-2", label: `${b} 2-0 (sweep)` },
-    { value: "ff-a", label: `${a} wins (forfeit)` },
-    { value: "ff-b", label: `${b} wins (forfeit)` },
-    { value: "void", label: "Void / double DQ (0-0)" },
-  ];
+  const options: FormSelectOption[] = [];
+  // Team A's win scores (win-0 .. win-(win-1)); value is the raw "gamesA-gamesB".
+  for (let l = win - 1; l >= 0; l--) options.push({ value: `${win}-${l}`, label: `${a} ${win}-${l}` });
+  for (let l = win - 1; l >= 0; l--) options.push({ value: `${l}-${win}`, label: `${b} ${win}-${l}` });
+  options.push({ value: "ff-a", label: `${a} wins (forfeit)` });
+  options.push({ value: "ff-b", label: `${b} wins (forfeit)` });
+  options.push({ value: "void", label: "Void / double DQ (0-0)" });
 
-  // If a recorded result doesn't match a Bo3 option (e.g. an old raw Bo5 score still
-  // on file), keep it visible so the dropdown shows the real value rather than blank.
+  // A recorded result may be the Bo3-converted score (e.g. a Bo5 3-2 stored as 2-1),
+  // which isn't in this set's raw option list -- keep it visible, player-labelled.
   const known = new Set(options.map((o) => o.value));
-  if (current && !known.has(current)) options.unshift({ value: current, label: current });
+  if (current && !known.has(current)) options.unshift({ value: current, label: scoreLabel(current, a, b) });
 
   return (
     <ActionFlashForm action={setOutcomeAction}>

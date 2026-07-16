@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { can, matchupScope } from "@/lib/permissions";
 import { makePair, overridePair, autoPairSeedForSeed, setSendFirst, removePair, resetPairing, reassignSetPlayer, setSetBestOf } from "@/lib/services/pairing";
-import { reportSet, unreportSet, forfeitSet, dqSet } from "@/lib/services/report";
+import { reportSet, reportSetFromRawScore, unreportSet, forfeitSet, dqSet } from "@/lib/services/report";
 import type { ActionResult } from "@/lib/action-result";
 
 function rev(matchupId: string) {
@@ -116,9 +116,17 @@ export async function setOutcomeAction(_prev: ActionResult, formData: FormData):
     }
     const m = outcome.match(/^(\d+)-(\d+)$/);
     if (!m) return { ok: false, message: "Pick a result from the list." };
-    await reportSet(setId, Number(m[1]), Number(m[2]));
+    // The TO enters the actual score; a Bo5/Bo7 is converted to Bo3 terms for scoring.
+    const rawA = Number(m[1]);
+    const rawB = Number(m[2]);
+    const r = await reportSetFromRawScore(setId, rawA, rawB);
     rev(matchupId);
-    return { ok: true, message: "Result recorded." };
+    return {
+      ok: true,
+      message: r.converted
+        ? `Recorded ${rawA}-${rawB}, scored as ${r.gamesTeamA}-${r.gamesTeamB} (Bo3).`
+        : "Result recorded.",
+    };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Report failed." };
   }
