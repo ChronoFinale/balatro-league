@@ -328,6 +328,41 @@ export async function replacePlayer(seasonName: string, teamSeasonId: string, in
   return { ok: true, ...sets };
 }
 
+// Add a brand-new person to a team who was never signed up -- creates (or reuses) the core
+// Player first, then rosters them as a permanent ADDED arrival. Identity: a real Discord ID
+// makes a linkable Player (find-or-create by discordId); no ID makes a `legacy:<slug>`
+// placeholder (same shape the importer uses, recoverable/mergeable later). Idempotent on the
+// player (upsert), so re-adding an existing name/id reuses them instead of duplicating.
+export async function addPlayerToTeam(
+  seasonName: string,
+  teamSeasonId: string,
+  input: { discordId?: string; displayName: string },
+  opts: { seed?: number | null; effectiveWeek?: number; reason?: string; by?: string } = {},
+) {
+  const displayName = (input.displayName ?? "").trim();
+  if (!displayName) throw new Error("Enter a display name.");
+  const seasonId = await seasonIdOf(seasonName);
+  const discordId = (input.discordId ?? "").trim();
+  let playerId: string;
+  if (discordId) {
+    if (!/^\d{17,20}$/.test(discordId)) throw new Error("Discord ID must be 17-20 digits (or leave it blank to add by name only).");
+    const p = await prisma.player.upsert({ where: { discordId }, create: { discordId, displayName }, update: {}, select: { id: true } });
+    playerId = p.id;
+  } else {
+    const slug = displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "player";
+    const legacy = `legacy:${slug}`;
+    const p = await prisma.player.upsert({ where: { discordId: legacy }, create: { discordId: legacy, displayName, aliases: [legacy] }, update: {}, select: { id: true } });
+    playerId = p.id;
+  }
+  const effectiveWeek = opts.effectiveWeek && opts.effectiveWeek >= 1 ? opts.effectiveWeek : 1;
+  const maxSeed = await prisma.rosterMove.aggregate({ where: { teamSeasonId, kind: { in: ["DRAFTED", "ADDED"] } }, _max: { seed: true } });
+  const seed = opts.seed && opts.seed >= 1 ? opts.seed : (maxSeed._max.seed ?? 0) + 1;
+  await ensureMembership(teamSeasonId, playerId, seed);
+  await prisma.rosterMove.create({ data: { seasonId, teamSeasonId, kind: "ADDED", playerId, effectiveWeek, seed, reason: opts.reason?.trim() || "added mid-season", createdBy: opts.by } });
+  await queueRoleSync(seasonName);
+  return { ok: true, playerId, seed };
+}
+
 // Sub-only memberships for a set of teams: players with SUB stints but NO permanent
 // arrival (DRAFTED/ADDED) on that teamSeason. Set-row displays use this to render a
 // "sub" chip instead of the stored seed snapshot -- subs hold no seed, anywhere.

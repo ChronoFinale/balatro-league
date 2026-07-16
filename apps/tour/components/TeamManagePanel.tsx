@@ -13,7 +13,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { PlayerManage } from "@/components/PlayerManage";
 import {
-  convertToSubAction, makePermanentAction, reinstateAction, removeMoveAction, purgeMemberAction,
+  convertToSubAction, makePermanentAction, reinstateAction, removeMoveAction, purgeMemberAction, addPlayerAction,
   approveRequestAction, rejectRequestAction, cancelRequestAction,
 } from "@/app/admin/seasons/[name]/roster/actions";
 import type { RosterRequestView } from "@/lib/services/roster-requests";
@@ -258,6 +258,26 @@ export function TeamManagePanel({
           </tbody>
         </table>
       </div>
+
+      {/* Add a brand-new player who was never signed up -- creates the Player (by Discord ID,
+          or a name-only placeholder) and rosters them. Mod/TO only. */}
+      {!req && (
+        <details className="mt-2">
+          <summary className="pill inline-flex items-center gap-1" style={{ cursor: "pointer", listStyle: "none", background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+            <UserPlus className="size-3.5" /> Add a player (new -- not signed up)
+          </summary>
+          <ActionFlashForm action={addPlayerAction} className="mt-2 flex flex-wrap items-end gap-1.5">
+            <input type="hidden" name="season" value={seasonName} />
+            <input type="hidden" name="teamSeasonId" value={t.teamSeasonId} />
+            <label className="block"><span className="sub">Display name</span><input name="displayName" placeholder="name" className={`${inputCls} w-32`} required /></label>
+            <label className="block"><span className="sub">Discord ID (optional)</span><input name="discordId" inputMode="numeric" pattern="\d{17,20}" placeholder="17-20 digits" className={`${inputCls} w-32`} /></label>
+            <label className="block"><span className="sub">Seed</span><input type="number" name="seed" min={1} placeholder="next" className={`${inputCls} w-16`} /></label>
+            <label className="block"><span className="sub">From week</span><FormSelect name="effectiveWeek" size="sm" options={weekSel} defaultValue={defWeek} /></label>
+            <SubmitButton size="sm" variant="secondary" pendingText="..."><UserPlus className="size-3.5" /> Add to team</SubmitButton>
+          </ActionFlashForm>
+          <p className="sub" style={{ margin: "4px 0 0" }}>Blank Discord ID = a name-only placeholder you can link to their Discord later.</p>
+        </details>
+      )}
 
       {/* Recent changes -- this team's latest moves with one-click Undo, right where you
           made them (mod/TO only). The move log is append-only, so Undo deletes the move. */}

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getViewer, type Viewer } from "@/lib/auth";
 import { capabilitiesFor, captainTeamsFor, seasonIdByName } from "@/lib/permissions";
-import { substitute, recordDeparture, reinstate, replacePlayer, removeMove, changeCaptain, reseed, swapSeeds, setCoCaptain, convertMemberToSub, convertSubToMember, purgePlayerFromTeam } from "@/lib/services/roster-ops";
+import { substitute, recordDeparture, reinstate, replacePlayer, removeMove, changeCaptain, reseed, swapSeeds, setCoCaptain, convertMemberToSub, convertSubToMember, purgePlayerFromTeam, addPlayerToTeam } from "@/lib/services/roster-ops";
 import { createRosterRequest, approveRosterRequest, rejectRosterRequest, cancelRosterRequest, approveManyRosterRequests, type RosterRequestPayload } from "@/lib/services/roster-requests";
 import { addStrike, removeStrike } from "@/lib/services/strikes";
 import { notifyLive } from "@/lib/notify";
@@ -241,6 +241,30 @@ export async function purgeMemberAction(formData: FormData) {
   }
   rev(season);
   backToRoster(season, msg, ok);
+}
+
+// Add a brand-new person (never signed up) to a team -- creates the Player by Discord ID
+// (or a name-only placeholder) and rosters them. Mod/TO only (captains can't mint players).
+export async function addPlayerAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const season = String(formData.get("season") ?? "");
+  if (!(await isModFor(season))) return { ok: false, message: "Mods only." };
+  const teamSeasonId = String(formData.get("teamSeasonId") ?? "");
+  const displayName = String(formData.get("displayName") ?? "");
+  const discordId = String(formData.get("discordId") ?? "");
+  const seedRaw = Number(formData.get("seed"));
+  const from = wk(formData, "effectiveWeek");
+  try {
+    const r = await addPlayerToTeam(
+      season,
+      teamSeasonId,
+      { discordId, displayName },
+      { seed: Number.isFinite(seedRaw) && seedRaw > 0 ? seedRaw : null, effectiveWeek: from ?? undefined },
+    );
+    rev(season);
+    return { ok: true, message: `Added ${displayName.trim()} at seed #${r.seed}.` };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Could not add player." };
+  }
 }
 
 export async function changeCaptainAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
