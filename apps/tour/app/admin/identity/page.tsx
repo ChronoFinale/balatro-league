@@ -1,10 +1,13 @@
 import Link from "next/link";
-import { ArrowLeft, Search, Wrench, Wand2, GitMerge } from "lucide-react";
+import { ArrowLeft, Search, Wrench, Wand2, GitMerge, UserPlus } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 import { listTourPlayers, identityCounts, getClaimPairs } from "@/lib/services/identity";
 import { Callout } from "@/components/Callout";
+import { ActionFlashForm } from "@/components/ActionFlashForm";
+import { SubmitButton } from "@/components/SubmitButton";
 import { IdentityRow } from "@/components/IdentityRow";
 import { PrunePhantomsButton } from "@/components/PrunePhantomsButton";
+import { createPlayerAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +43,16 @@ export default async function Identity({ searchParams }: { searchParams: Promise
         <code>legacy:</code> ids · {counts.total} total. Link a player to their Discord identity (pick from the league
         list), or fold a duplicate into the right person.
       </p>
+
+      <div className="card mb-3">
+        <div className="bracket-title" style={{ padding: 0 }}>Add a player</div>
+        <ActionFlashForm action={createPlayerAction} className="mt-2 flex flex-wrap items-end gap-2">
+          <label className="block"><span className="sub">Display name</span><br /><input name="displayName" placeholder="name" className="search" style={{ marginBottom: 0 }} required /></label>
+          <label className="block"><span className="sub">Discord ID</span><br /><input name="discordId" inputMode="numeric" pattern="\d{17,20}" placeholder="17-20 digits" className="search" style={{ marginBottom: 0 }} required /></label>
+          <SubmitButton size="sm" variant="secondary" pendingText="…"><UserPlus className="size-3.5" /> Add player</SubmitButton>
+        </ActionFlashForm>
+        <p className="sub" style={{ margin: "6px 0 0" }}>Creates a player in the registry (reused if the Discord ID already exists). This does not put them on a team — do that in Roster ops.</p>
+      </div>
 
       <Callout type="info" className="mb-3">
         <strong>Don&apos;t link 300 by hand.</strong>{" "}

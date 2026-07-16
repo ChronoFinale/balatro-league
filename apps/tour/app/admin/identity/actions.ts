@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { isAdmin } from "@/lib/auth";
-import { linkPlayer, mergePlayers, applyIdentityRecovery, applyAutoLink, deletePlayer } from "@/lib/services/identity";
+import { linkPlayer, mergePlayers, applyIdentityRecovery, applyAutoLink, deletePlayer, createPlayer } from "@/lib/services/identity";
 import { pruneOrphanPlayers } from "@/lib/services/import";
 import type { ActionResult } from "@/lib/action-result";
 
@@ -23,6 +23,21 @@ export async function prunePhantomsAction(_prev: ActionResult | null, _formData:
     };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Cleanup failed." };
+  }
+}
+
+// Create a bare player in the registry (name + optional Discord ID). Nothing else attached.
+export async function createPlayerAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  if (!(await isAdmin())) return { ok: false, message: "Not authorized." };
+  const displayName = String(formData.get("displayName") ?? "");
+  const discordId = String(formData.get("discordId") ?? "");
+  try {
+    const r = await createPlayer({ displayName, discordId });
+    revalidatePath("/admin/identity");
+    revalidatePath("/players");
+    return { ok: true, message: r.reused ? `${r.name} already existed -- reused.` : `Added ${r.name}.` };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Could not add player." };
   }
 }
 

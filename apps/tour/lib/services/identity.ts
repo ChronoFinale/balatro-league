@@ -162,6 +162,26 @@ export async function identityCounts() {
   return { total, linked, unlinked: total - linked };
 }
 
+// Create a bare player in the registry -- nothing else (no team, no season, no signup).
+// A Discord ID makes a real, linkable player; a blank ID makes a `legacy:<slug>` placeholder
+// you can link later. Idempotent (upsert by discordId), so it reuses an existing person.
+export async function createPlayer(input: { displayName: string; discordId?: string }): Promise<{ id: string; name: string; reused: boolean }> {
+  const displayName = (input.displayName ?? "").trim();
+  if (!displayName) throw new Error("Enter a display name.");
+  const discordId = (input.discordId ?? "").trim();
+  const key = discordId
+    ? (/^\d{17,20}$/.test(discordId) ? discordId : (() => { throw new Error("Discord ID must be 17-20 digits (or leave it blank)."); })())
+    : `legacy:${displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "player"}`;
+  const existing = await prisma.player.findUnique({ where: { discordId: key }, select: { id: true } });
+  const p = await prisma.player.upsert({
+    where: { discordId: key },
+    create: { discordId: key, displayName, ...(discordId ? {} : { aliases: [key] }) },
+    update: {},
+    select: { id: true, displayName: true },
+  });
+  return { id: p.id, name: p.displayName, reused: !!existing };
+}
+
 // Force-delete a player and everything that references them (sets + matches, roster
 // entries, draft picks, career stat, awards, strikes, roster moves; nulls out sub/replace
 // pointers). Blocks if they're a team captain (reassign first) to avoid a dangling captain.
