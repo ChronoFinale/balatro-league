@@ -20,6 +20,8 @@ export interface WeekMatchup {
   teamAId: string;
   teamB: string;
   teamBId: string;
+  confA: string | null;   // conference name of teamA (for grouping / badges)
+  confB: string | null;
   setsA: number;
   setsB: number;
   sets: WeekSet[];
@@ -51,7 +53,7 @@ export async function getSeasonWeeks(seasonName: string): Promise<SeasonWeek[]> 
   const playerIds = [...new Set(sets.flatMap((s) => [s.playerAId, s.playerBId]))];
   const [matches, tss, players, picks] = await Promise.all([
     prisma.match.findMany({ where: { id: { in: matchIds } }, select: { id: true, playerAId: true, gamesWonA: true, gamesWonB: true, winnerId: true } }),
-    prisma.teamSeason.findMany({ where: { id: { in: tsIds } }, include: { team: true } }),
+    prisma.teamSeason.findMany({ where: { id: { in: tsIds } }, include: { team: true, conference: true } }),
     prisma.player.findMany({ where: { id: { in: playerIds } }, select: { id: true, displayName: true } }),
     prisma.draftPick.findMany({ where: { teamSeasonId: { in: tsIds } }, select: { teamSeasonId: true, playerId: true } }),
   ]);
@@ -59,6 +61,7 @@ export async function getSeasonWeeks(seasonName: string): Promise<SeasonWeek[]> 
   const subOnly = await subOnlyKeySet(tsIds); // subs hold no seed -- blank, not the artifact
   const matchById = new Map(matches.map((m) => [m.id, m]));
   const teamName = new Map(tss.map((t) => [t.id, t.team.name]));
+  const confOf = new Map(tss.map((t) => [t.id, t.conference?.name ?? null]));
   const captainOf = new Map(tss.map((t) => [t.id, t.captainPlayerId]));
   const pName = new Map(players.map((p) => [p.id, p.displayName]));
   const draftedByTeam = new Map<string, Set<string>>();
@@ -98,7 +101,7 @@ export async function getSeasonWeeks(seasonName: string): Promise<SeasonWeek[]> 
     const key = `${t0}|${t1}`;
     let mu = wm.get(key);
     if (!mu) {
-      mu = { teamA: teamName.get(t0) ?? "?", teamAId: t0, teamB: teamName.get(t1) ?? "?", teamBId: t1, setsA: 0, setsB: 0, sets: [] };
+      mu = { teamA: teamName.get(t0) ?? "?", teamAId: t0, teamB: teamName.get(t1) ?? "?", teamBId: t1, confA: confOf.get(t0) ?? null, confB: confOf.get(t1) ?? null, setsA: 0, setsB: 0, sets: [] };
       wm.set(key, mu);
     }
     const flip = aTs !== t0; // this set's playerA is on aTs; flip if aTs is the matchup's teamB

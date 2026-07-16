@@ -343,6 +343,23 @@ th.sortable:hover { color: var(--accent); }
   .bracket-round .bracket-match::before, .bracket-round .bracket-match::after { display: none !important; }
 }
 
+/* Week-by-week: matchup cards in a responsive grid (reuse the bracket card look), grouped
+   by conference. Collapses to one column on narrow screens -- never scrolls sideways. */
+.wk-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.wk-tab { border-radius: 999px; border: 1px solid var(--border); padding: 4px 12px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; transition: border-color 0.12s, color 0.12s; }
+.wk-tab:hover { border-color: var(--accent-2); color: var(--text); }
+.wk-tab.active { border-color: var(--accent); background: var(--accent); color: #000; font-weight: 600; }
+.wk-conf-head { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; margin: 14px 2px 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.wk-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.wk-match > summary { list-style: none; cursor: pointer; }
+.wk-match > summary::-webkit-details-marker { display: none; }
+.wk-match[open] > summary .bm-card { border-color: var(--accent-2); }
+.wk-match .bm-card { transition: border-color 0.12s; }
+.wk-match > summary:hover .bm-card { border-color: var(--accent-2); }
+.wk-sets { padding: 4px 4px 2px; }
+.wk-sets table { width: 100%; }
+.wk-sets td { padding: 2px 5px; }
+
 /* search box (type="search" isn't covered by the native input rule above) */
 .search { width: 100%; max-width: 320px; margin-bottom: 16px; padding: 8px 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font: inherit; }
 .search::placeholder { color: var(--muted); }
