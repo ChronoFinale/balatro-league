@@ -23,22 +23,30 @@ export default async function HallOfFame() {
             {c.rounds.map((r) => (
               <div className="bracket-round" key={r.round}>
                 <div className="bracket-label">{r.label}</div>
-                <div className="bracket-match">
-                  <div className="bracket-team win">
-                    <span><Link href={`/teams/${c.championTeamSeasonId}`}>{c.champion}</Link></span>
-                    <span className="score">{r.champScore}</span>
-                  </div>
-                  <div className="bracket-team">
-                    <span>{r.opponentTeamSeasonId ? <Link href={`/teams/${r.opponentTeamSeasonId}`}>{r.opponent}</Link> : (r.opponent ?? "—")}</span>
-                    <span className="score">{r.oppScore}</span>
+                <div className="bracket-matches">
+                  <div className="bracket-match">
+                    <div className="bm-card">
+                      <div className="bracket-team win">
+                        <span className="nm"><Link href={`/teams/${c.championTeamSeasonId}`}>{c.champion}</Link></span>
+                        <span className="score">{r.champScore}</span>
+                      </div>
+                      <div className="bracket-team">
+                        <span className="nm">{r.opponentTeamSeasonId ? <Link href={`/teams/${r.opponentTeamSeasonId}`}>{r.opponent}</Link> : (r.opponent ?? "—")}</span>
+                        <span className="score">{r.oppScore}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             ))}
             <div className="bracket-round">
               <div className="bracket-label">Champion</div>
-              <div className="bracket-champion flex items-center justify-center gap-1.5">
-                <Trophy className="size-4" /> <Link href={`/teams/${c.championTeamSeasonId}`}>{c.champion}</Link>
+              <div className="bracket-matches">
+                <div className="bracket-match">
+                  <div className="bracket-champion flex items-center gap-1.5">
+                    <Trophy className="size-4" /> <Link href={`/teams/${c.championTeamSeasonId}`}>{c.champion}</Link>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

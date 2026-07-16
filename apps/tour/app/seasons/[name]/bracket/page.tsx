@@ -1,6 +1,5 @@
-import { Fragment } from "react";
 import Link from "next/link";
-import { ArrowLeft, Trophy, ChevronRight } from "lucide-react";
+import { ArrowLeft, Trophy } from "lucide-react";
 import { getPublicBracket, getChampionRun } from "@/lib/playoffs";
 import { getPlayoffPicture } from "@/lib/playoff-picture";
 
@@ -35,60 +34,61 @@ export default async function BracketPage({ params }: { params: Promise<{ name: 
             <span className="muted">Champion:</span> <strong>{bracket.championTeamSeasonId ? <Link href={`/teams/${bracket.championTeamSeasonId}`}>{bracket.champion}</Link> : bracket.champion}</strong>
           </p>
         )}
-        <p className="sub">Each series shows its player-by-player sets — click a matchup to collapse it.</p>
+        <p className="sub">Click a matchup to see its player-by-player sets.</p>
         <div className="card" style={{ overflowX: "auto" }}>
-          <div className="bracket">
-            {bracket.rounds.map((r, ri) => (
-              <Fragment key={r.round}>
-                {ri > 0 && <div className="bracket-arrow" aria-hidden><ChevronRight className="size-5" /></div>}
-              <div className="bracket-round">
+          {/* Height scales with the widest round so pairs stay visually grouped at any field size. */}
+          <div className="bracket" style={{ minHeight: (bracket.rounds[0]?.series.length ?? 2) * 120 }}>
+            {bracket.rounds.map((r) => (
+              <div className="bracket-round" key={r.round}>
                 <div className="bracket-label">{r.label}</div>
                 <div className="bracket-matches">
                   {r.series.map((s, i) => (
-                    <details className="bracket-match" key={i} open={s.sets.length > 0} style={{ cursor: s.sets.length ? "pointer" : "default" }}>
-                      <summary style={{ listStyle: "none" }}>
+                    <details className="bracket-match" key={i}>
+                      <summary className="bm-card">
                         <div className={`bracket-team${s.winner === "A" ? " win" : ""}`}>
-                          <span>{s.aSeed ? `#${s.aSeed} ` : ""}{s.aTeamSeasonId ? <Link href={`/teams/${s.aTeamSeasonId}`}>{s.aName}</Link> : s.aName}</span>
+                          {s.aSeed ? <span className="seed">#{s.aSeed}</span> : null}
+                          <span className="nm">{s.aTeamSeasonId ? <Link href={`/teams/${s.aTeamSeasonId}`}>{s.aName}</Link> : s.aName}</span>
                           <span className="score">{s.scoreA ?? "—"}</span>
                         </div>
                         <div className={`bracket-team${s.winner === "B" ? " win" : ""}`}>
-                          <span>{s.bSeed ? `#${s.bSeed} ` : ""}{s.bTeamSeasonId ? <Link href={`/teams/${s.bTeamSeasonId}`}>{s.bName}</Link> : s.bName}</span>
+                          {s.bSeed ? <span className="seed">#{s.bSeed}</span> : null}
+                          <span className="nm">{s.bTeamSeasonId ? <Link href={`/teams/${s.bTeamSeasonId}`}>{s.bName}</Link> : s.bName}</span>
                           <span className="score">{s.scoreB ?? "—"}</span>
                         </div>
                       </summary>
                       {s.sets.length > 0 && (
-                        <table style={{ margin: "0.25rem 0.5rem 0.5rem", fontSize: "0.85em" }}>
-                          <tbody>
-                            {s.sets.map((st, j) => (
-                              <tr key={j}>
-                                <td className="muted num" style={{ width: 22 }}>{st.seedA ?? ""}</td>
-                                <td style={{ color: st.winner === "A" ? "var(--success)" : undefined }}><Link href={`/players/${st.playerAId}`}>{st.playerA}</Link></td>
-                                <td className="num" style={{ width: 44, textAlign: "center" }}>{st.scoreA}–{st.scoreB}</td>
-                                <td style={{ textAlign: "right", color: st.winner === "B" ? "var(--success)" : undefined }}><Link href={`/players/${st.playerBId}`}>{st.playerB}</Link></td>
-                                <td className="muted num" style={{ width: 22, textAlign: "right" }}>{st.seedB ?? ""}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                        <div className="bm-sets">
+                          <table style={{ fontSize: "0.85em" }}>
+                            <tbody>
+                              {s.sets.map((st, j) => (
+                                <tr key={j}>
+                                  <td className="muted num" style={{ width: 22 }}>{st.seedA ?? ""}</td>
+                                  <td style={{ color: st.winner === "A" ? "var(--success)" : undefined }}><Link href={`/players/${st.playerAId}`}>{st.playerA}</Link></td>
+                                  <td className="num" style={{ width: 44, textAlign: "center" }}>{st.scoreA}–{st.scoreB}</td>
+                                  <td style={{ textAlign: "right", color: st.winner === "B" ? "var(--success)" : undefined }}><Link href={`/players/${st.playerBId}`}>{st.playerB}</Link></td>
+                                  <td className="muted num" style={{ width: 22, textAlign: "right" }}>{st.seedB ?? ""}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       )}
                     </details>
                   ))}
                 </div>
               </div>
-              </Fragment>
             ))}
             {bracket.championTeamSeasonId && (
-              <>
-              <div className="bracket-arrow" aria-hidden><ChevronRight className="size-5" /></div>
               <div className="bracket-round">
                 <div className="bracket-label">Champion</div>
                 <div className="bracket-matches">
-                  <div className="bracket-champion flex items-center justify-center gap-1.5">
-                    <Trophy className="size-4" /> <Link href={`/teams/${bracket.championTeamSeasonId}`}>{bracket.champion}</Link>
+                  <div className="bracket-match">
+                    <div className="bracket-champion flex items-center gap-1.5">
+                      <Trophy className="size-4" /> <Link href={`/teams/${bracket.championTeamSeasonId}`}>{bracket.champion}</Link>
+                    </div>
                   </div>
                 </div>
               </div>
-              </>
             )}
           </div>
         </div>
@@ -106,29 +106,33 @@ export default async function BracketPage({ params }: { params: Promise<{ name: 
         <div className="card">
           <div className="bracket-title flex items-center gap-2"><Trophy className="size-4" /> <Link href={`/teams/${run.championTeamSeasonId}`}>{run.champion}</Link></div>
           <div className="bracket">
-            {run.rounds.map((r, ri) => (
-              <Fragment key={r.round}>
-                {ri > 0 && <div className="bracket-arrow" aria-hidden><ChevronRight className="size-5" /></div>}
-                <div className="bracket-round">
-                  <div className="bracket-label">{r.label}</div>
+            {run.rounds.map((r) => (
+              <div className="bracket-round" key={r.round}>
+                <div className="bracket-label">{r.label}</div>
+                <div className="bracket-matches">
                   <div className="bracket-match">
-                    <div className="bracket-team win">
-                      <span><Link href={`/teams/${run.championTeamSeasonId}`}>{run.champion}</Link></span>
-                      <span className="score">{r.champScore}</span>
-                    </div>
-                    <div className="bracket-team">
-                      <span>{r.opponentTeamSeasonId ? <Link href={`/teams/${r.opponentTeamSeasonId}`}>{r.opponent}</Link> : (r.opponent ?? "—")}</span>
-                      <span className="score">{r.oppScore}</span>
+                    <div className="bm-card">
+                      <div className="bracket-team win">
+                        <span className="nm"><Link href={`/teams/${run.championTeamSeasonId}`}>{run.champion}</Link></span>
+                        <span className="score">{r.champScore}</span>
+                      </div>
+                      <div className="bracket-team">
+                        <span className="nm">{r.opponentTeamSeasonId ? <Link href={`/teams/${r.opponentTeamSeasonId}`}>{r.opponent}</Link> : (r.opponent ?? "—")}</span>
+                        <span className="score">{r.oppScore}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </Fragment>
+              </div>
             ))}
-            <div className="bracket-arrow" aria-hidden><ChevronRight className="size-5" /></div>
             <div className="bracket-round">
               <div className="bracket-label">Champion</div>
-              <div className="bracket-champion flex items-center justify-center gap-1.5">
-                <Trophy className="size-4" /> <Link href={`/teams/${run.championTeamSeasonId}`}>{run.champion}</Link>
+              <div className="bracket-matches">
+                <div className="bracket-match">
+                  <div className="bracket-champion flex items-center gap-1.5">
+                    <Trophy className="size-4" /> <Link href={`/teams/${run.championTeamSeasonId}`}>{run.champion}</Link>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
