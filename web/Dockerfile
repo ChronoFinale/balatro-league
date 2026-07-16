@@ -31,13 +31,21 @@ COPY . .
 RUN cd web && node scripts/sync-schema.mjs
 RUN cd web && npm run build
 
-# ---- runtime ----
+# ---- runtime (standalone) ----
 FROM base AS runner
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
-COPY --from=build /app /app
+# Next's standalone server binds to $HOSTNAME; Docker sets that to the container
+# id (unroutable), so force 0.0.0.0 to listen on all interfaces.
+ENV HOSTNAME=0.0.0.0 PORT=3000
 WORKDIR /app/web
+# The self-contained bundle: server.js + traced node_modules. static/ and public/
+# are NOT included by standalone, so copy them alongside.
+COPY --from=build /app/web/.next/standalone ./
+COPY --from=build /app/web/.next/static ./.next/static
+COPY --from=build /app/web/public ./public
+# Prisma's query engine can miss output tracing; copy it explicitly so runtime
+# queries work regardless.
+COPY --from=build /app/web/node_modules/.prisma ./node_modules/.prisma
 EXPOSE 3000
-# npm start = `prisma migrate deploy --schema=./prisma/schema.prisma && next start`
-# (the migrate is a no-op here - the bot owns migrations; prisma takes an
-# advisory lock so it is safe regardless).
-CMD ["sh", "-c", "npm run start -- -p ${PORT:-3000}"]
+# The bot owns league migrations (applied on its own boot), so web just serves.
+CMD ["node", "server.js"]
