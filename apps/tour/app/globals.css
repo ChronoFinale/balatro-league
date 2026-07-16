@@ -280,25 +280,35 @@ th.sortable:hover { color: var(--accent); }
    feeds, and CSS L-connectors (drawn with pseudo-element borders) join each pair into
    the next round -- a real bracket flow, no chevrons. Cards click to reveal their
    player-by-player sets. See the vetted prototype in the design scratchpad. */
-.bracket { --bracket-gap: 32px; display: flex; align-items: stretch; gap: var(--bracket-gap); overflow-x: auto; padding: 8px 4px 12px; }
-.bracket-round { display: flex; flex-direction: column; min-width: 230px; flex: 1 0 auto; position: relative; }
+.bracket { --bracket-gap: 28px; display: flex; align-items: stretch; gap: var(--bracket-gap); padding: 8px 2px 12px; }
+/* rounds SHARE the width so the bracket fits the screen -- no sideways scrolling; long
+   names ellipsis instead. Below the breakpoint the whole thing stacks (see media query). */
+.bracket-round { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; position: relative; }
 .bracket-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); text-align: center; padding-bottom: 10px; font-weight: 600; }
 .bracket-matches { flex: 1; display: flex; flex-direction: column; }
-.bracket-match { flex: 1 1 0; display: flex; flex-direction: column; justify-content: center; position: relative; min-height: 70px; }
+.bracket-match { flex: 1 1 0; display: flex; flex-direction: column; justify-content: center; position: relative; min-height: 66px; }
 
 /* the visible card sits centered inside its full-height slot */
 .bracket-match > summary { list-style: none; cursor: pointer; }
 .bracket-match > summary::-webkit-details-marker { display: none; }
-.bm-card { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface-2); }
-.bracket-match[open] .bm-card { border-color: var(--accent-2); }
-.bracket-team { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 11px; font-size: 13px; }
+.bm-card { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface-2); transition: border-color 0.12s; }
+.bracket-match > summary:hover .bm-card,
+.bracket-match[open] > summary .bm-card { border-color: var(--accent-2); }
+.bracket-team { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; font-size: 13px; min-width: 0; }
 .bracket-team + .bracket-team { border-top: 1px solid var(--border); }
-.bracket-team .seed { color: var(--muted); font-size: 11px; min-width: 22px; font-variant-numeric: tabular-nums; }
-.bracket-team .nm { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bracket-team .seed { color: var(--muted); font-size: 11px; min-width: 20px; flex: none; font-variant-numeric: tabular-nums; }
+.bracket-team .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bracket-team.win { background: rgba(241, 196, 15, 0.12); font-weight: 600; }
-.bracket-team .score { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 600; }
+.bracket-team .score { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 600; flex: none; }
 .bracket-team.win .score { color: var(--accent); }
-.bm-sets { padding: 2px 6px 6px; }
+
+/* Sets open as a FLOATING panel (absolute) so revealing them never reflows the bracket
+   or knocks the connector lines out of place. The last match in a column opens upward so
+   it never spills past the bottom. On narrow screens (below) it becomes a normal block. */
+.bm-sets { position: absolute; top: calc(100% + 5px); left: 0; z-index: 30; min-width: 100%; width: max-content; max-width: 300px;
+  background: var(--surface); border: 1px solid var(--accent-2); border-radius: 10px; padding: 5px 8px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5); }
+.bracket-matches .bracket-match:last-child .bm-sets { top: auto; bottom: calc(100% + 5px); }
+.bm-sets table { width: 100%; }
 
 /* connectors: each pair's two cards join with an L (drawn as borders on ::after), and
    the next round's card reaches back with a short incoming stub (::before). */
@@ -318,11 +328,18 @@ th.sortable:hover { color: var(--accent); }
   top: 50%; bottom: auto; height: 2px; width: var(--bracket-gap); border: 0; background: var(--border);
 }
 .bracket-champion { align-self: center; border: 1px solid var(--accent); border-radius: 10px; padding: 12px 16px; font-weight: 700; background: rgba(241, 196, 15, 0.12); }
-/* tighter columns + gaps on narrow screens (the bracket scrolls sideways within its card) */
-@media (max-width: 640px) {
-  .bracket { --bracket-gap: 18px; }
-  .bracket-round { min-width: 172px; }
-  .bracket-team { padding: 7px 9px; font-size: 12px; }
+
+/* NARROW screens: stack rounds top-to-bottom so nothing scrolls sideways. Connectors
+   hide, and sets open inline in normal flow. */
+@media (max-width: 720px) {
+  .bracket { flex-direction: column; gap: 14px; min-height: 0 !important; padding: 4px 0 8px; }
+  .bracket-round { flex: none; width: 100%; }
+  .bracket-label { text-align: left; padding: 2px 2px 6px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+  .bracket-matches { gap: 8px; }
+  .bracket-match { flex: none; min-height: 0; }
+  .bracket-round .bracket-match::before, .bracket-round .bracket-match::after { display: none !important; }
+  .bm-sets { position: static; max-width: none; width: auto; box-shadow: none; border-color: var(--border); margin-top: 6px; }
+  .bracket-matches .bracket-match:last-child .bm-sets { top: auto; bottom: auto; }
 }
 
 /* search box (type="search" isn't covered by the native input rule above) */
