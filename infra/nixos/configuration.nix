@@ -64,6 +64,7 @@
     extraGroups = [ "wheel" "docker" ];
     openssh.authorizedKeys.keys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAkUXZlNWVxSKhGpQDkUfu+QgS7IoikHXwJTrUhbBkNv claude-code-balatro-deploy@MJ-PC"
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJHilmksbCS8L8Y8fk5ttPNnawKgLmHOOkT98lo+gSco mj@harkins.io"
     ];
   };
   security.sudo.wheelNeedsPassword = false; # deploy-rs / passwordless activate
