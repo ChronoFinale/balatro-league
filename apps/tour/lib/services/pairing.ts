@@ -209,6 +209,25 @@ export async function overridePair(matchupId: string, aPlayerId: string, bPlayer
   return { ok: true };
 }
 
+// Bulk seed-for-seed pairing -- the one-click playoff default. Sorts each team's roster by
+// seed (best first) and pairs same-rank players (A's #1 vs B's #1, and so on). Only fills in
+// still-unpaired players up to the matchup's target, so it never disturbs existing pairs or
+// recorded results -- run it on a fresh matchup to set everything at once, or to top up.
+export async function autoPairSeedForSeed(matchupId: string) {
+  const m = await load(matchupId);
+  if (!m) throw new Error("No such matchup.");
+  const paired = new Set(m.matchup.sets.flatMap((s) => [s.playerAId, s.playerBId]));
+  const bySeed = (r: RosterPlayer[]) => [...r].sort((a, b) => a.seed - b.seed);
+  const unpairedA = bySeed(m.teamA.roster).filter((p) => !paired.has(p.playerId));
+  const unpairedB = bySeed(m.teamB.roster).filter((p) => !paired.has(p.playerId));
+  const targetPairs = Math.min(m.teamSize, m.teamA.roster.length, m.teamB.roster.length);
+  const remaining = Math.max(0, targetPairs - m.matchup.sets.length);
+  const n = Math.min(unpairedA.length, unpairedB.length, remaining);
+  if (n === 0) throw new Error("Nothing to pair -- everyone's already paired (reset first to re-pair).");
+  for (let i = 0; i < n; i++) await persistPair(m, unpairedA[i].playerId, unpairedB[i].playerId);
+  return { created: n };
+}
+
 async function persistPair(m: LoadedMatchup, aPlayerId: string, bPlayerId: string) {
   const seedA = m.teamA.roster.find((p) => p.playerId === aPlayerId)?.seed ?? 0;
   const seedB = m.teamB.roster.find((p) => p.playerId === bPlayerId)?.seed ?? 0;

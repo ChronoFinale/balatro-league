@@ -15,6 +15,7 @@ import { SeedOrSub } from "@/components/SeedOrSub";
 import { DeadlineChip } from "@/components/DeadlineChip";
 import {
   overridePairAction,
+  autoPairAction,
   setSendFirstAction,
   removePairAction,
   resetPairingAction,
@@ -147,6 +148,13 @@ export default async function PairingConsole({ params }: { params: Promise<{ mat
             </p>
           )}
           <div className="bracket-title">Pair players</div>
+          <ActionFlashForm action={autoPairAction} className="mb-2">
+            <input type="hidden" name="matchupId" value={c.matchupId} />
+            <div className="flex flex-wrap items-center gap-2">
+              <SubmitButton pendingText="Pairing…">Auto-pair seed-for-seed</SubmitButton>
+              <span className="sub">Pairs every remaining player {c.teamA.name} #1 vs {c.teamB.name} #1, #2 vs #2, and so on.</span>
+            </div>
+          </ActionFlashForm>
           <ActionFlashForm action={overridePairAction}>
             <input type="hidden" name="matchupId" value={c.matchupId} />
             <div className="flex flex-wrap items-end gap-2">

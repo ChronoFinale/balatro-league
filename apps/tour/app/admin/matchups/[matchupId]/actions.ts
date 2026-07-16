@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { can, matchupScope } from "@/lib/permissions";
-import { makePair, overridePair, setSendFirst, removePair, resetPairing, reassignSetPlayer, setSetBestOf } from "@/lib/services/pairing";
+import { makePair, overridePair, autoPairSeedForSeed, setSendFirst, removePair, resetPairing, reassignSetPlayer, setSetBestOf } from "@/lib/services/pairing";
 import { reportSet, unreportSet, forfeitSet, dqSet } from "@/lib/services/report";
 import type { ActionResult } from "@/lib/action-result";
 
@@ -27,6 +27,19 @@ export async function makePairAction(_prev: ActionResult, formData: FormData): P
     return { ok: true, message: `Pair ${r.pairs} set.` };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Pairing failed." };
+  }
+}
+
+// One-click: pair every remaining player seed-for-seed (A's #1 vs B's #1, etc.).
+export async function autoPairAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const matchupId = String(formData.get("matchupId") ?? "");
+  if (!(await allow(matchupId))) return { ok: false, message: "Not authorized." };
+  try {
+    const r = await autoPairSeedForSeed(matchupId);
+    rev(matchupId);
+    return { ok: true, message: `Paired ${r.created} set${r.created === 1 ? "" : "s"} seed-for-seed.` };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Auto-pair failed." };
   }
 }
 
