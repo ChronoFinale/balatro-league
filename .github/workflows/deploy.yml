@@ -133,3 +133,17 @@ jobs:
           EDEV="--env-file /srv/balatro/versions.env --env-file /srv/balatro/secrets.dev.env"
           docker compose -p balatro-dev $EDEV -f docker-compose.dev.yml up -d league-web-dev || echo "[dev] league-web-dev roll skipped"
           docker image prune -f
+
+      # Deploy visibility: post the outcome to the Discord devops channel. The
+      # webhook URL lives box-local in secrets.env (never in git/GH secrets);
+      # the runner runs on the box so it can read it. Never fails the job.
+      - name: Notify devops channel
+        if: always()
+        run: |
+          URL=$(grep -E '^DEPLOY_WEBHOOK_URL=' /srv/balatro/secrets.env 2>/dev/null | cut -d= -f2-) || true
+          [ -z "$URL" ] && { echo "no deploy webhook configured -- skipping"; exit 0; }
+          [ "${{ job.status }}" = "success" ] && ICON="✅" || ICON="❌"
+          MODE="build-only"
+          { [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.deploy }}" = "true" ]; } && MODE="DEPLOYED"
+          MSG="$ICON **league** $MODE \`${{ steps.v.outputs.tag }}\` (bot=${{ steps.pick.outputs.league_bot }} web=${{ steps.pick.outputs.league_web }}) — <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}>"
+          curl -sf -m 10 -H 'Content-Type: application/json' -d "{\"content\":\"$MSG\"}" "$URL" || echo "notify failed (non-fatal)"
