@@ -20,9 +20,12 @@ function renderLeagueMatchesMessage(): BaseMessageOptions {
     "Ready to play? Hit **Start a match**, pick an opponent from your schedule, and I'll send them an invite to accept — no slash commands needed.",
     "",
     "_Each match runs in a private thread here. Scheduling is still your responsibility; this just saves you the typing._",
+    "",
+    "_Tied for a promotion/relegation spot at season's end? Hit **Start shootout** — it only works when you actually owe one._",
   ];
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("league-matches:start").setLabel("Start a match").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("league-matches:shootout").setLabel("Start shootout").setStyle(ButtonStyle.Secondary),
   );
   return { content: lines.join("\n"), components: [row], allowedMentions: { parse: [] } };
 }

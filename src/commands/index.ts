@@ -20,7 +20,7 @@ import { startMatch } from "./start-match.js";
 import { support } from "./support.js";
 import { supportButtons } from "./support-buttons.js";
 import { queueButtons } from "./queue-buttons.js";
-import { leagueMatchesButtons, leagueMatchesPickSelect } from "./league-matches-buttons.js";
+import { leagueMatchesButtons, leagueMatchesPickSelect, leagueMatchesShootoutPickSelect } from "./league-matches-buttons.js";
 import { divisionControlsButtons } from "./division-controls-buttons.js";
 import { rosterButtons } from "./roster-buttons.js";
 import type { ButtonHandler, ModalHandler, SelectMenuHandler, SlashCommand } from "./types.js";
@@ -37,6 +37,6 @@ export const slashCommands: SlashCommand[] = [help, adminHelp, helper, support, 
 
 export const buttonHandlers: ButtonHandler[] = [reportButtons, signupHandlers, signupAskButtonHandler, matchButtons, disputeThreadButtonHandler, supportButtons, queueButtons, leagueMatchesButtons, divisionControlsButtons, rosterButtons];
 
-export const selectMenuHandlers: SelectMenuHandler[] = [matchSelectMenus, disputeSelect, disputeResolveSelect, leagueMatchesPickSelect];
+export const selectMenuHandlers: SelectMenuHandler[] = [matchSelectMenus, disputeSelect, disputeResolveSelect, leagueMatchesPickSelect, leagueMatchesShootoutPickSelect];
 
 export const modalHandlers: ModalHandler[] = [disputeModal, callHelperModal];

@@ -72,6 +72,7 @@ import { runRosterCheckin } from "./roster-checkin.js";
 import { MODLOG_RETENTION_DAYS } from "./mod-log.js";
 import { buildScheduleEmbed } from "./schedule-embed.js";
 import { sanitizeName } from "./sanitize.js";
+import { runShootoutCheck, isDivisionComplete } from "./shootout.js";
 
 // One recipient of a roster-change schedule DM. "new" = the player just added;
 // "opponent" = someone whose matchup now points at the replacement.
@@ -161,6 +162,7 @@ export async function initQueue(): Promise<void> {
   await boss.createQueue("roster.checkin");
   await boss.createQueue("modlog.purge");
   await boss.createQueue("notify.schedule-change");
+  await boss.createQueue("shootout.check");
 
   // One-shot cleanup for retired queues. Their cron schedule rows +
   // accumulated jobs (no worker listens anymore) stay in pg-boss forever
@@ -607,6 +609,20 @@ export async function initQueue(): Promise<void> {
   });
   await boss.schedule("signup.reminder-tick", "0 * * * *");
   console.log("[pg-boss] scheduled signup.reminder-tick hourly");
+
+  // Worker: when a division completes, notify any boundary tie that owes a
+  // shootout (DM both + @-ping in the division channel). Idempotent -- no-ops if
+  // the division isn't complete or the tie's already been notified/played.
+  await boss.work<{ divisionId: string }>(
+    "shootout.check",
+    { batchSize: 1, pollingIntervalSeconds: 15 },
+    async (jobs: Job<{ divisionId: string }>[]) => {
+      for (const job of jobs) {
+        const n = await runShootoutCheck(job.data.divisionId);
+        if (n > 0) console.log(`[shootout.check] sent ${n} notice(s) for division ${job.data.divisionId}`);
+      }
+    },
+  );
 }
 
 // When signups open: kick off the interactive ask blast (audience compute +
@@ -669,6 +685,15 @@ export async function enqueueStandingsRefresh(): Promise<void> {
 export async function enqueueDm(job: DmJob): Promise<void> {
   if (!boss) throw new Error("Queue not initialized — initQueue() must run first");
   await boss.send("notify.dm", job, { retryLimit: 3, retryBackoff: true });
+}
+
+// Division-complete → check for boundary ties owing a shootout. Cheap guard: only
+// enqueue once the division is actually done, so mid-season confirms don't spawn
+// work. Fire-and-forget from the confirm path; the worker re-checks + dedups.
+export async function maybeEnqueueShootoutCheck(divisionId: string): Promise<void> {
+  if (!boss) return;
+  if (!(await isDivisionComplete(divisionId))) return;
+  await boss.send("shootout.check", { divisionId }, { retryLimit: 3, retryBackoff: true });
 }
 
 export async function enqueueAnnounceResult(pairingId: string): Promise<void> {

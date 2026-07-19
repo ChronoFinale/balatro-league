@@ -6,7 +6,7 @@
 import { ChannelType, type TextChannel } from "discord.js";
 import { prisma } from "./db.js";
 import { tryGetDiscordClient } from "./discord.js";
-import { enqueueAnnounceResult } from "./queue.js";
+import { enqueueAnnounceResult, maybeEnqueueShootoutCheck } from "./queue.js";
 import { buildReportEmbed } from "./report-flow.js";
 import { recomputeDivisionStandings } from "./standings-cache.js";
 
@@ -34,6 +34,8 @@ export async function autoConfirmReport(pairingId: string): Promise<void> {
   });
   recomputeDivisionStandings(pairing.divisionId).catch(() => {});
   enqueueAnnounceResult(pairingId).catch(() => {});
+  // Division may have just completed → check for boundary-tie shootouts.
+  maybeEnqueueShootoutCheck(pairing.divisionId).catch(() => {});
 
   // Edit the original embed to reflect the auto-confirm so players
   // see the outcome inline. Drop the buttons; the match is settled.

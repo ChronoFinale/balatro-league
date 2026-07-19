@@ -12,6 +12,7 @@ import { prisma } from "../db.js";
 import { createLeagueMatchInvite } from "../league-match-invite.js";
 import { isDiscordIdBanned, BANNED_MESSAGE } from "../bans.js";
 import { sanitizeName } from "../sanitize.js";
+import { pendingShootoutsForPlayer } from "../shootout.js";
 import type { ButtonHandler, SelectMenuHandler } from "./types.js";
 
 // A player's still-to-play opponents this season: opponents from their PENDING,
@@ -66,6 +67,29 @@ export const leagueMatchesButtons: ButtonHandler = {
       return;
     }
     const me = await getOrCreatePlayer(interaction.user, guildDisplayName(interaction));
+
+    // "Start shootout": offer only opponents this player currently OWES a shootout
+    // (boundary tie in a completed division). Picking one starts a SHOOTOUT_BO1.
+    if (interaction.customId === "league-matches:shootout") {
+      const pending = await pendingShootoutsForPlayer(me.id, season.id);
+      if (pending.length === 0) {
+        await interaction.editReply(
+          "You don't have a shootout to play right now. Shootouts only appear once your division is **finished** and you're **tied** with someone for a promotion or relegation spot (and your head-to-head didn't settle it).",
+        );
+        return;
+      }
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId("league-matches-shootout-pick:")
+        .setPlaceholder("Play your shootout")
+        .addOptions(pending.slice(0, 25).map((p) => ({ label: p.opponentName.slice(0, 100), value: p.opponentId })));
+      const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);
+      await interaction.editReply({
+        content: "**Shootout tiebreaker** — pick who to play. It's a single game; the winner takes the spot.",
+        components: [row],
+      });
+      return;
+    }
+
     const opponents = await remainingOpponents(me.id, season.id);
     if (opponents.length === 0) {
       await interaction.editReply(
@@ -139,6 +163,57 @@ export const leagueMatchesPickSelect: SelectMenuHandler = {
     }
     await interaction.editReply(
       `Match invite sent to **${sanitizeName(opp.displayName)}** — it's in a private thread and they need to accept. Expires in ${result.expiryMinutes} min if not accepted.` +
+        (result.inviteUrl ? `\n${result.inviteUrl}` : ""),
+    );
+  },
+};
+
+// The shootout-dropdown submit. Re-validates (at click time) that the clicker
+// still owes this opponent a shootout — then opens a SHOOTOUT_BO1 invite via the
+// same helper, which is exempt from the schedule gate (tied players often never
+// played each other) and blocks a duplicate if the shootout's already recorded.
+export const leagueMatchesShootoutPickSelect: SelectMenuHandler = {
+  prefix: "league-matches-shootout-pick:",
+  async execute(interaction: StringSelectMenuInteraction) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const oppId = interaction.values[0];
+    if (!oppId) {
+      await interaction.editReply("No opponent selected.");
+      return;
+    }
+    const season = await activePublicSeason();
+    if (!season) {
+      await interaction.editReply("No active season right now.");
+      return;
+    }
+    const me = await getOrCreatePlayer(interaction.user);
+    const owed = (await pendingShootoutsForPlayer(me.id, season.id)).find((p) => p.opponentId === oppId);
+    if (!owed) {
+      await interaction.editReply("That shootout isn't owed anymore — it may already be played. Refresh and try again.");
+      return;
+    }
+    const opp = await prisma.player.findUnique({ where: { id: oppId } });
+    if (!opp) {
+      await interaction.editReply("Couldn't find that opponent anymore — try again.");
+      return;
+    }
+    const result = await createLeagueMatchInvite({
+      client: interaction.client,
+      season: { id: season.id },
+      division: { id: owed.divisionId },
+      me,
+      opp,
+      isShootout: true,
+      channelId: interaction.channelId ?? "",
+      source: "shootout-button",
+      actor: actorFromInteractionUser(interaction.user),
+    });
+    if (!result.ok) {
+      await interaction.editReply(result.error ?? "Couldn't start the shootout.");
+      return;
+    }
+    await interaction.editReply(
+      `Shootout invite sent to **${sanitizeName(opp.displayName)}** — single game, winner takes the spot. It's in a private thread; they need to accept. Expires in ${result.expiryMinutes} min.` +
         (result.inviteUrl ? `\n${result.inviteUrl}` : ""),
     );
   },
