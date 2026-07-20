@@ -130,6 +130,18 @@ function optimize(adj: Set<number>[], mmr: number[], rng: () => number, maxRound
   }
 }
 
+// Resolve a division's scheduled opponents-per-player (the graph degree): its own
+// setting or the season default, clamped to size-1 so it can never exceed
+// "everyone" -- a division at or above size-1 is a full round-robin.
+export function scheduleDegree(
+  opponentsPerPlayer: number | null | undefined,
+  defaultOpponents: number,
+  divisionSize: number,
+): number {
+  const want = opponentsPerPlayer ?? defaultOpponents;
+  return Math.max(0, Math.min(want, divisionSize - 1));
+}
+
 export function generateSchedule(
   players: SchedulePlayer[],
   opts: { degree?: number; seed?: number; passes?: number; restarts?: number } = {},

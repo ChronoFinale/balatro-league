@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 
 export interface PlacementRules {
   topFixedSize: number; // Legendary's hard cap (0 = no cap)
-  roundRobinTopDivisions: number; // how many top divisions play a full round-robin
+  defaultOpponentsPerPlayer: number; // opponents/player a division schedules when it sets no override (clamped to size-1)
   tightenTopTiers: boolean; // Rare 1↔2 and Rare 2↔3 use 1-up/2-down (else symmetric)
   swapThreshold: number; // count-based boundaries swap `bigSwap` when both divisions ≥ this
   baseSwap: number; // normal swap count
@@ -18,10 +18,10 @@ export interface PlacementRules {
 
 export const DEFAULT_PLACEMENT_RULES: PlacementRules = {
   topFixedSize: 6,
-  // Only the single top division plays a full round-robin by default; every other
-  // division defaults to the 4-opponent graph schedule. Admins override any
-  // division individually via the per-division format selector on /admin/divisions.
-  roundRobinTopDivisions: 1,
+  // Divisions schedule 4 opponents/player by default; a division plays everyone
+  // (round-robin) whenever this meets or exceeds its size-1 (so a 5-player division
+  // is round-robin at 4). Admins override any division on /admin/divisions.
+  defaultOpponentsPerPlayer: 4,
   // Simplified rule: Legendary↔Rare 1 is 1-up/1-down (hardcoded for Legendary),
   // every other boundary is a flat 2-up/2-down (tighten off, swap = 2 regardless
   // of division size). Legendary fixed top 6.
@@ -40,7 +40,7 @@ export async function getPlacementRules(): Promise<PlacementRules> {
     const p = JSON.parse(row.value) as Partial<PlacementRules>;
     return {
       topFixedSize: Number.isFinite(p.topFixedSize) ? Math.max(0, Math.floor(p.topFixedSize as number)) : DEFAULT_PLACEMENT_RULES.topFixedSize,
-      roundRobinTopDivisions: Number.isFinite(p.roundRobinTopDivisions) ? Math.max(0, Math.floor(p.roundRobinTopDivisions as number)) : DEFAULT_PLACEMENT_RULES.roundRobinTopDivisions,
+      defaultOpponentsPerPlayer: Number.isFinite(p.defaultOpponentsPerPlayer) ? Math.max(1, Math.floor(p.defaultOpponentsPerPlayer as number)) : DEFAULT_PLACEMENT_RULES.defaultOpponentsPerPlayer,
       tightenTopTiers: typeof p.tightenTopTiers === "boolean" ? p.tightenTopTiers : DEFAULT_PLACEMENT_RULES.tightenTopTiers,
       swapThreshold: Number.isFinite(p.swapThreshold) ? Math.max(1, Math.floor(p.swapThreshold as number)) : DEFAULT_PLACEMENT_RULES.swapThreshold,
       baseSwap: Number.isFinite(p.baseSwap) ? Math.max(0, Math.floor(p.baseSwap as number)) : DEFAULT_PLACEMENT_RULES.baseSwap,
