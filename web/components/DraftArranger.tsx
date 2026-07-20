@@ -44,7 +44,16 @@ export async function DraftArranger({ seasonId, roundId }: { seasonId: string; r
   // discordId. Rookies come back with fromIndex null → shown as NEW.
   const priorByDiscord = new Map<
     string,
-    { idx: number | null; name: string | null; record: string | null; rank: number | null; floor: number | null; floorName: string | null }
+    {
+      idx: number | null;
+      name: string | null;
+      record: string | null;
+      points: number | null;
+      rank: number | null;
+      floor: number | null;
+      floorName: string | null;
+      outcome: "promoted" | "relegated" | "same" | null;
+    }
   >();
   if (roundId) {
     const cont = await loadContinuityPlacement(roundId);
@@ -55,13 +64,23 @@ export async function DraftArranger({ seasonId, roundId }: { seasonId: string; r
           // division, or the relegated spot (placedIdx) if that's lower. null
           // for rookies (no earned division).
           const floor = mm.fromIndex != null ? Math.max(placedIdx, mm.fromIndex) : null;
+          // STATIC outcome: compares the AUTO-placement (placedIdx, from this
+          // continuity build) against last season's division (mm.fromIndex).
+          // Derived once here, from data that never changes as the TO drags
+          // players around afterward -- unlike the live MovementMark (which
+          // compares against the CURRENT/dragged division), this stays pinned
+          // to what actually happened last season.
+          const outcome: "promoted" | "relegated" | "same" | null =
+            mm.fromIndex == null ? null : placedIdx > mm.fromIndex ? "relegated" : placedIdx < mm.fromIndex ? "promoted" : "same";
           priorByDiscord.set(mm.discordId, {
             idx: mm.fromIndex,
             name: mm.fromIndex != null ? cont.divisions[mm.fromIndex]?.name ?? null : null,
             record: mm.standing ? mm.standing.record : null, // W-L-D
+            points: mm.standing?.points ?? null,
             rank: null, // overall finish, filled below
             floor,
             floorName: floor != null ? cont.divisions[floor]?.name ?? null : null,
+            outcome,
           });
         }
       });
@@ -121,9 +140,11 @@ export async function DraftArranger({ seasonId, roundId }: { seasonId: string; r
         priorDivisionGlobalIndex: roundId ? prior?.idx ?? null : undefined,
         priorDivisionName: prior?.name ?? null,
         priorStanding: prior?.record ?? null,
+        priorPoints: prior?.points ?? null,
         priorRank: prior?.rank ?? null,
         floorGlobalIndex: prior?.floor ?? null,
         floorDivisionName: prior?.floorName ?? null,
+        priorOutcome: prior?.outcome ?? null,
       };
     }),
   );

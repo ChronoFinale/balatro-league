@@ -97,7 +97,7 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
   });
 
   // Current standing per player (rank + record) from confirmed matches.
-  const standingByPlayer = new Map<string, { rank: number; record: string }>();
+  const standingByPlayer = new Map<string, { rank: number; record: string; points: number }>();
   for (const d of activeSeason.divisions) {
     const divPlayers = d.members.map((m) => m.player) as unknown as Player[];
     const bo2 = d.matches.filter((m) => m.format === "LEAGUE_BO2");
@@ -106,7 +106,7 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
       .map((m) => ({ playerAId: m.playerAId, playerBId: m.playerBId, winnerId: m.winnerId! }));
     const rows = computeStandings(divPlayers, bo2, shootouts);
     for (const r of rows) {
-      if (r.played > 0) standingByPlayer.set(r.player.id, { rank: r.rank ?? 0, record: `${r.wins}-${r.draws}-${r.losses}` });
+      if (r.played > 0) standingByPlayer.set(r.player.id, { rank: r.rank ?? 0, record: `${r.wins}-${r.draws}-${r.losses}`, points: r.points });
     }
   }
 
@@ -171,7 +171,7 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
         .filter((id): id is string => !!id && !activePlayerIds.has(id)),
     ),
   ];
-  const gapReturner = new Map<string, { owenIndex: number; standingRank: number; divSize: number; standing: { rank: number; record: string } | null }>();
+  const gapReturner = new Map<string, { owenIndex: number; standingRank: number; divSize: number; standing: { rank: number; record: string; points: number } | null }>();
   if (gapIds.length) {
     // Their memberships across ENDED seasons, newest season first.
     const priorMemberships = await prisma.divisionMember.findMany({
@@ -202,7 +202,7 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
           },
         })
       : [];
-    const oldStanding = new Map<string, Map<string, { rank: number; record: string }>>();
+    const oldStanding = new Map<string, Map<string, { rank: number; record: string; points: number }>>();
     const oldDivSize = new Map<string, number>();
     for (const d of oldDivs) {
       oldDivSize.set(d.id, d.members.length);
@@ -212,8 +212,8 @@ export async function loadContinuityPlacement(roundId: string): Promise<Continui
         .filter((m) => m.format === "SHOOTOUT_BO1" && m.winnerId)
         .map((m) => ({ playerAId: m.playerAId, playerBId: m.playerBId, winnerId: m.winnerId! }));
       const rows2 = computeStandings(divPlayers, bo2, shoot);
-      const map = new Map<string, { rank: number; record: string }>();
-      for (const r of rows2) if (r.played > 0) map.set(r.player.id, { rank: r.rank ?? 0, record: `${r.wins}-${r.draws}-${r.losses}` });
+      const map = new Map<string, { rank: number; record: string; points: number }>();
+      for (const r of rows2) if (r.played > 0) map.set(r.player.id, { rank: r.rank ?? 0, record: `${r.wins}-${r.draws}-${r.losses}`, points: r.points });
       oldStanding.set(d.id, map);
     }
     for (const [pid, last] of lastDivByPlayer) {

@@ -52,7 +52,13 @@ export interface EditorMember {
   priorDivisionGlobalIndex?: number | null;
   priorDivisionName?: string | null;
   priorStanding?: string | null; // last-season W-L-D record, e.g. "3-1-0"
+  priorPoints?: number | null; // last-season points total
   priorRank?: number | null; // finish place in their last-season division (5 = 5th)
+  // STATIC outcome from the auto-placement that built this draft (last season's
+  // division vs where continuity originally placed them) -- unlike the live
+  // MovementMark, this never changes when the TO drags the player afterward.
+  // null = no continuity data or a rookie (no earned division).
+  priorOutcome?: "promoted" | "relegated" | "same" | null;
   // The WORST division (highest ladder index) the player is entitled to — their
   // last-season division, or one below if relegated. Dropping them below this
   // means dropping someone who wasn't relegated. null = no floor (rookie).
@@ -559,13 +565,17 @@ export function DraggableDivisionsEditor({
                                   borderRadius: 3,
                                 }}
                               />
-                              {/* Last season: movement + prior division + record + floor warning */}
+                              {/* Last season: movement + static outcome badge + prior division + record + points + floor warning */}
                               <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, overflow: "hidden" }}>
                                 <MovementMark member={m} currentGlobalIndex={d.globalIndex} />
+                                <PriorOutcomeBadge member={m} />
                                 <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                                   {m.priorDivisionName ?? ""}
                                   {m.priorStanding && (
                                     <span className="muted" style={{ marginLeft: 4 }}>{m.priorStanding}</span>
+                                  )}
+                                  {m.priorPoints != null && (
+                                    <span className="muted" style={{ marginLeft: 4 }}>{m.priorPoints} pts</span>
                                   )}
                                 </span>
                                 <FloorWarn member={m} currentGlobalIndex={d.globalIndex} />
@@ -748,6 +758,37 @@ function MovementMark({ member, currentGlobalIndex }: { member: EditorMember; cu
       {sym}
     </span>
   );
+}
+
+// STATIC last-season outcome badge: pinned to the auto-placement's original
+// comparison (last season's division vs where continuity FIRST put them), so
+// it does NOT change when the TO drags the player afterward -- unlike the
+// live MovementMark above, which tracks the CURRENT/dragged division. This is
+// informational only (it's fine to move a relegated player back up), so it
+// stays a small tag rather than a warning. Renders nothing for "same" or no
+// data.
+function PriorOutcomeBadge({ member }: { member: EditorMember }) {
+  if (member.priorOutcome === "relegated") {
+    return (
+      <span
+        title={`Was relegated last season${member.floorDivisionName ? ` (entitled floor: ${member.floorDivisionName})` : ""} -- pinned regardless of where they're dragged.`}
+        style={{ color: "var(--danger)", fontSize: 9, fontWeight: 700 }}
+      >
+        REL
+      </span>
+    );
+  }
+  if (member.priorOutcome === "promoted") {
+    return (
+      <span
+        title="Was promoted last season -- pinned regardless of where they're dragged."
+        style={{ color: "var(--success)", fontSize: 9, fontWeight: 700 }}
+      >
+        PRO
+      </span>
+    );
+  }
+  return null;
 }
 
 // Floor warning: a player below the WORST division they're entitled to (their
