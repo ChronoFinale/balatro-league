@@ -13,6 +13,7 @@ import { env } from "./env.js";
 import { startHealthCheck } from "./healthcheck.js";
 import { startMatchSweep } from "./match-sweep.js";
 import { recordDivisionChannelMessage, startStickyActions } from "./sticky-actions.js";
+import { startDmPanels } from "./dm-panel.js";
 import { startMatchControlBumper } from "./commands/match-buttons.js";
 import { bootstrapPresetsAndPointers } from "./match-config.js";
 import { initQueue, stopQueue } from "./queue.js";
@@ -352,6 +353,7 @@ attachRateLimitLogging(client);
 startHealthCheck();
 startMatchSweep();
 startStickyActions(client);
+startDmPanels(client);
 startMatchControlBumper(client);
 // Start the pg-boss worker AFTER the Discord client is logged in — DM
 // jobs need the client to send. Errors here don't abort the bot.

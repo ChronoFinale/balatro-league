@@ -74,6 +74,7 @@ import { buildScheduleEmbed } from "./schedule-embed.js";
 import { sanitizeName } from "./sanitize.js";
 import { runShootoutCheck, isDivisionComplete } from "./shootout.js";
 import { seasonTimelineLines, parseBufferDays } from "./season-timing.js";
+import { refreshAllDmPanels } from "./dm-panel.js";
 
 // One recipient of a roster-change schedule DM. "new" = the player just added;
 // "opponent" = someone whose matchup now points at the replacement.
@@ -164,6 +165,7 @@ export async function initQueue(): Promise<void> {
   await boss.createQueue("modlog.purge");
   await boss.createQueue("notify.schedule-change");
   await boss.createQueue("shootout.check");
+  await boss.createQueue("dm-panel.blast");
 
   // One-shot cleanup for retired queues. Their cron schedule rows +
   // accumulated jobs (no worker listens anymore) stay in pg-boss forever
@@ -624,6 +626,20 @@ export async function initQueue(): Promise<void> {
       }
     },
   );
+
+  // Worker: send/refresh every active player's DM panel right now, instead of
+  // waiting for the next hourly tick (startDmPanels in dm-panel.ts already
+  // covers steady-state refresh). Used for the season-start blast so a crash
+  // mid-blast doesn't lose players -- pg-boss retries the whole pass, and
+  // sendOrRefreshDmPanel is idempotent per player (edit-in-place once a panel
+  // already exists). batchSize 1 -- this is one long fan-out job, not many
+  // small ones.
+  await boss.work("dm-panel.blast", { batchSize: 1, pollingIntervalSeconds: 15 }, async () => {
+    const client = tryGetDiscordClient();
+    if (!client) throw new Error("Discord client not ready — will retry");
+    const { processed, failed } = await refreshAllDmPanels(client);
+    console.log(`[dm-panel.blast] processed ${processed}, failed ${failed}`);
+  });
 }
 
 // When signups open: kick off the interactive ask blast (audience compute +
@@ -686,6 +702,15 @@ export async function enqueueStandingsRefresh(): Promise<void> {
 export async function enqueueDm(job: DmJob): Promise<void> {
   if (!boss) throw new Error("Queue not initialized — initQueue() must run first");
   await boss.send("notify.dm", job, { retryLimit: 3, retryBackoff: true });
+}
+
+// Season-start (and on-demand) DM-panel blast: send/refresh every active
+// player's panel right away. Enqueued automatically at season kickoff (see
+// announceSeasonStartIfComplete below); also callable directly for a manual
+// admin re-blast. Durable (pg-boss) so a crash mid-blast just resumes.
+export async function enqueueDmPanelBlast(): Promise<void> {
+  if (!boss) throw new Error("Queue not initialized — initQueue() must run first");
+  await boss.send("dm-panel.blast", {}, { retryLimit: 2 });
 }
 
 // Division-complete → check for boundary ties owing a shootout. Cheap guard: only
@@ -1170,6 +1195,12 @@ async function announceSeasonStartIfComplete(seasonId: string): Promise<void> {
   // skipped silently (they'll see it via /standings).
   await queueSeasonOnboardingDms(seasonId).catch((err) =>
     console.warn(`[season.announce] onboarding DMs failed for ${seasonId}:`, err),
+  );
+  // Kick off the per-player DM panel (season deadline + personal standing,
+  // refreshed by edit-in-place forever after) rather than waiting for the
+  // next hourly tick to notice these new active members.
+  await enqueueDmPanelBlast().catch((err) =>
+    console.warn(`[season.announce] dm-panel blast enqueue failed for ${seasonId}:`, err),
   );
 
   const channelId = await getConfig(LeagueConfigKey.AnnouncementsChannelId);
