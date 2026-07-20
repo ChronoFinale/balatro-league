@@ -24,6 +24,9 @@ export interface PlayerStatusSummary {
   message?: string;
   seasonLabel?: string;
   divisionName?: string;
+  // The division's Discord channel, so surfaces like the DM panel can link
+  // straight to it. Null when the division has no channel provisioned yet.
+  divisionChannelId?: string | null;
   tierName?: string;
   rank?: number;
   totalInDivision?: number;
@@ -114,6 +117,7 @@ export async function computeStatusSummaryForPlayer(playerId: string): Promise<P
     kind: "ok",
     seasonLabel: formatSeasonLabel(activeSeason),
     divisionName: div.name,
+    divisionChannelId: div.discordChannelId,
     tierName: div.tier.name,
     rank,
     totalInDivision: rows.length,

@@ -26,6 +26,16 @@ const okSummary: PlayerStatusSummary = {
 };
 
 describe("buildDmPanelLines -- compact panel content", () => {
+  it("links to the player's division channel when one is provisioned", () => {
+    const lines = buildDmPanelLines({ ...okSummary, divisionChannelId: "123456789" }, []);
+    expect(lines.some((l) => l.includes("<#123456789>"))).toBe(true); // clickable channel mention, works in DMs
+  });
+
+  it("omits the channel line when the division has no channel yet", () => {
+    const lines = buildDmPanelLines({ ...okSummary, divisionChannelId: null }, []);
+    expect(lines.some((l) => l.includes("division channel"))).toBe(false);
+  });
+
   it("leads with the timeline lines when present", () => {
     const lines = buildDmPanelLines(okSummary, ["Finish by X", "Buffer note"]);
     expect(lines[0]).toBe("**Your League Panel**");

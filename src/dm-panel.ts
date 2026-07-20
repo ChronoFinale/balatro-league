@@ -134,6 +134,9 @@ export function buildDmPanelLines(summary: PlayerStatusSummary, timelineLines: s
     `${summary.points} pts - ${summary.wins}W ${summary.draws}D ${summary.losses}L (${summary.played} played)`,
   );
   if (summary.movement) lines.push(summary.movement);
+  // Jump straight to their division channel. A <#id> mention renders as a
+  // clickable channel link inside a DM too, so no full URL is needed.
+  if (summary.divisionChannelId) lines.push(`Your division channel: <#${summary.divisionChannelId}>`);
   const remaining = summary.remainingOpponents ?? [];
   lines.push(
     remaining.length ? `${remaining.length} left to play: ${remaining.join(", ")}` : "All your matches are done!",
