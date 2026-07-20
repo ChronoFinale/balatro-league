@@ -9,6 +9,12 @@
 // We only call leaderboard.get_user_rank for channel_id "1" (Ranked).
 // channel_id 2/4/7 are smaller modes (Smallworld, Legacy, …) — the
 // league cares about Ranked for seeding.
+//
+// The API returns MMR but NOT the tier — the site computes that client-side,
+// and the cutoffs shifted +300 at season 7, so the tier is only meaningful
+// relative to its season. See ./balatro-ranks.ts.
+
+import { enhancementTier } from "./balatro-ranks.js";
 
 const TRPC_URL = "https://balatromp.com/api/trpc/leaderboard.get_user_rank";
 const USER_AGENT = "BalatroLeagueBot/1.0 (+https://balatroleague.com)";
@@ -65,7 +71,7 @@ export async function fetchPlayerStats(
       return { stats: null, rawJson: "", error: `HTTP ${res.status}` };
     }
     rawJson = await res.text();
-    return parseRankedResponse(rawJson);
+    return parseRankedResponse(rawJson, season);
   } catch (err) {
     return {
       stats: null,
@@ -76,7 +82,7 @@ export async function fetchPlayerStats(
 }
 
 // Exported for testability + re-parse if the response shape ever shifts.
-export function parseRankedResponse(json: string): FetchResult {
+export function parseRankedResponse(json: string, season: string | null = null): FetchResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);
@@ -97,7 +103,8 @@ export function parseRankedResponse(json: string): FetchResult {
   return {
     stats: {
       rankedMmr: Math.round(record.mmr),
-      rankedTier: mmrToTier(record.mmr),
+      // Season-aware: the `season` arg scopes the MMR->tier cutoffs (see balatro-ranks.ts).
+      rankedTier: enhancementTier(record.mmr, season),
       totalGames: record.totalgames,
       winRatePct: Math.round((record.winrate ?? 0) * 100),
       peakMmr: typeof record.peak_mmr === "number" ? Math.round(record.peak_mmr) : null,
@@ -146,14 +153,3 @@ export async function detectCurrentBmpSeason(): Promise<string | null> {
   }
 }
 
-// Threshold-based Balatro MP tiers. Higher tiers (Foil top-50, Holographic
-// top-10, Polychrome top-5, Negative top-1) are placement-based, not MMR
-// thresholds — we don't compute those here; high-MMR players just read
-// "Glass" and that's fine for seeding purposes.
-function mmrToTier(mmr: number): string {
-  if (mmr < 250) return "Stone";
-  if (mmr < 320) return "Steel";
-  if (mmr < 460) return "Gold";
-  if (mmr < 620) return "Lucky";
-  return "Glass";
-}
