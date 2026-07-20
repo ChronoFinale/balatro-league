@@ -307,7 +307,15 @@ export async function loadBuildSeasonPage(roundId: string): Promise<BuildSeasonR
   // Last-season rank for returners.
   const returnerPlayerIds = existingPlayers.map((p) => p.id);
   const priorMemberships = returnerPlayerIds.length === 0 ? [] : await prisma.divisionMember.findMany({
-    where: { playerId: { in: returnerPlayerIds }, status: "ACTIVE" },
+    where: {
+      playerId: { in: returnerPlayerIds },
+      status: "ACTIVE",
+      // ONLY finished seasons count as "prior". The season being built already
+      // has memberships and the NEWEST startedAt, so without this filter it wins
+      // the most-recent comparison below and becomes its own "last season" --
+      // yielding a blank prior column (no standings played, finalGlobalRank null).
+      division: { season: { endedAt: { not: null } } },
+    },
     include: {
       // finalGlobalRank doesn't come through `include` by default —
       // pull it explicitly via `select` would force restating every
