@@ -17,6 +17,7 @@ import { loadDivisionStandings, loadManyDivisionStandings } from "@/lib/standing
 import { formatSeasonLabel } from "@/lib/format-season";
 import { getPlacementRules } from "@/lib/placement-rules";
 import { divisionMovement } from "@/lib/owen-placement";
+import { scheduleDegree } from "@/lib/schedule";
 
 export type StandingsRowsForDivision = Awaited<ReturnType<typeof loadDivisionStandings>>;
 
@@ -45,7 +46,9 @@ export interface StandingsDivisionSummary {
   // this division plays. promote/relegate are 0 at the top/bottom of the ladder.
   promote: number;
   relegate: number;
-  format: "round-robin" | "graph";
+  // "round-robin" when the division's opponents-per-player degree meets or
+  // exceeds size-1 (everyone plays everyone); otherwise "<N> opponents".
+  format: string;
   // Each active player's TOTAL scheduled league matches — their assigned-opponent
   // count in a locked (graph) schedule, else N-1 for a full round-robin. The
   // clinch predictor needs this so "games remaining" is right per format.
@@ -109,7 +112,7 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
               id: true,
               name: true,
               groupNumber: true,
-              roundRobin: true,
+              opponentsPerPlayer: true,
               promoteCount: true,
               relegateCount: true,
               members: { select: { playerId: true, status: true } },
@@ -213,7 +216,7 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
     t.divisions.map((d) => ({
       id: d.id,
       size: d.members.filter((m) => m.status === "ACTIVE").length,
-      roundRobin: d.roundRobin,
+      opponentsPerPlayer: d.opponentsPerPlayer,
       promoteCount: Math.max(0, d.promoteCount),
       relegateCount: Math.max(0, d.relegateCount),
     })),
@@ -222,15 +225,11 @@ export async function loadStandingsPageData(opts: { showBmpMmr: boolean }): Prom
     ladder.map((l, i) => {
       const promote = i > 0 ? Math.min(l.promoteCount, l.size) : 0;
       const relegate = i < ladder.length - 1 ? Math.min(l.relegateCount, l.size) : 0;
-      return [
-        l.id,
-        {
-          promote,
-          relegate,
-          // Per-division format override, else the season default (top division = round-robin).
-          format: ((l.roundRobin ?? i < rules.roundRobinTopDivisions) ? "round-robin" : "graph") as "round-robin" | "graph",
-        },
-      ];
+      // Per-division opponents-per-player override, else the season default,
+      // clamped to size-1 -- "round-robin" once that meets/exceeds everyone.
+      const deg = scheduleDegree(l.opponentsPerPlayer, rules.defaultOpponentsPerPlayer, l.size);
+      const format = deg >= l.size - 1 ? "round-robin" : `${deg} opponents`;
+      return [l.id, { promote, relegate, format }];
     }),
   );
 

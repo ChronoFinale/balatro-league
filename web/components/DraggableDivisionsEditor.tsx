@@ -20,7 +20,7 @@
 
 import Link from "next/link";
 import { useMemo, useRef, useState, useTransition } from "react";
-import { generateSchedule } from "@/lib/schedule";
+import { generateSchedule, scheduleDegree } from "@/lib/schedule";
 import { moveDivisionMember, moveDivisionMemberToPosition, setPlayerHiddenMmr } from "@/app/admin/seasons/actions";
 import { addExistingPlayerToDivision, addLatePlayerToDivision, deleteDivision } from "@/app/admin/seasons/actions";
 import { PlayerSearch, type PlayerOption } from "@/components/PlayerSearch";
@@ -66,6 +66,9 @@ export interface EditorDivision {
   tierId: string;
   // Position in the ladder (0 = top). Set where we want live ↑/↓ markers.
   globalIndex?: number;
+  // This division's own opponents-per-player override; null/undefined = use
+  // the season default passed as `defaultOpponentsPerPlayer`.
+  opponentsPerPlayer?: number | null;
 }
 
 export interface EditorTier {
@@ -120,14 +123,14 @@ export function DraggableDivisionsEditor({
   divisions,
   initialMembers,
   allPlayers = [],
-  roundRobinTop = 2,
+  defaultOpponentsPerPlayer = 4,
 }: {
   seasonId: string;
   tiers: EditorTier[];
   divisions: EditorDivision[];
   initialMembers: EditorMember[];
   allPlayers?: PlayerOption[];
-  roundRobinTop?: number; // top N divisions are round-robin (for the schedule view)
+  defaultOpponentsPerPlayer?: number; // season default opponents/player (for the schedule preview)
 }) {
   const [members, setMembers] = useState<EditorMember[]>(initialMembers);
   const [showSchedules, setShowSchedules] = useState(false);
@@ -334,8 +337,9 @@ export function DraggableDivisionsEditor({
 
   const nameById = useMemo(() => new Map(members.map((m) => [m.playerId, m.playerName])), [members]);
   // Projected schedule per division for the CURRENT arrangement (recomputed live
-  // as you drag): top `roundRobinTop` divisions are round-robin, the rest a
-  // balanced 4-opponent graph. Unseeded MMRs fall back to the division average.
+  // as you drag): each division's own opponents-per-player override, or the
+  // season default, clamped to size-1. Unseeded MMRs fall back to the division
+  // average.
   const scheduleByDiv = useMemo(() => {
     const out = new Map<string, { opponents: Map<string, string[]>; sos: Map<string, number> }>();
     if (!showSchedules) return out;
@@ -347,12 +351,12 @@ export function DraggableDivisionsEditor({
       const seeded = mems.map((m) => m.hiddenMmr).filter((x): x is number => x != null);
       const avg = seeded.length ? Math.round(seeded.reduce((a, b) => a + b, 0) / seeded.length) : 1000;
       const sp = mems.map((m) => ({ id: m.playerId, mmr: m.hiddenMmr ?? avg }));
-      const degree = d.globalIndex != null && d.globalIndex < roundRobinTop ? mems.length - 1 : 4;
+      const degree = scheduleDegree(d.opponentsPerPlayer ?? null, defaultOpponentsPerPlayer, mems.length);
       const r = generateSchedule(sp, { degree, seed: 1 });
       out.set(d.id, { opponents: r.opponents, sos: r.sos });
     }
     return out;
-  }, [members, divisions, showSchedules, roundRobinTop]);
+  }, [members, divisions, showSchedules, defaultOpponentsPerPlayer]);
 
   return (
     <div

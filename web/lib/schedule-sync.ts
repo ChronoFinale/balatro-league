@@ -9,7 +9,7 @@ import "server-only";
 // roster action and to expose as a manual "re-sync" button.
 
 import { prisma } from "@/lib/prisma";
-import { planDivisionResync, type ExistingMatch } from "@/lib/schedule";
+import { planDivisionResync, scheduleDegree, type ExistingMatch } from "@/lib/schedule";
 import { getPlacementRules } from "@/lib/placement-rules";
 
 export async function resyncSeasonSchedules(seasonId: string): Promise<{ pruned: number; created: number }> {
@@ -32,7 +32,7 @@ export async function resyncSeasonSchedules(seasonId: string): Promise<{ pruned:
         orderBy: [{ tier: { position: "asc" } }, { groupNumber: "asc" }],
         select: {
           id: true,
-          roundRobin: true,
+          opponentsPerPlayer: true,
           members: { where: { status: "ACTIVE" }, select: { playerId: true } },
           matches: {
             where: { format: "LEAGUE_BO2" },
@@ -56,14 +56,16 @@ export async function resyncSeasonSchedules(seasonId: string): Promise<{ pruned:
     const d = season.divisions[idx]!;
     const memberIds = d.members.map((m) => m.playerId);
     const matches = d.matches as ExistingMatch[];
-    // Respect the per-division format OVERRIDE (Division.roundRobin); only fall
-    // back to the season default (top-N divisions are round-robin) when it's
-    // unset. This MUST match lockOneDivision / lockDivisionSchedules — otherwise
-    // a resync re-corrupts an overridden division (e.g. a top division switched
-    // to graph gets filled right back up to a full round-robin).
-    // (<2 members → target 0: prune-only, no pairs to make.)
-    const isRoundRobin = d.roundRobin ?? idx < rules.roundRobinTopDivisions;
-    const target = memberIds.length < 2 ? 0 : isRoundRobin ? memberIds.length - 1 : 4;
+    // Respect the per-division opponentsPerPlayer OVERRIDE; only fall back to the
+    // season default when it's unset. This MUST match lockOneDivision /
+    // lockDivisionSchedules -- otherwise a resync re-corrupts an overridden
+    // division (e.g. a division switched to a smaller graph gets filled right
+    // back up to a full round-robin).
+    // (<2 members -> target 0: prune-only, no pairs to make.)
+    const target =
+      memberIds.length < 2
+        ? 0
+        : scheduleDegree(d.opponentsPerPlayer, rules.defaultOpponentsPerPlayer, memberIds.length);
     const plan = planDivisionResync(memberIds, matches, target);
 
     if (plan.pruneIds.length) {

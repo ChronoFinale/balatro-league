@@ -12,7 +12,7 @@
 // there's one editing surface, not two.
 
 import { useMemo, useState } from "react";
-import { generateSchedule, summariseSchedule } from "@/lib/schedule";
+import { generateSchedule, scheduleDegree, summariseSchedule } from "@/lib/schedule";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyId } from "@/components/CopyId";
 import type { ContinuityDivision } from "@/lib/loaders/continuity";
@@ -24,7 +24,7 @@ export function ContinuityPreview({
   basedOnSeason,
   roundId,
   onBuild,
-  roundRobinTop = 2,
+  defaultOpponentsPerPlayer = 4,
 }: {
   divisions: ContinuityDivision[];
   returnerCount: number;
@@ -33,7 +33,7 @@ export function ContinuityPreview({
   roundId?: string;
   // Server action: commit this arrangement as a draft season (then drag-edit it).
   onBuild?: (formData: FormData) => void | Promise<void>;
-  roundRobinTop?: number; // how many top divisions are round-robin
+  defaultOpponentsPerPlayer?: number; // season default opponents/player (no per-division override exists pre-build)
 }) {
   const [showSchedules, setShowSchedules] = useState(false);
   const names = useMemo(() => divisions.map((d) => d.name), [divisions]);
@@ -47,6 +47,10 @@ export function ContinuityPreview({
       const backCount = members.filter((m) => !m.isRookie).length;
       const newCount = members.length - backCount;
       const avgMmr = members.length ? Math.round(members.reduce((s, m) => s + m.mmr, 0) / members.length) : 0;
+      // No per-division override exists yet (this is a pre-build preview) --
+      // every division uses the season default, clamped to size-1.
+      const degree = scheduleDegree(null, defaultOpponentsPerPlayer, members.length);
+      const isRoundRobin = degree >= members.length - 1;
       let schedule: {
         opponents: Map<string, string[]>;
         sos: Map<string, number>;
@@ -54,16 +58,13 @@ export function ContinuityPreview({
       } | null = null;
       if (showSchedules && members.length >= 2) {
         const sp = members.map((m) => ({ id: m.discordId, mmr: m.mmr }));
-        // Top `roundRobinTop` divisions play a full round-robin; lower divisions
-        // use the balanced 4-opponent graph.
-        const degree = divIdx < roundRobinTop ? members.length - 1 : 4;
         const r = generateSchedule(sp, { degree, seed: 1 });
         schedule = { opponents: r.opponents, sos: r.sos, summary: summariseSchedule(r, sp, degree) };
       }
       const nameOf = new Map(members.map((m) => [m.discordId, m.displayName]));
-      return { name: d.name, divIdx, members, backCount, newCount, avgMmr, schedule, nameOf };
+      return { name: d.name, divIdx, members, backCount, newCount, avgMmr, isRoundRobin, schedule, nameOf };
     });
-  }, [divisions, showSchedules, roundRobinTop]);
+  }, [divisions, showSchedules, defaultOpponentsPerPlayer]);
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -101,10 +102,10 @@ export function ContinuityPreview({
             {d.name}{" "}
             <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>
               — {d.members.length} players ({d.backCount} back · {d.newCount} new) · avg MMR {d.avgMmr}
-              {d.divIdx < roundRobinTop ? " · round-robin" : ""}
+              {d.isRoundRobin ? " · round-robin" : ""}
               {d.schedule ? ` · SoS ${d.schedule.summary.minSos}–${d.schedule.summary.maxSos} (spread ${d.schedule.summary.spread})` : ""}
             </span>
-            {d.divIdx >= roundRobinTop && d.members.length < 5 && (
+            {!d.isRoundRobin && d.members.length < 5 && (
               <span style={{ fontWeight: 400, marginLeft: 8, color: "var(--accent)", fontSize: 12 }}>
                 ⚠ thin (&lt;5)
               </span>

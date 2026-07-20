@@ -7,7 +7,7 @@ import { AdminNav } from "@/components/AdminNav";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { SubmitButton } from "@/components/SubmitButton";
-import { resyncSchedules, regenerateSchedules, regenerateDivisionSchedule, setDivisionFormat, setDivisionPromoteRelegate } from "@/app/admin/seasons/actions";
+import { resyncSchedules, regenerateSchedules, regenerateDivisionSchedule, setDivisionOpponents, setDivisionPromoteRelegate } from "@/app/admin/seasons/actions";
 import { Input } from "@/components/ui/input";
 import { Callout } from "@/components/Callout";
 import { ReplacePlayerSection } from "@/components/ReplacePlayerSection";
@@ -116,17 +116,20 @@ export default async function AdminDivisionsPage({
                               </div>
                             </Link>
                             {season.scheduleLocked && (
-                              <form action={setDivisionFormat} style={{ display: "flex", gap: 4 }}>
+                              <form action={setDivisionOpponents} style={{ display: "flex", gap: 4, alignItems: "center" }}>
                                 <input type="hidden" name="divisionId" value={d.id} />
-                                <select
-                                  name="roundRobin"
-                                  defaultValue={d.roundRobin === true ? "rr" : d.roundRobin === false ? "graph" : ""}
-                                  style={{ flex: 1, fontSize: 11, padding: "4px 6px", borderRadius: 6, border: "1px solid var(--border, rgba(255,255,255,0.12))", background: "var(--surface-2, rgba(255,255,255,0.05))", color: "var(--text)" }}
-                                >
-                                  <option value="">Format: default (top = round robin)</option>
-                                  <option value="rr">🔁 Round robin (everyone)</option>
-                                  <option value="graph">🎯 4 opponents</option>
-                                </select>
+                                <span className="muted" style={{ fontSize: 11 }} title="Opponents scheduled per player. Blank = season default; a number at or above (players - 1) plays a full round-robin.">
+                                  opponents/player
+                                </span>
+                                <Input
+                                  type="number"
+                                  name="opponentsPerPlayer"
+                                  min={1}
+                                  max={30}
+                                  placeholder="default"
+                                  defaultValue={d.opponentsPerPlayer ?? ""}
+                                  style={{ width: 64, fontSize: 11, padding: "1px 4px" }}
+                                />
                                 <Button type="submit" variant="secondary" size="sm">Set</Button>
                               </form>
                             )}

@@ -122,7 +122,7 @@ export default async function PlacementPreviewPage({
             basedOnSeason={continuity.basedOnSeason}
             roundId={round.id}
             onBuild={buildContinuitySeason}
-            roundRobinTop={rules.roundRobinTopDivisions}
+            defaultOpponentsPerPlayer={rules.defaultOpponentsPerPlayer}
           />
         </>
       );
@@ -208,7 +208,7 @@ export default async function PlacementPreviewPage({
             <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 13 }}>
               ⚙ Promotion &amp; relegation rules
               <span className="muted" style={{ fontWeight: 400, marginLeft: 8, fontSize: 12 }}>
-                top {rules.topFixedSize || "—"} · {rules.roundRobinTopDivisions} round-robin · swap {rules.baseSwap}/{rules.bigSwap}@≥{rules.swapThreshold}
+                top {rules.topFixedSize || "—"} · {rules.defaultOpponentsPerPlayer} opponents/player default · swap {rules.baseSwap}/{rules.bigSwap}@≥{rules.swapThreshold}
               </span>
             </summary>
             <form action={savePlacementRules} style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap", marginTop: 10 }}>
@@ -218,8 +218,8 @@ export default async function PlacementPreviewPage({
                 <Input type="number" name="topFixedSize" defaultValue={rules.topFixedSize} min={0} max={50} style={{ width: 80 }} />
               </label>
               <label style={{ fontSize: 12, display: "grid", gap: 2 }} className="muted">
-                Round-robin top divisions
-                <Input type="number" name="roundRobinTopDivisions" defaultValue={rules.roundRobinTopDivisions} min={0} max={10} style={{ width: 80 }} />
+                Default opponents per player
+                <Input type="number" name="defaultOpponentsPerPlayer" defaultValue={rules.defaultOpponentsPerPlayer} min={1} max={30} style={{ width: 80 }} />
               </label>
               <label style={{ fontSize: 12, display: "grid", gap: 2 }} className="muted">
                 Swap when both divisions ≥

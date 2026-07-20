@@ -27,7 +27,7 @@ export interface AdminDivisionsTier {
     targetSize: number;
     confirmedPairingCount: number;
     expectedPairingCount: number;
-    roundRobin: boolean | null; // null = use the season default (top-N rule)
+    opponentsPerPlayer: number | null; // null = use the season default
     promoteCount: number;
     relegateCount: number;
   }>;
@@ -260,7 +260,7 @@ export async function loadAdminDivisionsIndex(): Promise<AdminDivisionsPageData>
               id: true,
               name: true,
               targetSize: true,
-              roundRobin: true,
+              opponentsPerPlayer: true,
               promoteCount: true,
               relegateCount: true,
               members: { select: { status: true, playerId: true } },
@@ -294,7 +294,7 @@ export async function loadAdminDivisionsIndex(): Promise<AdminDivisionsPageData>
         targetSize: d.targetSize ?? season.targetGroupSize,
         confirmedPairingCount: d.matches.length,
         expectedPairingCount: expectedByDivision.get(d.id) ?? 0,
-        roundRobin: d.roundRobin,
+        opponentsPerPlayer: d.opponentsPerPlayer,
         promoteCount: d.promoteCount,
         relegateCount: d.relegateCount,
       };

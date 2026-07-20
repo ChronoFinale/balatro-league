@@ -876,10 +876,10 @@ interface WelcomeRefreshJob {
 // The division channel's welcome/onboarding message. Shared by the bootstrap
 // (initial post) and /league refresh-welcome (edit in place). Format-aware: a
 // pre-created schedule that ISN'T a full round-robin means each player has an
-// ASSIGNED subset of opponents (the graph); a full round-robin (top divisions) or
-// no locked schedule (legacy) = play everyone.
+// ASSIGNED subset of opponents (the graph); a full round-robin or no locked
+// schedule (legacy) = play everyone.
 export async function renderDivisionWelcome(
-  div: { id: string; name: string; roundRobin?: boolean | null; members: { player: { discordId: string } }[] },
+  div: { id: string; name: string; members: { player: { discordId: string } }[] },
   seasonLabel: string,
   roleId: string | null,
 ): Promise<string> {
@@ -891,14 +891,17 @@ export async function renderDivisionWelcome(
   const N = div.members.length;
   const rrTotal = (N * (N - 1)) / 2;
   const lockedCount = await prisma.match.count({ where: { divisionId: div.id, format: "LEAGUE_BO2" } });
-  // Format: the division's EXPLICIT setting if it has one (same source as the
-  // standings + the schedule generator, so they always agree) — else inferred
-  // from the match count. roundRobin === false means the 4-opponent graph.
-  const assignedSubset =
-    div.roundRobin != null ? div.roundRobin === false : lockedCount > 0 && lockedCount < rrTotal;
+  // The bot has no placement-rules / opponentsPerPlayer field to read (that's
+  // web-only), so the actual scheduled-opponent count is inferred from the
+  // locked schedule itself: it's a REGULAR graph (every player has the same
+  // degree by construction), so 2*matches/N recovers each player's opponent
+  // count exactly without a per-player query. No locked schedule yet (legacy /
+  // not-built-yet) falls back to "play everyone".
+  const deg = lockedCount > 0 && N > 0 ? Math.round((2 * lockedCount) / N) : null;
+  const assignedSubset = deg != null && deg < N - 1;
   const playBullet = assignedSubset
-    ? `• Play **4 other people** (2 games each) — run \`/schedule\` to see exactly who you play.`
-    : `• Play **every other person** in this list once — 2 games each (**${N - 1} matchups**, ${rrTotal} total in this division).`;
+    ? `- Play **${deg} other people** (2 games each) - run \`/schedule\` to see exactly who you play.`
+    : `- Play **every other person** in this list once - 2 games each (**${N - 1} matchups**, ${rrTotal} total in this division).`;
   const queueChannelId = await getConfig(LeagueConfigKey.LeagueQueueChannelId);
   const queueRef = queueChannelId ? `<#${queueChannelId}>` : "#league-queue";
   const seasonRow = await prisma.division.findUnique({
@@ -947,7 +950,6 @@ export async function refreshDivisionWelcomes(
     select: {
       id: true,
       name: true,
-      roundRobin: true,
       discordChannelId: true,
       discordRoleId: true,
       welcomeMessageId: true,

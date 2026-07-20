@@ -22,7 +22,7 @@ export async function savePlacementRules(formData: FormData) {
   await setPlacementRules(
     {
       topFixedSize: num("topFixedSize", 0, 6),
-      roundRobinTopDivisions: num("roundRobinTopDivisions", 0, 2),
+      defaultOpponentsPerPlayer: num("defaultOpponentsPerPlayer", 1, 4), // dflt 4 matches DEFAULT_PLACEMENT_RULES
       tightenTopTiers: formData.get("tightenTopTiers") != null,
       swapThreshold: num("swapThreshold", 1, 8),
       baseSwap: num("baseSwap", 0, 1),

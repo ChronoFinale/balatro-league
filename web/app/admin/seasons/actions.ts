@@ -496,8 +496,8 @@ export async function resyncSchedules(formData: FormData) {
 }
 
 // Wipe the pre-created schedule and rebuild it from scratch with the CURRENT
-// placement rules + roster (e.g. after changing roundRobinTopDivisions, or adding
-// players). Only safe BEFORE any games are played/reported — guarded so it refuses
+// placement rules + roster (e.g. after changing defaultOpponentsPerPlayer, or
+// adding players). Only safe BEFORE any games are played/reported — guarded so it refuses
 // once a single LEAGUE_BO2 match has a result. Unlike resync (which patches), this
 // regenerates the SoS-balanced graph cleanly, so everyone gets an even slate.
 export async function regenerateSchedules(formData: FormData) {
@@ -571,26 +571,27 @@ export async function regenerateDivisionSchedule(formData: FormData) {
   redirect(`/admin/divisions?ok=regenerated-${created}`);
 }
 
-// Set ONE division's schedule format directly: round-robin (play everyone),
-// 4-opponent graph, or default (fall back to the season's top-N rule). Pair with
-// the per-division Regenerate to apply.
-export async function setDivisionFormat(formData: FormData) {
+// Set ONE division's opponents-per-player override directly: a specific number
+// (>= size-1 becomes a full round-robin), or blank for default (fall back to the
+// season's default opponents/player). Pair with the per-division Regenerate to apply.
+export async function setDivisionOpponents(formData: FormData) {
   const { user } = await requireAdmin();
   const divisionId = String(formData.get("divisionId") ?? "");
-  const value = String(formData.get("roundRobin") ?? "");
+  const raw = String(formData.get("opponentsPerPlayer") ?? "").trim();
   if (!divisionId) redirect("/admin/divisions?err=missing-fields");
-  const roundRobin = value === "rr" ? true : value === "graph" ? false : null;
+  const parsed = raw === "" ? null : Number.parseInt(raw, 10);
+  const opponentsPerPlayer = parsed != null && Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 
   const div = await prisma.division.findUnique({ where: { id: divisionId }, select: { name: true } });
-  await prisma.division.update({ where: { id: divisionId }, data: { roundRobin } });
+  await prisma.division.update({ where: { id: divisionId }, data: { opponentsPerPlayer } });
 
   recordAudit({
     actor: actorFromAdminUser(user),
     action: "division.set-format",
     targetType: "Division",
     targetId: divisionId,
-    summary: `Set ${div?.name ?? divisionId} format: ${roundRobin === null ? "default" : roundRobin ? "round-robin" : "4-opponent graph"}`,
-    metadata: { divisionId, roundRobin },
+    summary: `Set ${div?.name ?? divisionId} opponents/player: ${opponentsPerPlayer === null ? "default" : opponentsPerPlayer}`,
+    metadata: { divisionId, opponentsPerPlayer },
   });
 
   revalidatePath("/admin/divisions");
@@ -626,24 +627,24 @@ export async function setDivisionPromoteRelegate(formData: FormData) {
   redirect("/admin/divisions?ok=rules-saved");
 }
 
-// Set how many TOP divisions play a full round-robin (e.g. 1 = only Legendary;
-// Rare 1 and below become 4-opponent graphs). Editable from /admin/divisions so
-// it can be changed for a live (pre-kickoff) season; pair it with Regenerate.
-export async function setRoundRobinTopDivisions(formData: FormData) {
+// Set the season's default opponents-per-player (used by any division that has
+// no override set). Editable from /admin/divisions so it can be changed for a
+// live (pre-kickoff) season; pair it with Regenerate.
+export async function setDefaultOpponentsPerPlayer(formData: FormData) {
   const { user } = await requireAdmin();
-  const n = Number.parseInt(String(formData.get("roundRobinTopDivisions")), 10);
-  if (!Number.isFinite(n) || n < 0) redirect("/admin/divisions?err=missing-fields");
+  const n = Number.parseInt(String(formData.get("defaultOpponentsPerPlayer")), 10);
+  if (!Number.isFinite(n) || n < 1) redirect("/admin/divisions?err=missing-fields");
 
   const current = await getPlacementRules();
-  await setPlacementRules({ ...current, roundRobinTopDivisions: Math.max(0, n) }, user.discordId);
+  await setPlacementRules({ ...current, defaultOpponentsPerPlayer: Math.max(1, n) }, user.discordId);
 
   recordAudit({
     actor: actorFromAdminUser(user),
-    action: "placement-rules.set-round-robin-top",
+    action: "placement-rules.set-default-opponents",
     targetType: "LeagueConfig",
     targetId: "placement_rules",
-    summary: `Set round-robin top divisions: ${current.roundRobinTopDivisions} → ${Math.max(0, n)}`,
-    metadata: { previous: current.roundRobinTopDivisions, next: Math.max(0, n) },
+    summary: `Set default opponents/player: ${current.defaultOpponentsPerPlayer} -> ${Math.max(1, n)}`,
+    metadata: { previous: current.defaultOpponentsPerPlayer, next: Math.max(1, n) },
   });
 
   revalidatePath("/admin/divisions");

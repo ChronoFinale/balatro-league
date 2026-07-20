@@ -92,7 +92,13 @@ export async function DraftArranger({ seasonId, roundId }: { seasonId: string; r
   }));
   // globalIndex = position in the draft ladder (divisions come back ordered by
   // tier position then group number), so it matches the continuity fromIndex.
-  const editorDivisions = season.divisions.map((d, i) => ({ id: d.id, name: d.name, tierId: d.tierId, globalIndex: i }));
+  const editorDivisions = season.divisions.map((d, i) => ({
+    id: d.id,
+    name: d.name,
+    tierId: d.tierId,
+    globalIndex: i,
+    opponentsPerPlayer: d.opponentsPerPlayer,
+  }));
   const editorMembers: EditorMember[] = season.divisions.flatMap((d) =>
     d.members.map((m) => {
       const ctx = memberContext.get(m.player.id);
@@ -147,7 +153,7 @@ export async function DraftArranger({ seasonId, roundId }: { seasonId: string; r
         divisions={editorDivisions}
         initialMembers={editorMembers}
         allPlayers={allPlayers}
-        roundRobinTop={rules.roundRobinTopDivisions}
+        defaultOpponentsPerPlayer={rules.defaultOpponentsPerPlayer}
       />
     </div>
   );

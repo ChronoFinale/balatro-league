@@ -1,15 +1,15 @@
 import "server-only";
 
 // Lock in each division's schedule at activation: generate the assigned-opponent
-// graph (4 opponents per player; Legendary + Rare 1 play a full round-robin) and
-// persist it as PENDING 0–0 Match rows. After this, "your schedule" is real data
+// graph (each division's own opponents-per-player count, or the season default,
+// clamped to size-1) and persist it as PENDING 0-0 Match rows. After this, "your schedule" is real data
 // — and because reporting find-or-creates a match by (division, players, format),
 // a report just UPDATES the pre-created row, so nothing about /start-match or
 // reporting breaks. Idempotent: existing matches (incl. already-played ones) are
 // never touched.
 
 import { prisma } from "@/lib/prisma";
-import { generateSchedule } from "@/lib/schedule";
+import { generateSchedule, scheduleDegree } from "@/lib/schedule";
 import { getPlacementRules } from "@/lib/placement-rules";
 
 export async function lockDivisionSchedules(seasonId: string): Promise<{ created: number; divisions: number }> {
@@ -45,11 +45,10 @@ export async function lockDivisionSchedules(seasonId: string): Promise<{ created
     const avg = seeded.length ? Math.round(seeded.reduce((a, b) => a + b, 0) / seeded.length) : 1000;
     const sp = members.map((m) => ({ id: m.id, mmr: m.hiddenMmr ?? avg }));
 
-    // Format: the division's own setting if it has one, else the season default
-    // (top N divisions are round-robin). Round-robin = play everyone; else a
-    // balanced 4-opponent graph (collapses to round-robin if the division is ≤ 5).
-    const roundRobin = d.roundRobin ?? idx < rules.roundRobinTopDivisions;
-    const degree = roundRobin ? members.length - 1 : 4;
+    // Format: the division's own opponents-per-player setting, or the season
+    // default, clamped to size-1 (so a division at or above that count plays a
+    // full round-robin, and small divisions collapse to round-robin automatically).
+    const degree = scheduleDegree(d.opponentsPerPlayer, rules.defaultOpponentsPerPlayer, members.length);
     const { opponents } = generateSchedule(sp, { degree, seed: 1 });
 
     // Dedupe to canonical pairs (A.id < B.id, matching the Match convention).
@@ -85,17 +84,17 @@ export async function lockDivisionSchedules(seasonId: string): Promise<{ created
   return { created, divisions: divisionsWithSchedule };
 }
 
-// Regenerate ONE division's schedule (round-robin or 4-opponent graph per the
-// current rules + the division's ladder position). Lets a rule/MMR change be
-// applied to a single division without rebuilding the rest of the season. The
-// caller deletes that division's pre-created matches first.
+// Regenerate ONE division's schedule (its own opponents-per-player setting, or
+// the season default, per scheduleDegree). Lets a rule/MMR change be applied to
+// a single division without rebuilding the rest of the season. The caller
+// deletes that division's pre-created matches first.
 export async function lockOneDivision(divisionId: string): Promise<number> {
   const rules = await getPlacementRules();
   const division = await prisma.division.findUnique({
     where: { id: divisionId },
     select: {
       seasonId: true,
-      roundRobin: true,
+      opponentsPerPlayer: true,
       members: { where: { status: "ACTIVE" }, select: { player: { select: { id: true, hiddenMmr: true } } } },
     },
   });
@@ -103,20 +102,10 @@ export async function lockOneDivision(divisionId: string): Promise<number> {
   const members = division.members.map((m) => m.player);
   if (members.length < 2) return 0;
 
-  // Ladder index = this division's position among the season's divisions (tier
-  // position, then group) — drives round-robin (top N) vs 4-opponent graph.
-  const ladder = await prisma.division.findMany({
-    where: { seasonId: division.seasonId },
-    orderBy: [{ tier: { position: "asc" } }, { groupNumber: "asc" }],
-    select: { id: true },
-  });
-  const idx = ladder.findIndex((d) => d.id === divisionId);
-
   const seeded = members.map((m) => m.hiddenMmr).filter((x): x is number => x != null);
   const avg = seeded.length ? Math.round(seeded.reduce((a, b) => a + b, 0) / seeded.length) : 1000;
   const sp = members.map((m) => ({ id: m.id, mmr: m.hiddenMmr ?? avg }));
-  const roundRobin = division.roundRobin ?? (idx >= 0 && idx < rules.roundRobinTopDivisions);
-  const degree = roundRobin ? members.length - 1 : 4;
+  const degree = scheduleDegree(division.opponentsPerPlayer, rules.defaultOpponentsPerPlayer, members.length);
   const { opponents } = generateSchedule(sp, { degree, seed: 1 });
 
   const pairs = new Set<string>();

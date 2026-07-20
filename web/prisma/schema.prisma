@@ -621,11 +621,12 @@ model Division {
   // bottom never relegates — those counts are ignored there.)
   promoteCount     Int     @default(1)
   relegateCount    Int     @default(1)
-  // Per-division schedule format: true = full round-robin (play everyone), false =
-  // 4-opponent graph. NULL = fall back to the season's roundRobinTopDivisions rule
-  // (the legacy "top N divisions are round-robin" default). Set explicitly to
-  // configure a single division's format directly.
-  roundRobin       Boolean?
+  // How many opponents each player is scheduled against in this division (the
+  // graph degree). The schedule generator clamps it to (divisionSize - 1), so a
+  // value >= size-1 yields a full round-robin (everyone plays everyone) and a
+  // small division naturally becomes round-robin. NULL = fall back to the season's
+  // defaultOpponentsPerPlayer placement rule. Replaces the old roundRobin flag.
+  opponentsPerPlayer Int?
   // Optional Discord role + channel IDs the bot manages for this division
   discordRoleId    String?
   discordChannelId String?
