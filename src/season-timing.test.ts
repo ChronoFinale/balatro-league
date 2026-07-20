@@ -45,6 +45,15 @@ describe("seasonTimelineLines", () => {
     expect(seasonTimelineLines(d, 1)[1]).toContain("**1 day**");
   });
 
+  it("promises no settling window when the buffer is 0", () => {
+    const lines = seasonTimelineLines(d, 0);
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).not.toContain("0 days");
+    expect(lines[1]).toContain("right after");
+    // The deadline itself still shows.
+    expect(lines[0]).toContain(`<t:${unix}:F>`);
+  });
+
   it("falls back to the default buffer on a nonsense value", () => {
     expect(seasonTimelineLines(d, Number.NaN)[1]).toContain("**2 days**");
   });

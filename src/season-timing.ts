@@ -33,9 +33,15 @@ export function seasonTimelineLines(
   if (!h || !endsAt) return [];
   const days = Number.isFinite(bufferDays) && bufferDays >= 0 ? Math.floor(bufferDays) : DEFAULT_TIEBREAK_BUFFER_DAYS;
   const nextUnix = Math.floor((endsAt.getTime() + days * 24 * 60 * 60 * 1000) / 1000);
+  const head = `## ⏰ Finish all your games by ${h.full} (${h.relative})`;
+  // A 0-day buffer means we roll straight into the next season - don't promise a
+  // settling window we aren't actually taking.
+  if (days === 0) {
+    return [head, `_The next season starts right after, so get your games in before then._`];
+  }
   const dayWord = days === 1 ? "day" : "days";
   return [
-    `## ⏰ Finish all your games by ${h.full} (${h.relative})`,
+    head,
     `_Then we take **${days} ${dayWord}** to settle any shootouts/tiebreakers and give everyone a short break - the next season kicks off around <t:${nextUnix}:D>._`,
   ];
 }

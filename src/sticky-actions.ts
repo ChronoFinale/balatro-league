@@ -23,6 +23,8 @@ import {
   type TextChannel,
 } from "discord.js";
 import { activePublicSeason } from "./active-season.js";
+import { getConfig, LeagueConfigKey } from "./league-config.js";
+import { seasonTimelineLines, parseBufferDays } from "./season-timing.js";
 import { divisionControlsRow } from "./division-controls.js";
 import { prisma } from "./db.js";
 import { logDiscordError } from "./log-discord-error.js";
@@ -121,9 +123,9 @@ export function recordDivisionChannelMessage(message: Message): void {
 
 // Compact -- no big header, just the row. allowedMentions cleared so a
 // repost (or the initial post) never pings anyone.
-export function buildStickyActionsMessage(): BaseMessageOptions {
+export function buildStickyActionsMessage(timeline: string[] = []): BaseMessageOptions {
   return {
-    content: "**Quick actions**",
+    content: [...timeline, "**Quick actions**"].join("\n"),
     components: [divisionControlsRow()],
     allowedMentions: { parse: [] },
   };
@@ -131,8 +133,8 @@ export function buildStickyActionsMessage(): BaseMessageOptions {
 
 // ---- Posting / reposting shell -------------------------------------------
 
-async function postSticky(channel: TextChannel, divisionId: string): Promise<void> {
-  const sent = await channel.send(buildStickyActionsMessage());
+async function postSticky(channel: TextChannel, divisionId: string, timeline: string[]): Promise<void> {
+  const sent = await channel.send(buildStickyActionsMessage(timeline));
   await prisma.leagueConfig.upsert({
     where: { key: stickyConfigKey(divisionId) },
     create: { key: stickyConfigKey(divisionId), value: sent.id, updatedBy: "system" },
@@ -171,7 +173,11 @@ async function refreshDivisionChannelIds(): Promise<Array<{ id: string; channelI
   return result;
 }
 
-async function tickDivision(client: Client, division: { id: string; channelId: string }): Promise<void> {
+async function tickDivision(
+  client: Client,
+  division: { id: string; channelId: string },
+  timeline: string[],
+): Promise<void> {
   try {
     const ch = await client.channels.fetch(division.channelId).catch(() => null);
     if (!ch || ch.type !== ChannelType.GuildText) return;
@@ -185,7 +191,7 @@ async function tickDivision(client: Client, division: { id: string; channelId: s
     // config) -- post immediately, no throttle. There's nothing to interrupt
     // by adding one message to a channel that has none of ours yet.
     if (!storedId) {
-      await postSticky(channel, division.id);
+      await postSticky(channel, division.id, timeline);
       return;
     }
 
@@ -207,7 +213,7 @@ async function tickDivision(client: Client, division: { id: string; channelId: s
     if (!shouldRepostSticky(state, Date.now())) return;
 
     await deleteSticky(channel, storedId);
-    await postSticky(channel, division.id);
+    await postSticky(channel, division.id, timeline);
   } catch (err) {
     logDiscordError("sticky-actions.tickDivision", err, { channelId: division.channelId });
   }
@@ -216,8 +222,15 @@ async function tickDivision(client: Client, division: { id: string; channelId: s
 async function runStickyTick(client: Client): Promise<void> {
   try {
     const divisions = await refreshDivisionChannelIds();
+    // Resolve the season timeline ONCE per tick (not per division) so every
+    // division's sticky shows the same live deadline/countdown above the buttons.
+    const season = await activePublicSeason();
+    const timeline = seasonTimelineLines(
+      season?.scheduledEndAt ?? null,
+      parseBufferDays(await getConfig(LeagueConfigKey.TiebreakBufferDays)),
+    );
     for (const division of divisions) {
-      await tickDivision(client, division);
+      await tickDivision(client, division, timeline);
     }
   } catch (err) {
     console.warn("[sticky-actions] tick failed:", err);
