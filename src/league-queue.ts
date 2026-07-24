@@ -324,8 +324,9 @@ const queueNotifyKey = (playerId: string): string => `queue_notify:${playerId}`;
 
 // Per-JOINER cooldown so queue churn (join / leave / re-queue) can't spam an
 // opponent: one notify wave per joiner per window; re-queueing inside it stays
-// silent. Stored as an ISO timestamp under queue_notify_last:<joinerId>.
-export const QUEUE_NOTIFY_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2h
+// silent. Short enough that a genuine later session still notifies. Stored as an
+// ISO timestamp under queue_notify_last:<joinerId>.
+export const QUEUE_NOTIFY_COOLDOWN_MS = 10 * 60 * 1000; // 10 min
 const queueNotifyCooldownKey = (playerId: string): string => `queue_notify_last:${playerId}`;
 
 export async function isQueueNotifyOptIn(playerId: string): Promise<boolean> {
